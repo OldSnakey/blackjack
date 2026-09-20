@@ -1,52 +1,5 @@
 import unittest
-from blackjack import score_hand
-
-
-def determine_outcome(player_hand, dealer_hand):
-    """
-    Evaluates the outcome of a completed round of Blackjack.
-    Returns a tuple of (outcome_code, message):
-      - 'PLAYER_BUST': Player exceeded 21 (Dealer wins)
-      - 'DEALER_BUST': Dealer exceeded 21 (Player wins)
-      - 'NATURAL_BLACKJACK': Player has 21 on initial deal (Player wins)
-      - 'PLAYER_WINS': Player score higher than dealer
-      - 'DEALER_WINS': Dealer score higher than player
-      - 'PUSH': Tie / Draw
-    """
-    player_score = score_hand(player_hand)
-    dealer_score = score_hand(dealer_hand)
-
-    # 1. Player Bust
-    if player_score > 21:
-        return 'PLAYER_BUST', 'You bust, dealer wins!'
-
-    # Check for natural blackjack (initial 2 cards totaling 21)
-    player_natural = (len(player_hand) == 2 and player_score == 21)
-    dealer_natural = (len(dealer_hand) == 2 and dealer_score == 21)
-
-    if player_natural and dealer_natural:
-        return 'PUSH', "Both have Blackjack! It's a draw."
-    if player_natural:
-        return 'NATURAL_BLACKJACK', 'Player has Blackjack! You win!'
-    if dealer_natural:
-        return 'DEALER_WINS', 'Dealer has Blackjack! Dealer wins!'
-
-    # 2. Dealer Bust
-    if dealer_score > 21:
-        return 'DEALER_BUST', 'Dealer busts, Player WINS!'
-
-    # 3. Compare scores
-    if player_score > dealer_score:
-        return 'PLAYER_WINS', 'Player WINS!'
-    elif dealer_score > player_score:
-        return 'DEALER_WINS', 'The dealer wins!'
-    else:
-        return 'PUSH', "It's a draw"
-
-
-def dealer_should_hit(dealer_hand):
-    """Under standard S17 rules, dealer hits on < 17 and stands on >= 17."""
-    return score_hand(dealer_hand) < 17
+from blackjack import score_hand, determine_outcome, dealer_should_hit
 
 
 class TestGameRules(unittest.TestCase):
