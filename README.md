@@ -14,12 +14,13 @@ Designed as an educational project for Python learners and junior developers, th
 - [Features](#features)
 - [How to Run (Developers)](#how-to-run-developers)
 - [Game Rules & Flow](#game-rules--flow)
+  - [Keyboard Shortcuts & Controls](#keyboard-shortcuts--controls)
 - [Project Architecture & Key Lessons](#project-architecture--key-lessons)
   - [1. Eliminating Global State with OOP](#1-eliminating-global-state-with-oop)
   - [2. The Tkinter Event Loop: `root.after()` vs. `time.sleep()`](#2-the-tkinter-event-loop-rootafter-vs-timesleep)
   - [3. Preventing Race Conditions & Re-Entrancy](#3-preventing-race-conditions--re-entrancy)
   - [4. Dynamic Ace Valuation Algorithm](#4-dynamic-ace-valuation-algorithm)
-  - [5. Portable Path Handling with `pathlib`](#5-portable-path-handling-with-pathlib)
+  - [5. Portable Asset Resolution & PyInstaller Bundling](#5-portable-asset-resolution--pyinstaller-bundling)
 - [Automated Testing](#automated-testing)
 - [File Structure](#file-structure)
 
@@ -46,6 +47,11 @@ Designed as an educational project for Python learners and junior developers, th
 - **Non-Blocking Dealing Cadence**: Smooth, observable 700ms dealing pace without GUI freezes.
 - **Authentic Casino Audio Effects (`.ogg`)**: Tactile sound effects powered by `pygame.mixer` (via `pygame-ce`), featuring 42 organic audio variations: randomized card slides for dealing, crisp card placement on hole card reveals, riffle shoe shuffles, tactile chip drop and collision clicks, heavy all-in stacks, dealer chip rakes, and payout slides.
 - **Audio Mute & Accessibility**: Top scoreboard mute toggle (`🔊 Sound: ON` / `🔇 Sound: OFF`) and keyboard shortcut (`M`) for instant muting. Graceful headless fallback if audio devices or packages are unavailable.
+- **Interactive Keyboard Shortcut Overlay**: Visual in-game HUD dialog accessible via the `[?] Help` button or hotkeys (`?`, `/`, `F1`), illustrating all gameplay, betting, insurance, and system controls with curated Kenney keycap badges.
+- **Hands-Free Keyboard Accessibility**: Full keyboard controls for fast, mouse-free play:
+  - `Space` / `Enter` (Contextual Deal / Hit / Next Game), `H` (Hit), `S` (Stand), `D` (Double), `P` (Split), `R` (Surrender)
+  - `1`, `2`, `3`, `4` ($5, $25, $100, $500 chips), `A` (All-In), `C` (Clear Bet)
+  - `Y` / `N` (Insurance), `M` (Mute Audio), `?` / `F1` (Help HUD), `Esc` (Close / Decline)
 - **Zero Required External Dependencies**: Core game logic, cards, and GUI run entirely on Python's standard library (`tkinter`, `random`, `pathlib`, `unittest`). Audio support is optional via `pygame-ce`.
 
 ## Play Online / Download (itch.io)
@@ -145,7 +151,25 @@ For complete store page copy, metadata, and upload instructions, see [docs/ITCH_
    - The dealer must hit on any score below 17.
    - The dealer must stand on 17 or higher (standard casino S17 rule).
 
----
+### Keyboard Shortcuts & Controls
+
+The game supports complete hands-free keyboard navigation with context-sensitive key bindings:
+
+| Shortcut | Context | Action |
+| :--- | :--- | :--- |
+| `Space` / `Enter` | Any Phase | **Context-Sensitive**: Deal Bet (Betting) / Hit (Turn) / New Game (Round Over) |
+| `H` | Player Turn | **Hit** (Draw another card) |
+| `S` | Player Turn | **Stand** (End turn; dealer plays) |
+| `D` | Initial 2 Cards | **Double Down** (Double bet, draw 1 card, auto-stand) |
+| `P` | Equal Rank Pair | **Split** (Split into two independent hands) |
+| `R` | Initial 2 Cards | **Surrender** (Forfeit hand, recover 50% wager) |
+| `1`, `2`, `3`, `4` | Betting Phase | Stage $5, $25, $100, or $500 chip |
+| `A` | Betting Phase | **All In** (Wager entire bankroll) |
+| `C` | Betting Phase | **Clear Bet** (Reset staged bet to $0) |
+| `Y` / `N` (or `Esc`)| Dealer Shows Ace | **Take** or **Decline** Insurance (2:1 side bet) |
+| `M` | Any Time | Toggle Sound Mute (`ON` / `OFF`) |
+| `?` / `/` / `F1` | Any Time | Toggle Keyboard Shortcuts Help Overlay |
+| `Escape` | Overlay Active | Close Help Overlay |
 
 ## Project Architecture & Key Lessons
 
@@ -211,21 +235,36 @@ def score_hand(hand):
     return score
 ```
 
-### 5. Portable Path Handling with `pathlib`
-Hardcoding relative paths like `"cards/1_heart.png"` causes scripts to fail if executed from a different working directory. Using Python's modern `pathlib` module ensures the assets are always located relative to the script's actual file path:
+### 5. Portable Asset Resolution & PyInstaller Bundling
+Hardcoding relative paths like `"cards/1_heart.png"` causes scripts to fail when executed from another working directory or packaged into standalone executables via PyInstaller.
+
+The project implements a resilient multi-tier path resolver (`get_base_dir()`) that guarantees assets load seamlessly across standard source runs, PyInstaller `--onefile` temp directories (`sys._MEIPASS`), and PyInstaller `--onedir` release folders (`_internal/`):
 
 ```python
-from pathlib import Path
+def get_base_dir() -> Path:
+    """Resolves asset directory across standard execution and PyInstaller bundles."""
+    if getattr(sys, "frozen", False):
+        if hasattr(sys, "_MEIPASS"):
+            return Path(sys._MEIPASS)
+        exe_parent = Path(sys.executable).resolve().parent
+        if (exe_parent / "cards").exists():
+            return exe_parent
+        if (exe_parent / "_internal" / "cards").exists():
+            return exe_parent / "_internal"
+    return Path(__file__).resolve().parent
 
-ASSETS_DIR = Path(__file__).resolve().parent / "cards"
-card_image_path = ASSETS_DIR / f"{card}_{suit}.png"
+BASE_DIR = get_base_dir()
+ASSETS_DIR = BASE_DIR / "cards"
+OVERLAY_ICONS_DIR = BASE_DIR / "assets" / "overlay_icons"
 ```
+
+Additionally, transparent PNG assets (like the 64×64 Kenney prompt icons) are scaled down using Tkinter's native `PhotoImage.subsample(2, 2)` method, producing crisp 32×32 pixel badges without requiring heavy third-party image manipulation libraries like Pillow.
 
 ---
 
 ## Automated Testing
 
-The project includes a comprehensive automated test suite with **92 unit tests** written with Python's built-in `unittest` framework.
+The project includes a comprehensive automated test suite with **102 unit tests** written with Python's built-in `unittest` framework.
 
 ### Running the Tests
 To run all tests with verbose output:
@@ -247,6 +286,7 @@ python -m unittest discover tests -v
 | [`tests/test_split.py`](tests/test_split.py) | Tests hand split qualification (`can_split`), multi-hand turn progression, button states, and independent outcome resolution. |
 | [`tests/test_betting.py`](tests/test_betting.py) | Tests pure payout calculations (3:2, 1:1, push, loss, surrender), 2:1 insurance payouts with odd-bet breakeven guarantees, greedy chip denomination breakdowns, ChipVisualizer state sync/animations, Casual vs. Casino mode toggle confirmation warnings and bankroll resets, staged chip betting, "All In" max wagering, split wagers, insurance prompts and decisions, and the rebuy mechanic. |
 | [`tests/test_sound.py`](tests/test_sound.py) | Validates SoundManager audio engine, 42-file .ogg catalog loading across 10 categories, polyphony, volume clamping, mute toggling, UI sound button synchronization, keyboard shortcut integration, and headless fail-safe degradation. |
+| [`tests/test_shortcuts_overlay.py`](tests/test_shortcuts_overlay.py) | Verifies curated Kenney prompt icon asset integrity, `KeyboardIconLoader` scaling & caching, `[?] Help` button placement, dialog open/close lifecycle, keyboard event dismissal (`Escape`, `?`), and game state immutability. |
 
 ---
 
@@ -254,13 +294,24 @@ python -m unittest discover tests -v
 
 ```
 Blackjack/
-├── blackjack.py           # Main application: pure game engine, SoundManager & Tkinter GUI
-├── import_test.py         # Demonstrates importing and running the game externally
-├── README.md              # Documentation and learning guide
-├── .gitignore             # Git exclusions for Python cache, IDEs, and OS artifacts
-├── cards/                 # 52 playing card images + back.png and jokers
-├── audio/                 # 42 tactile casino .ogg audio files (slides, chips, shuffles)
-└── tests/                 # Automated test suite (92 tests)
+├── blackjack.py              # Main application: pure game engine, SoundManager, KeyboardIconLoader & GUI
+├── blackjack.spec            # PyInstaller build spec for itch.io packaging
+├── build_itch_release.bat    # Windows 1-click build batch wrapper
+├── build_itch_release.ps1    # Automated PowerShell build, test, and zip packaging pipeline
+├── import_test.py            # External import verification test
+├── README.md                 # Project documentation and architectural guide
+├── README_PLAYERS.txt        # End-user player guide bundled with releases
+├── .gitignore                # Git exclusions (caches, IDEs, builds, raw asset packs)
+├── cards/                    # 52 playing card PNG images + back.png and jokers
+├── audio/                    # 42 tactile casino .ogg audio files (slides, chips, shuffles)
+├── assets/                   # Release packaging assets
+│   ├── overlay_icons/        # 20 curated 64x64 PNG keyboard & mouse prompt icons
+│   ├── icon.ico / icon.png   # Window and executable icons
+│   ├── cover_itch.png        # Storefront marketing cover art
+│   └── screenshots/          # High-resolution gameplay captures
+├── docs/
+│   └── ITCH_IO_GUIDE.md      # itch.io deployment, store copy, and release guide
+└── tests/                    # Automated test suite (102 tests)
     ├── __init__.py
     ├── test_betting.py
     ├── test_deck.py
@@ -269,6 +320,7 @@ Blackjack/
     ├── test_gui_state.py
     ├── test_scoring.py
     ├── test_shoe.py
+    ├── test_shortcuts_overlay.py
     ├── test_sound.py
     ├── test_split.py
     └── test_surrender.py
