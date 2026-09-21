@@ -26,15 +26,19 @@ Designed as an educational project for Python learners and junior developers, th
 - **Casino Felt GUI**: Visual card display on a classic green felt table with borderless cards and authentic layout.
 - **Dual Play Modes (Chips Mode Toggle)**:
   - **Casual Mode (Chips OFF)**: Instant deals, zero-stress casual play with win/loss tracking and no bankroll overhead.
-  - **Casino Mode (Chips ON)**: Authentic wagering system with a $1,000 starting bankroll, authentic casino chips ($5, $25, $100, $500), an **"All In"** button to easily bet entire bankrolls (even odd sums like $187), staged betting, 3:2 Natural Blackjack payouts, and a $1,000 rebuy feature.
+  - **Casino Mode (Chips ON)**: Authentic wagering system with a $1,000 starting bankroll, authentic casino chips ($5, $25, $100, $500), an **"All In"** button to easily bet entire bankrolls (even odd sums like $187), staged betting, 3:2 Natural Blackjack payouts, and a $1,000 rebuy feature. Switching modes prompts a confirmation warning to prevent accidental forfeiture, resetting to the default $1,000 upon return.
+- **Multi-Deck Shoe & Cut Card Penetration**: 4-deck shoe (208 cards) by default with persistent card depletion across rounds, live card count indicator, and an authentic ~25% cut card penetration reshuffle trigger.
+- **Double Down Option**: Double down on initial 2-card hands (and 2-card split hands), doubling the wager, drawing exactly one card, and standing automatically.
+- **Late Surrender**: Forfeit initial 2-card hands after the dealer peeks for Natural Blackjack to recover 50% of the initial wager.
 - **Procedural 2.5D Chip Visualizer & Micro-Animations**: A casino felt betting circle displaying live 3D stacked chips with drop shadows, clay edge stripes, and dynamic micro-animations for chip drops, dealer payouts, house scoops, and pushes.
-- **Authentic Dealer Hole Card**: Dealer receives one card face-up and one card face-down (`back.png`). The hidden card is revealed only after the player stands.
+- **Authentic Dealer Hole Card**: Dealer receives one card face-up and one card face-down (`back.png`). The hidden card is revealed only after the player stands (or when round resolves early).
 - **Dynamic Score Tracking**: Dealer's visible score shows only the upcard (`"X + ?"`) until the hole card is revealed.
-- **Scoreboard Tracking**: Real-time tracking of Dealer Wins, Player Wins, Ties, and Bankroll.
+- **Scoreboard Tracking**: Real-time tracking of Dealer Wins, Player Wins, Ties, Shoe cards remaining, and Bankroll.
 - **Insurance Option**: When the dealer's visible upcard is an Ace in Casino Mode, players are offered an Insurance side bet costing half their main bet and paying 2:1 against a Dealer Natural Blackjack (with odd-bet rounding ensuring an exact $0 net breakeven round on all wagers).
-- **Hand Splitting**: When dealt a pair of cards of the same rank, split into two independent hands with active hand indicators and multi-hand resolution. In Chips Mode, Hand 2 requires an additional matching bet.
+- **Hand Splitting**: When dealt a pair of cards of the same rank, split into two independent hands with active hand indicators, Double After Split (DAS) support, and multi-hand resolution (with split 21s evaluated as standard 21s paying 1:1).
 - **Natural Blackjack Detection**: Automatically detects 2-card 21s for both player and dealer on the deal, paying 3:2 in Chips Mode.
-- **Auto-Stand Protection**: Automatically stands when a player hits to 21, preventing accidental bust clicks.
+- **Auto-Stand Protection**: Automatically stands when a player hits or doubles to 21, preventing accidental bust clicks.
+- **Mid-Hand Guarding**: Action buttons and New Game controls strictly guard against accidental mid-hand forfeit or re-entrancy.
 - **Non-Blocking Dealing Cadence**: Smooth, observable 700ms dealing pace without GUI freezes.
 - **Zero External Dependencies**: Runs entirely on Python's built-in standard library (`tkinter`, `random`, `pathlib`, `unittest`).
 
@@ -107,7 +111,9 @@ python import_test.py
 2. **Player Actions**:
    - **Hit**: Draw an additional card. If your score exceeds 21, you bust and the dealer wins immediately.
    - **Stand**: Conclude your turn and pass control to the dealer (or the next split hand).
+   - **Double**: Available on initial 2 cards (including after a split). Doubles your wager, draws exactly one card, and automatically stands.
    - **Split**: If dealt two cards of matching rank on the deal, separate them into two hands, each receiving a new card and played independently.
+   - **Surrender**: Forfeit initial 2-card hands (before hitting/splitting) after the dealer peeks for Blackjack, recovering 50% of your wager.
 3. **Dealer Rules**:
    - The dealer must hit on any score below 17.
    - The dealer must stand on 17 or higher (standard casino S17 rule).
@@ -192,7 +198,7 @@ card_image_path = ASSETS_DIR / f"{card}_{suit}.png"
 
 ## Automated Testing
 
-The project includes a comprehensive automated test suite with **68 unit tests** written with Python's built-in `unittest` framework.
+The project includes a comprehensive automated test suite with **83 unit tests** written with Python's built-in `unittest` framework.
 
 ### Running the Tests
 To run all tests with verbose output:
@@ -206,10 +212,13 @@ python -m unittest discover tests -v
 | :--- | :--- |
 | [`tests/test_scoring.py`](tests/test_scoring.py) | Verifies `score_hand()` across empty hands, multiple Aces, soft-to-hard shifts, and busts. |
 | [`tests/test_deck.py`](tests/test_deck.py) | Verifies all 52 card PNGs and `back.png` exist, validates deck distribution, and tests `Card` tuple subclass properties. |
-| [`tests/test_game_rules.py`](tests/test_game_rules.py) | Tests win/loss/push evaluations, dealer AI hit/stand rules, and Natural Blackjack detection on both player and dealer. |
-| [`tests/test_gui_state.py`](tests/test_gui_state.py) | Validates actual `BlackjackApp` widget states (Hit, Stand, New Game buttons, ties, timer cleanup) across real game lifecycle transitions. |
+| [`tests/test_shoe.py`](tests/test_shoe.py) | Verifies 4-deck shoe composition (208 cards), persistence across consecutive rounds, cut-card penetration triggers (~25%), and UI count display. |
+| [`tests/test_game_rules.py`](tests/test_game_rules.py) | Tests win/loss/push evaluations, dealer AI hit/stand rules, Natural Blackjack vs split 21s (1:1 payout), and surrender payouts. |
+| [`tests/test_double_down.py`](tests/test_double_down.py) | Tests Double Down eligibility (2 cards only, bankroll checks), wager doubling, single card draw, auto-stand, and bust resolution. |
+| [`tests/test_surrender.py`](tests/test_surrender.py) | Tests Late Surrender eligibility (initial 2 cards only, un-split), 50% wager refund, hole card reveal, and dealer win recording. |
+| [`tests/test_gui_state.py`](tests/test_gui_state.py) | Validates actual `BlackjackApp` widget states (Hit, Stand, Double, Split, Surrender, New Game buttons, ties, timer cleanup) across real game lifecycle transitions. |
 | [`tests/test_split.py`](tests/test_split.py) | Tests hand split qualification (`can_split`), multi-hand turn progression, button states, and independent outcome resolution. |
-| [`tests/test_betting.py`](tests/test_betting.py) | Tests pure payout calculations (3:2, 1:1, push, loss), 2:1 insurance payouts with odd-bet breakeven guarantees, greedy chip denomination breakdowns, ChipVisualizer state sync/animations, Casual vs. Casino mode toggling, staged chip betting, "All In" max wagering, split wagers, insurance prompts and decisions, and the rebuy mechanic. |
+| [`tests/test_betting.py`](tests/test_betting.py) | Tests pure payout calculations (3:2, 1:1, push, loss, surrender), 2:1 insurance payouts with odd-bet breakeven guarantees, greedy chip denomination breakdowns, ChipVisualizer state sync/animations, Casual vs. Casino mode toggle confirmation warnings and bankroll resets, staged chip betting, "All In" max wagering, split wagers, insurance prompts and decisions, and the rebuy mechanic. |
 
 ---
 
@@ -222,12 +231,15 @@ Blackjack/
 ├── README.md              # Documentation and learning guide
 ├── .gitignore             # Git exclusions for Python cache, IDEs, and OS artifacts
 ├── cards/                 # 52 playing card images + back.png and jokers
-└── tests/                 # Automated test suite (68 tests)
+└── tests/                 # Automated test suite (83 tests)
     ├── __init__.py
     ├── test_betting.py
     ├── test_deck.py
+    ├── test_double_down.py
     ├── test_game_rules.py
     ├── test_gui_state.py
     ├── test_scoring.py
-    └── test_split.py
+    ├── test_shoe.py
+    ├── test_split.py
+    └── test_surrender.py
 ```

@@ -64,6 +64,13 @@ class TestPayoutCalculation(unittest.TestCase):
         self.assertEqual(calculate_payout("PLAYER_BUST", 50), 0)
         self.assertEqual(calculate_payout("UNKNOWN_OUTCOME", 10), 0)
 
+    def test_surrender_payout(self):
+        """Surrender refunds 50% of the original wager (integer division)."""
+        self.assertEqual(calculate_payout("SURRENDER", 100), 50)
+        self.assertEqual(calculate_payout("SURRENDER", 50), 25)
+        self.assertEqual(calculate_payout("SURRENDER", 5), 2)
+        self.assertEqual(calculate_payout("SURRENDER", 0), 0)
+
     def test_zero_or_negative_wager(self):
         """Zero or negative wagers return 0 regardless of outcome."""
         self.assertEqual(calculate_payout("NATURAL_BLACKJACK", 0), 0)
@@ -649,6 +656,39 @@ class TestBettingGuiAndState(unittest.TestCase):
         self.app.chip_visualizer.animate_push(animated=False)
         self.app.chip_visualizer.animate_loss(animated=False)
         self.app.chip_visualizer.clear_timers()
+
+    def test_chips_mode_toggle_warning_declined(self):
+        """Declining the exit warning keeps Chips Mode active and retains bankroll."""
+        self.app.chips_mode_var.set(True)
+        self.app._on_toggle_chips_mode(confirm=True)
+        self.app.bankroll_var.set(1500)
+        self.app.current_bet_var.set(50)
+
+        # Uncheck and decline confirmation
+        self.app.chips_mode_var.set(False)
+        self.app._on_toggle_chips_mode(confirm=False)
+
+        # Chips mode should remain True and bankroll remains 1500
+        self.assertTrue(self.app.chips_mode_var.get())
+        self.assertEqual(self.app.bankroll_var.get(), 1500)
+
+    def test_chips_mode_toggle_warning_accepted_resets_bankroll(self):
+        """Accepting the exit warning resets bankroll to $1,000 and deactivates Chips Mode."""
+        self.app.chips_mode_var.set(True)
+        self.app._on_toggle_chips_mode(confirm=True)
+        self.app.bankroll_var.set(2500)
+
+        # Uncheck and accept confirmation
+        self.app.chips_mode_var.set(False)
+        self.app._on_toggle_chips_mode(confirm=True)
+
+        self.assertFalse(self.app.chips_mode_var.get())
+        self.assertEqual(self.app.bankroll_var.get(), STARTING_BANKROLL)
+
+        # Re-enabling Chips Mode starts fresh with STARTING_BANKROLL
+        self.app.chips_mode_var.set(True)
+        self.app._on_toggle_chips_mode(confirm=True)
+        self.assertEqual(self.app.bankroll_var.get(), STARTING_BANKROLL)
 
 
 if __name__ == "__main__":

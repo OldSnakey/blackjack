@@ -51,6 +51,21 @@ class TestGameRules(unittest.TestCase):
         outcome, _ = determine_outcome([7, 7, 7], [1, 10])
         self.assertEqual(outcome, 'DEALER_WINS')
 
+    def test_split_twenty_one_is_not_natural_blackjack(self):
+        """Split hands totaling 21 on 2 cards must be treated as standard 21 (1:1), not Natural BJ."""
+        # Split hand has 2 cards totaling 21 vs dealer 20 -> PLAYER_WINS (not NATURAL_BLACKJACK)
+        outcome, msg = determine_outcome([1, 10], [10, 10], is_split=True)
+        self.assertEqual(outcome, 'PLAYER_WINS')
+        self.assertIn("Player WINS!", msg)
+
+        # Split hand 21 vs dealer 21 (3 cards) -> PUSH
+        outcome, _ = determine_outcome([1, 10], [7, 7, 7], is_split=True)
+        self.assertEqual(outcome, 'PUSH')
+
+        # Split hand 21 vs dealer Natural Blackjack -> DEALER_WINS
+        outcome, _ = determine_outcome([1, 10], [1, 10], is_split=True)
+        self.assertEqual(outcome, 'DEALER_WINS')
+
     def test_dealer_should_hit_logic(self):
         # Dealer must hit below 17
         self.assertTrue(dealer_should_hit([10, 6]))  # 16

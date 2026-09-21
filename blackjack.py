@@ -21,6 +21,10 @@ from pathlib import Path
 BLACKJACK_TARGET = 21
 DEALER_STAND_THRESHOLD = 17  # Standard casino rule: Dealer must stand on 17 or higher
 
+# Shoe and Multi-Deck Configuration
+DEFAULT_DECK_COUNT = 4  # Standard casino multi-deck shoe (4 decks = 208 cards)
+CUT_CARD_PENETRATION = 0.25  # Cut card reshuffle trigger (when <= 25% cards remain)
+
 # Bankroll and Betting Configuration
 STARTING_BANKROLL = 1000
 MINIMUM_BET = 5
@@ -125,9 +129,14 @@ def can_split(player_hand):
     return val1 == val2
 
 
-def determine_outcome(player_hand, dealer_hand):
+def determine_outcome(player_hand, dealer_hand, is_split: bool = False):
     """
     Evaluates the final result of a round once both player and dealer have completed their turns.
+
+    Args:
+        player_hand: List of card values or Card instances for the player.
+        dealer_hand: List of card values or Card instances for the dealer.
+        is_split: Whether this hand originated from a split. Split 21s cannot be Natural Blackjacks.
 
     Returns:
         tuple[str, str]: (outcome_code, display_message)
@@ -139,8 +148,8 @@ def determine_outcome(player_hand, dealer_hand):
     if player_score > BLACKJACK_TARGET:
         return 'PLAYER_BUST', 'You bust, dealer wins!'
 
-    # Check for natural blackjacks (2 cards totaling 21 on initial deal)
-    player_natural = (len(player_hand) == 2 and player_score == BLACKJACK_TARGET)
+    # Check for natural blackjacks (2 cards totaling 21 on initial deal, un-split)
+    player_natural = (not is_split and len(player_hand) == 2 and player_score == BLACKJACK_TARGET)
     dealer_natural = (len(dealer_hand) == 2 and dealer_score == BLACKJACK_TARGET)
 
     if player_natural and dealer_natural:
@@ -169,12 +178,12 @@ def calculate_payout(outcome: str, bet: int) -> int:
 
     Args:
         outcome: Outcome code from determine_outcome ('NATURAL_BLACKJACK', 'PLAYER_WINS',
-                 'DEALER_BUST', 'PUSH', 'DEALER_WINS', 'PLAYER_BUST').
+                 'DEALER_BUST', 'PUSH', 'SURRENDER', 'DEALER_WINS', 'PLAYER_BUST').
         bet: The amount wagered on this hand (integer >= 0).
 
     Returns:
         int: Total return to the player (0 for loss, bet for push, 2*bet for standard win,
-             bet + int(bet * 1.5) for 3:2 natural blackjack).
+             bet + int(bet * 1.5) for 3:2 natural blackjack, bet // 2 for surrender).
     """
     if bet <= 0:
         return 0
@@ -184,6 +193,8 @@ def calculate_payout(outcome: str, bet: int) -> int:
         return bet * 2
     elif outcome == 'PUSH':
         return bet
+    elif outcome == 'SURRENDER':
+        return bet // 2
     else:
         # 'DEALER_WINS', 'PLAYER_BUST', or any other loss outcome
         return 0
@@ -575,6 +586,24 @@ def load_images(card_images):
             card_images.append(Card(value=10, image=image, rank=card, suit=suit))
 
 
+def build_shoe(all_cards, num_decks: int = DEFAULT_DECK_COUNT) -> list:
+    """
+    Creates and shuffles a multi-deck shoe from template Card instances.
+
+    Args:
+        all_cards: List of 52 unique Card instances.
+        num_decks: Number of standard 52-card decks in the shoe.
+
+    Returns:
+        list[Card]: Shuffled list containing (52 * num_decks) cards.
+    """
+    shoe = []
+    for _ in range(num_decks):
+        shoe.extend(all_cards)
+    random.shuffle(shoe)
+    return shoe
+
+
 # ============================================================================
 # GUI Application: Object-Oriented Presentation Layer
 # ============================================================================
@@ -600,6 +629,11 @@ class BlackjackApp:
         # Async timer management & graceful window destruction
         self._dealer_timer_id = None
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+        # Shoe and Multi-Deck Configuration
+        self.deck_count = DEFAULT_DECK_COUNT
+        self.shoe_needs_reshuffle = False
+        self.shoe_info_var = tkinter.StringVar(value="")
 
         # Game State Collections
         self.deck = []
@@ -706,12 +740,19 @@ class BlackjackApp:
         )
         self.chips_mode_check.grid(row=0, column=6, padx=(15, 0))
 
+        # Shoe Cards Remaining Display
+        self.shoe_label = tkinter.Label(
+            scoreboard_frame, textvariable=self.shoe_info_var, font=("Arial", 10, "bold"),
+            background=TABLE_BACKGROUND_COLOR, fg="#80cbc4"
+        )
+        self.shoe_label.grid(row=0, column=7, padx=(15, 0))
+
         # Bankroll and Bet summary (visible in Chips Mode)
         self.bankroll_label = tkinter.Label(
             scoreboard_frame, text="Bankroll: $1,000  |  Bet: $0",
             font=("Arial", 11, "bold"), background=TABLE_BACKGROUND_COLOR, fg="#81c784"
         )
-        self.bankroll_label.grid(row=1, column=0, columnspan=7, pady=(2, 2))
+        self.bankroll_label.grid(row=1, column=0, columnspan=8, pady=(2, 2))
         self.bankroll_label.grid_remove()  # Hidden by default in Casual Mode
 
         # Status / Result banner
@@ -719,7 +760,7 @@ class BlackjackApp:
             scoreboard_frame, textvariable=self.result_var, font=("Arial", 13, "bold"),
             background=TABLE_BACKGROUND_COLOR, fg="#ffeb3b"
         )
-        self.result_label.grid(row=2, column=0, columnspan=7, pady=(2, 4))
+        self.result_label.grid(row=2, column=0, columnspan=8, pady=(2, 4))
 
         # Main Card Table Area
         card_table_frame = tkinter.Frame(
@@ -848,32 +889,86 @@ class BlackjackApp:
         button_frame.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(4, 10))
 
         self.hit_button = tkinter.Button(
-            button_frame, text="Hit", width=10, font=("Arial", 10, "bold"),
+            button_frame, text="Hit", width=8, font=("Arial", 10, "bold"),
             command=self.on_hit
         )
-        self.hit_button.grid(row=0, column=0, padx=8)
+        self.hit_button.grid(row=0, column=0, padx=6)
 
         self.stand_button = tkinter.Button(
-            button_frame, text="Stand", width=10, font=("Arial", 10, "bold"),
+            button_frame, text="Stand", width=8, font=("Arial", 10, "bold"),
             command=self.on_stand
         )
-        self.stand_button.grid(row=0, column=1, padx=8)
+        self.stand_button.grid(row=0, column=1, padx=6)
+
+        self.double_button = tkinter.Button(
+            button_frame, text="Double", width=8, font=("Arial", 10, "bold"),
+            command=self.on_double_down, state="disabled"
+        )
+        self.double_button.grid(row=0, column=2, padx=6)
 
         self.split_button = tkinter.Button(
-            button_frame, text="Split", width=10, font=("Arial", 10, "bold"),
+            button_frame, text="Split", width=8, font=("Arial", 10, "bold"),
             command=self.on_split, state="disabled"
         )
-        self.split_button.grid(row=0, column=2, padx=8)
+        self.split_button.grid(row=0, column=3, padx=6)
+
+        self.surrender_button = tkinter.Button(
+            button_frame, text="Surrender", width=9, font=("Arial", 10, "bold"),
+            command=self.on_surrender, state="disabled"
+        )
+        self.surrender_button.grid(row=0, column=4, padx=6)
 
         self.new_game_button = tkinter.Button(
-            button_frame, text="New Game", width=10, font=("Arial", 10, "bold"),
+            button_frame, text="New Game", width=9, font=("Arial", 10, "bold"),
             command=self.new_game
         )
-        self.new_game_button.grid(row=0, column=3, padx=8)
+        self.new_game_button.grid(row=0, column=5, padx=6)
 
     # ------------------------------------------------------------------------
     # Game Flow & Actions
     # ------------------------------------------------------------------------
+
+    def _update_shoe_display(self):
+        """Updates the shoe cards remaining label text."""
+        if hasattr(self, "shoe_info_var"):
+            total = len(self.all_cards) * self.deck_count
+            remaining = len(self.deck)
+            cut_notice = " [Cut]" if self.shoe_needs_reshuffle else ""
+            self.shoe_info_var.set(f"Shoe: {remaining}/{total}{cut_notice}")
+
+    def _update_action_buttons(self):
+        """Evaluates and applies eligibility for Hit, Stand, Double, Split, and Surrender."""
+        if not self.player_hands or self.active_hand_index >= len(self.player_hands):
+            self._set_action_buttons_state("disabled")
+            return
+
+        hand = self.player_hands[self.active_hand_index]
+        score = score_hand(hand)
+
+        if score >= BLACKJACK_TARGET:
+            self._set_action_buttons_state("disabled")
+            return
+
+        # Hit & Stand are available for active hand
+        self.hit_button.configure(state="normal")
+        self.stand_button.configure(state="normal")
+
+        # Double Down: exactly 2 cards in current hand, and sufficient bankroll if in Chips Mode
+        can_double = (len(hand) == 2)
+        if can_double and self.chips_mode_var.get() and self.hand_bets:
+            current_bet = self.hand_bets[self.active_hand_index] if self.active_hand_index < len(self.hand_bets) else 0
+            can_double = (self.bankroll_var.get() >= current_bet and current_bet > 0)
+        self.double_button.configure(state="normal" if can_double else "disabled")
+
+        # Split: only on initial 2 cards of non-split hand, matching rank, and sufficient bankroll
+        can_sp = (len(self.player_hands) == 1 and can_split(self.player_hands[0]))
+        if can_sp and self.chips_mode_var.get() and self.hand_bets:
+            can_sp = (self.bankroll_var.get() >= self.hand_bets[0])
+        self.split_button.configure(state="normal" if can_sp else "disabled")
+
+        # Surrender: only on initial 2 cards of non-split hand (before any hit, double, or split)
+        can_surr = (len(self.player_hands) == 1 and len(self.player_hands[0]) == 2)
+        self.surrender_button.configure(state="normal" if can_surr else "disabled")
 
     def new_game(self):
         """Starts a fresh round of Blackjack or enters betting phase depending on Chips Mode."""
@@ -887,9 +982,12 @@ class BlackjackApp:
         if hasattr(self, "chip_visualizer"):
             self.chip_visualizer.clear_timers()
 
-        # 1. Reset deck and hands
-        self.deck = list(self.all_cards)
-        random.shuffle(self.deck)
+        # 1. Reset deck/shoe and hands
+        if not self.deck or self.shoe_needs_reshuffle or len(self.deck) < 15:
+            self.deck = build_shoe(self.all_cards, self.deck_count)
+            self.shoe_needs_reshuffle = False
+
+        self._update_shoe_display()
         self.player_hands = [[]]
         self.active_hand_index = 0
         self.dealer_hand.clear()
@@ -948,9 +1046,8 @@ class BlackjackApp:
     def _start_round_deal(self):
         """Authentic initial deal: 2 cards to player, 2 to dealer (1 face-down hole card)."""
         self.result_var.set("")
-        self._set_action_buttons_state("normal")
-        self.split_button.configure(state="disabled")
-        self.new_game_button.configure(state="normal")
+        self._set_action_buttons_state("disabled")
+        self.new_game_button.configure(state="disabled")
         self.insurance_bet = 0
         self.last_insurance_lost = 0
         if hasattr(self, "insurance_frame"):
@@ -973,26 +1070,56 @@ class BlackjackApp:
         if self.chips_mode_var.get() and is_ace:
             self._prompt_insurance()
         else:
-            # Check for Natural Blackjack and Split availability
+            # Check for Natural Blackjack and Action eligibility
             self._check_initial_blackjack()
 
-    def _on_toggle_chips_mode(self):
+    def _on_toggle_chips_mode(self, confirm: bool = None):
         """Handles switching between Casual Mode (Chips OFF) and Casino Mode (Chips ON)."""
         if self.chips_mode_var.get():
-            # Chips Mode activated
+            # Chips Mode activated: reset bankroll to starting $1,000 as per policy
+            self.bankroll_var.set(STARTING_BANKROLL)
+            self.current_bet_var.set(0)
+            self.hand_bets = [0]
             self.bankroll_label.grid()
             self.betting_frame.grid()
             if hasattr(self, "chip_visualizer"):
                 self.chip_visualizer.grid()
-                self.chip_visualizer.set_bet(self.current_bet_var.get(), animate=False)
+                self.chip_visualizer.set_bet(0, animate=False)
             self._update_bankroll_display()
-            # If idle / round ended, start betting phase
-            if not self.dealer_hand or self.new_game_button["state"] == "normal":
-                self.new_game()
-            else:
-                self._update_betting_controls()
+            self.new_game()
         else:
-            # Chips Mode deactivated (Casual Mode)
+            # Chips Mode deactivated: confirm forfeit of bankroll
+            if confirm is None:
+                # In headless test environments or withdrawn root, auto-confirm without modal popup
+                is_headless = getattr(self, "suppress_mode_dialog", False)
+                try:
+                    is_withdrawn = (self.root.state() == "withdrawn") or (not self.root.winfo_ismapped())
+                except Exception:
+                    is_withdrawn = True
+
+                if is_headless or is_withdrawn:
+                    confirm = True
+                else:
+                    try:
+                        import tkinter.messagebox as messagebox
+                        confirm = messagebox.askyesno(
+                            "Exit Chips Mode?",
+                            "Leaving Chips Mode will forfeit your current bankroll progress and any active wagers.\n\n"
+                            f"Returning to Chips Mode later will reset your bankroll to the starting ${STARTING_BANKROLL:,}.\n\n"
+                            "Do you want to switch to Casual Mode?"
+                        )
+                    except Exception:
+                        confirm = True
+
+            if not confirm:
+                # User cancelled: keep Chips Mode ON
+                self.chips_mode_var.set(True)
+                return
+
+            # User confirmed: reset bankroll to starting $1,000 and clear chips state
+            self.bankroll_var.set(STARTING_BANKROLL)
+            self.current_bet_var.set(0)
+            self.hand_bets = [0]
             self.bankroll_label.grid_remove()
             self.betting_frame.grid_remove()
             if hasattr(self, "chip_visualizer"):
@@ -1001,15 +1128,10 @@ class BlackjackApp:
             if hasattr(self, "insurance_frame"):
                 self.insurance_frame.grid_remove()
             self.last_insurance_lost = 0
-            if self.is_insurance_phase:
-                self.is_insurance_phase = False
-                if self.insurance_bet > 0:
-                    self.bankroll_var.set(self.bankroll_var.get() + self.insurance_bet)
-                    self.insurance_bet = 0
-                self._check_initial_blackjack()
-            elif self.is_betting_phase:
-                self.is_betting_phase = False
-                self._start_round_deal()
+            self.is_insurance_phase = False
+            self.insurance_bet = 0
+            self.is_betting_phase = False
+            self.new_game()
 
     def _add_chip_bet(self, amount: int):
         """Adds chip amount to the staged bet, bounded by available bankroll."""
@@ -1185,26 +1307,22 @@ class BlackjackApp:
                 self._reveal_dealer_hole_card()
                 self._conclude_round()
             else:
-                # Normal player turn
-                self._set_action_buttons_state("normal")
-                self.new_game_button.configure(state="normal")
-                if can_split(self.player_hands[0]):
-                    if self.chips_mode_var.get() and self.hand_bets:
-                        if self.bankroll_var.get() >= self.hand_bets[0]:
-                            self.split_button.configure(state="normal")
-                        else:
-                            self.split_button.configure(state="disabled")
-                    else:
-                        self.split_button.configure(state="normal")
-                else:
-                    self.split_button.configure(state="disabled")
+                # Normal player turn: action buttons evaluated dynamically
+                self._update_action_buttons()
 
     def _draw_card(self):
-        """Pops the next card from the deck, reshuffling if necessary."""
+        """Pops the next card from the shoe, marking cut card if penetration threshold reached."""
         if not self.deck:
-            self.deck = list(self.all_cards)
-            random.shuffle(self.deck)
-        return self.deck.pop()
+            self.deck = build_shoe(self.all_cards, self.deck_count)
+            self.shoe_needs_reshuffle = False
+
+        card = self.deck.pop()
+        total_shoe_cards = len(self.all_cards) * self.deck_count
+        if len(self.deck) <= int(total_shoe_cards * CUT_CARD_PENETRATION):
+            self.shoe_needs_reshuffle = True
+
+        self._update_shoe_display()
+        return card
 
     def _deal_card_to_player(self, hand_index=None):
         """Deals one card to the active player hand and updates visuals."""
@@ -1305,26 +1423,16 @@ class BlackjackApp:
         """
         Inspects hands immediately after initial deal for Natural Blackjacks (21 on 2 cards).
         Resolves immediately if either player or dealer has 21.
-        Otherwise, enables the Split button if the player was dealt a pair (and has matching bet in Chips Mode).
+        Otherwise, configures action buttons (Hit, Stand, Double, Split, Surrender).
         """
         player_score = score_hand(self.player_hands[0])
         dealer_score = score_hand(self.dealer_hand)
         if player_score == BLACKJACK_TARGET or dealer_score == BLACKJACK_TARGET:
-            self.split_button.configure(state="disabled")
+            self._set_action_buttons_state("disabled")
             self._reveal_dealer_hole_card()
             self._conclude_round()
         else:
-            if can_split(self.player_hands[0]):
-                if self.chips_mode_var.get() and self.hand_bets:
-                    # Require bankroll to match Hand 1 bet
-                    if self.bankroll_var.get() >= self.hand_bets[0]:
-                        self.split_button.configure(state="normal")
-                    else:
-                        self.split_button.configure(state="disabled")
-                else:
-                    self.split_button.configure(state="normal")
-            else:
-                self.split_button.configure(state="disabled")
+            self._update_action_buttons()
 
     def _reveal_dealer_hole_card(self):
         """Flips the dealer's hole card face-up and displays the full dealer score."""
@@ -1351,30 +1459,113 @@ class BlackjackApp:
                 self.chip_visualizer.set_bet(sum(self.hand_bets), animate=False)
             self._update_bankroll_display()
 
-        # 1. Ensure action buttons are active and disable split button
-        self._set_action_buttons_state("normal")
-        self.split_button.configure(state="disabled")
-
-        # 2. Separate into two hands
+        # 1. Separate into two hands
         card1 = self.player_hands[0][0]
         card2 = self.player_hands[0][1]
         self.player_hands = [[card1], [card2]]
         self.active_hand_index = 0
 
-        # 3. Deal second card to both Hand 1 and Hand 2
+        # 2. Deal second card to both Hand 1 and Hand 2
         self._deal_card_to_player(hand_index=0)
         self._deal_card_to_player(hand_index=1)
+
+        # 3. Update action buttons for Hand 1 (Double Down available on 2 cards if eligible)
+        self._update_action_buttons()
 
         # 4. Check if Hand 1 reached 21 on the deal
         if score_hand(self.player_hands[0]) == BLACKJACK_TARGET:
             self.on_stand()
+
+    def on_double_down(self):
+        """
+        Handles the 'Double' player action.
+        Doubles the wager on the active hand, deals exactly 1 card, and automatically stands (or busts).
+        """
+        hand = self.player_hands[self.active_hand_index]
+        if len(hand) != 2:
+            return
+
+        if self.chips_mode_var.get() and self.hand_bets:
+            current_bet = self.hand_bets[self.active_hand_index]
+            if self.bankroll_var.get() < current_bet:
+                return  # Cannot afford double
+            self.bankroll_var.set(self.bankroll_var.get() - current_bet)
+            self.hand_bets[self.active_hand_index] += current_bet
+            if hasattr(self, "chip_visualizer"):
+                self.chip_visualizer.animate_chip_drop(current_bet, sum(self.hand_bets))
+            self._update_bankroll_display()
+
+        # Disable double, split, and surrender buttons immediately
+        self.double_button.configure(state="disabled")
+        self.split_button.configure(state="disabled")
+        self.surrender_button.configure(state="disabled")
+
+        # Deal exactly 1 card
+        self._deal_card_to_player()
+        score = score_hand(self.player_hands[self.active_hand_index])
+
+        if score > BLACKJACK_TARGET:
+            # Busted on double down
+            if self.active_hand_index < len(self.player_hands) - 1:
+                # Advance to next split hand
+                self.active_hand_index += 1
+                self.result_var.set("Hand 1 busted on Double! Playing Hand 2...")
+                self._render_player_cards()
+                self._update_player_score_display()
+                self._update_action_buttons()
+                if score_hand(self.player_hands[self.active_hand_index]) == BLACKJACK_TARGET:
+                    self.on_stand()
+            else:
+                all_busted = all(score_hand(h) > BLACKJACK_TARGET for h in self.player_hands)
+                if all_busted:
+                    self._reveal_dealer_hole_card()
+                    self._conclude_round()
+                else:
+                    self._set_action_buttons_state("disabled")
+                    self.new_game_button.configure(state="disabled")
+                    self._reveal_dealer_hole_card()
+                    self._dealer_timer_id = self.root.after(DEALER_DRAW_DELAY_MS, self._dealer_step)
+        else:
+            # Automatically stand after receiving exactly one card
+            self.on_stand()
+
+    def on_surrender(self):
+        """
+        Handles the 'Surrender' player action (Late Surrender).
+        Forfeits the hand after dealer checks for Blackjack, recovering 50% of the initial bet.
+        """
+        if len(self.player_hands) != 1 or len(self.player_hands[0]) != 2:
+            return
+
+        self._set_action_buttons_state("disabled")
+        self.new_game_button.configure(state="disabled")
+        self._reveal_dealer_hole_card()
+
+        if self.chips_mode_var.get() and self.hand_bets:
+            bet = self.hand_bets[0]
+            refund = bet // 2
+            loss = bet - refund
+            self.bankroll_var.set(self.bankroll_var.get() + refund)
+            self._update_bankroll_display()
+            self._record_outcome('DEALER_WINS')
+            self.result_var.set(f"Surrendered. Half bet returned (${refund:,}). (-${loss:,})")
+            if hasattr(self, "chip_visualizer"):
+                self.chip_visualizer.animate_loss()
+            self._update_betting_controls()
+        else:
+            self._record_outcome('DEALER_WINS')
+            self.result_var.set("Surrendered. Hand forfeited.")
+
+        self.new_game_button.configure(state="normal")
 
     def on_hit(self):
         """
         Handles the 'Hit' player action.
         Deals a card to the currently active hand, checks for bust or 21.
         """
+        self.double_button.configure(state="disabled")
         self.split_button.configure(state="disabled")
+        self.surrender_button.configure(state="disabled")
         self._deal_card_to_player()
         current_hand = self.player_hands[self.active_hand_index]
         current_score = score_hand(current_hand)
@@ -1384,8 +1575,10 @@ class BlackjackApp:
             if self.active_hand_index < len(self.player_hands) - 1:
                 # Move to next split hand
                 self.active_hand_index += 1
+                self.result_var.set("Hand 1 busted! Playing Hand 2...")
                 self._render_player_cards()
                 self._update_player_score_display()
+                self._update_action_buttons()
                 if score_hand(self.player_hands[self.active_hand_index]) == BLACKJACK_TARGET:
                     self.on_stand()
             else:
@@ -1402,6 +1595,8 @@ class BlackjackApp:
                     self._dealer_timer_id = self.root.after(DEALER_DRAW_DELAY_MS, self._dealer_step)
         elif current_score == BLACKJACK_TARGET:
             self.on_stand()
+        else:
+            self._update_action_buttons()
 
     def on_stand(self):
         """
@@ -1409,13 +1604,16 @@ class BlackjackApp:
         If playing split hands and Hand 1 stands, advances to Hand 2.
         Once all player hands have stood, begins dealer turn.
         """
+        self.double_button.configure(state="disabled")
         self.split_button.configure(state="disabled")
+        self.surrender_button.configure(state="disabled")
 
         if self.active_hand_index < len(self.player_hands) - 1:
             # Advance to Hand 2
             self.active_hand_index += 1
             self._render_player_cards()
             self._update_player_score_display()
+            self._update_action_buttons()
             if score_hand(self.player_hands[self.active_hand_index]) == BLACKJACK_TARGET:
                 self.on_stand()
             return
@@ -1462,7 +1660,7 @@ class BlackjackApp:
     def _conclude_round(self):
         """Determines the winner for all player hands, updates win counters, resolves payouts, and enables 'New Game'."""
         if len(self.player_hands) == 1:
-            outcome, message = determine_outcome(self.player_hands[0], self.dealer_hand)
+            outcome, message = determine_outcome(self.player_hands[0], self.dealer_hand, is_split=False)
             self._record_outcome(outcome)
             if self.chips_mode_var.get() and self.hand_bets:
                 bet = self.hand_bets[0]
@@ -1502,9 +1700,9 @@ class BlackjackApp:
                 self.last_insurance_lost = 0
                 self.result_var.set(message)
         else:
-            # Evaluate each split hand independently
-            outcome1, msg1 = determine_outcome(self.player_hands[0], self.dealer_hand)
-            outcome2, msg2 = determine_outcome(self.player_hands[1], self.dealer_hand)
+            # Evaluate each split hand independently with is_split=True
+            outcome1, msg1 = determine_outcome(self.player_hands[0], self.dealer_hand, is_split=True)
+            outcome2, msg2 = determine_outcome(self.player_hands[1], self.dealer_hand, is_split=True)
             self._record_outcome(outcome1)
             self._record_outcome(outcome2)
             if self.chips_mode_var.get() and self.hand_bets:
@@ -1537,7 +1735,7 @@ class BlackjackApp:
             self._update_bankroll_display()
             self._update_betting_controls()
 
-        # Disable Hit/Stand/Split, enable New Game
+        # Disable Hit/Stand/Double/Split/Surrender, enable New Game
         self._set_action_buttons_state("disabled")
         self.new_game_button.configure(state="normal")
 
@@ -1555,7 +1753,12 @@ class BlackjackApp:
         self.hit_button.configure(state=state)
         self.stand_button.configure(state=state)
         if state == "disabled":
-            self.split_button.configure(state="disabled")
+            if hasattr(self, "double_button"):
+                self.double_button.configure(state="disabled")
+            if hasattr(self, "split_button"):
+                self.split_button.configure(state="disabled")
+            if hasattr(self, "surrender_button"):
+                self.surrender_button.configure(state="disabled")
 
     def _on_close(self):
         """Safely cleans up any pending timer callback before window destruction."""
