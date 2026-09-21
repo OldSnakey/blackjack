@@ -1,5 +1,8 @@
 # Blackjack (Python & Tkinter)
 
+> 🎮 **Play the Game**: Download the standalone, zero-install Windows release on itch.io:  
+> 👉 **[https://wrehman.itch.io/blackjack-classic](https://wrehman.itch.io/blackjack-classic)** *(No Python setup required!)*
+
 An interactive, graphical desktop implementation of the classic casino card game **Blackjack**, built with standard Python and Tkinter.
 
 Designed as an educational project for Python learners and junior developers, this codebase demonstrates how to transition from basic procedural scripting to clean, production-quality Python: eliminating global variables with Object-Oriented Programming (OOP), handling event loops without freezing the GUI, and writing unit tests to protect against regressions.
@@ -7,8 +10,9 @@ Designed as an educational project for Python learners and junior developers, th
 ---
 
 ## Table of Contents
+- [Play Online / Download (itch.io)](#play-online--download-itchio)
 - [Features](#features)
-- [How to Run](#how-to-run)
+- [How to Run (Developers)](#how-to-run-developers)
 - [Game Rules & Flow](#game-rules--flow)
 - [Project Architecture & Key Lessons](#project-architecture--key-lessons)
   - [1. Eliminating Global State with OOP](#1-eliminating-global-state-with-oop)
@@ -44,16 +48,27 @@ Designed as an educational project for Python learners and junior developers, th
 - **Audio Mute & Accessibility**: Top scoreboard mute toggle (`🔊 Sound: ON` / `🔇 Sound: OFF`) and keyboard shortcut (`M`) for instant muting. Graceful headless fallback if audio devices or packages are unavailable.
 - **Zero Required External Dependencies**: Core game logic, cards, and GUI run entirely on Python's standard library (`tkinter`, `random`, `pathlib`, `unittest`). Audio support is optional via `pygame-ce`.
 
+## Play Online / Download (itch.io)
+
+For casual players and non-engineers who want to play without installing Python or touching a command line:
+
+👉 **Download the Standalone Game on itch.io**:  
+**[https://wrehman.itch.io/blackjack-classic](https://wrehman.itch.io/blackjack-classic)**
+
+- **Platform**: Windows 64-bit (Standalone portable release)
+- **Zero Installation**: Simply extract the ZIP and double-click `Blackjack.exe` to play.
+- **Features Included**: Complete game with 4-deck shoe, 2.5D stacked chip animations, and 42 authentic `.ogg` casino sound effects bundled.
+
 ---
 
-## How to Run
+## How to Run (Developers)
 
 ### Requirements
 - Python 3.8+ (including Python 3.12, 3.13, 3.14+)
 - Tkinter (included by default with standard Windows and macOS Python installers)
 - **Audio Support (Optional)**: `pip install pygame-ce` (enables realistic casino `.ogg` audio effects; if omitted, the game runs smoothly in silent fallback mode)
 
-### Launching the Game
+### Launching the Game from Source
 From the project directory:
 ```bash
 python blackjack.py
@@ -70,11 +85,11 @@ python import_test.py
 ```
 
 ### Packaging for Distribution (Standalone Executable / itch.io)
-To package a self-contained, zero-install Windows release for non-engineers:
+To compile the standalone Windows release uploaded to [itch.io](https://wrehman.itch.io/blackjack-classic):
 1. Double-click `build_itch_release.bat` (or run `./build_itch_release.ps1` in PowerShell).
 2. The automated pipeline runs regression tests, invokes PyInstaller, bundles documentation, and outputs:
    - `dist/Blackjack-Windows/`: Unpacked folder containing `Blackjack.exe` and bundled assets.
-   - `dist/Blackjack-Windows-v1.0.0.zip`: Optimized ZIP archive ready to upload to [itch.io](https://itch.io).
+   - `dist/Blackjack-Windows-v1.0.0.zip`: Optimized ZIP archive ready to upload to [itch.io](https://wrehman.itch.io/blackjack-classic).
 
 For complete store page copy, metadata, and upload instructions, see [docs/ITCH_IO_GUIDE.md](docs/ITCH_IO_GUIDE.md).
 

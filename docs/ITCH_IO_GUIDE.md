@@ -23,8 +23,8 @@ Before creating your itch.io page, compile the release bundle:
 2. Fill in the project details using the recommended settings below:
 
 ### Basic Information
-- **Title**: `Blackjack` (or `Blackjack Classic`)
-- **Project URL**: `https://<your-username>.itch.io/blackjack`
+- **Title**: `Blackjack Classic` (or `Blackjack`)
+- **Project URL**: `https://wrehman.itch.io/blackjack-classic`
 - **Short description or tagline**:
   > Authentic casino Blackjack desktop game with tactile 3D chips, dealer hole card peeks, splitting, doubling, and organic casino audio.
 - **Classification**: `Games`
@@ -36,11 +36,13 @@ Before creating your itch.io page, compile the release bundle:
 
 ## 3. Visual Assets
 
-- **Cover Image**: Upload `assets/cover_itch.png` (optimized 630x500 format featuring the gold chip, cards, and emerald felt).
-- **Screenshots**: Take 2-4 in-game screenshots of:
-  - The starting table with chips and cards.
-  - A split hand or double-down scenario.
-  - An authentic dealer hole card reveal or natural blackjack payout.
+- **Cover Image**: Upload `assets/cover_itch.png` (optimized 630x500 2.5D pixel graphics cover on green diamond felt).
+- **Screenshots** (5 high-resolution screenshots are ready in `assets/screenshots/`):
+  1. `assets/screenshots/screenshot_1_betting_table.png`: Casino Felt Table & 2.5D Staged Betting Chips ($125 bet in circle).
+  2. `assets/screenshots/screenshot_2_in_game_play.png`: Mid-Hand Decision (Player 16 vs Dealer 10 + Hole card; Hit/Stand/Double/Surrender).
+  3. `assets/screenshots/screenshot_3_split_hands.png`: Pair Splitting with Dual Wagers & Active Hand Indicator (Split 8s).
+  4. `assets/screenshots/screenshot_4_blackjack_win.png`: Natural 21 Blackjack Payout Celebration (Ace & Jack of Spades with 3:2 payout).
+  5. `assets/screenshots/screenshot_5_insurance_offer.png`: Dealer Ace Peek & Insurance Side Bet Offer dialog.
 
 ---
 
