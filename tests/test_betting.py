@@ -7,6 +7,8 @@ from blackjack import (
     MINIMUM_BET,
     calculate_payout,
     calculate_insurance_payout,
+    breakdown_chips,
+    ChipVisualizer,
 )
 
 
@@ -66,6 +68,28 @@ class TestPayoutCalculation(unittest.TestCase):
         """Zero or negative wagers return 0 regardless of outcome."""
         self.assertEqual(calculate_payout("NATURAL_BLACKJACK", 0), 0)
         self.assertEqual(calculate_payout("PLAYER_WINS", -10), 0)
+
+
+class TestBreakdownChips(unittest.TestCase):
+    """Unit tests for the pure breakdown_chips greedy decomposition function."""
+
+    def test_breakdown_zero_or_negative(self):
+        self.assertEqual(breakdown_chips(0), [])
+        self.assertEqual(breakdown_chips(-10), [])
+
+    def test_breakdown_exact_denominations(self):
+        self.assertEqual(breakdown_chips(5), [(5, 1)])
+        self.assertEqual(breakdown_chips(25), [(25, 1)])
+        self.assertEqual(breakdown_chips(100), [(100, 1)])
+        self.assertEqual(breakdown_chips(500), [(500, 1)])
+
+    def test_breakdown_composite_and_odd_amounts(self):
+        # $135: 1x $100 + 1x $25 + 2x $5
+        self.assertEqual(breakdown_chips(135), [(100, 1), (25, 1), (5, 2)])
+        # $187: 1x $100 + 3x $25 + 2x $5 + 2x $1
+        self.assertEqual(breakdown_chips(187), [(100, 1), (25, 3), (5, 2), (1, 2)])
+        # $1250: 2x $500 + 2x $100 + 2x $25
+        self.assertEqual(breakdown_chips(1250), [(500, 2), (100, 2), (25, 2)])
 
 
 class TestBettingGuiAndState(unittest.TestCase):
@@ -583,6 +607,48 @@ class TestBettingGuiAndState(unittest.TestCase):
         self.assertIn("Player has Blackjack! You win!", self.app.result_var.get())
         self.assertIn("+$75", self.app.result_var.get())
         self.assertIn("Insurance lost (-$25)", self.app.result_var.get())
+
+    def test_chip_visualizer_state_sync_and_toggle(self):
+        """Chip visualizer toggles visibility with Chips Mode and syncs with staged bets."""
+        # By default in Casual Mode, visualizer is hidden
+        self.assertFalse(bool(self.app.chip_visualizer.grid_info()))
+
+        # Toggle Chips Mode ON -> visualizer becomes visible
+        self.app.chips_mode_var.set(True)
+        self.app._on_toggle_chips_mode()
+        self.assertTrue(bool(self.app.chip_visualizer.grid_info()))
+
+        # Adding chips updates visualizer's current_bet
+        self.app.current_bet_var.set(0)
+        self.app._add_chip_bet(25)
+        self.assertEqual(self.app.chip_visualizer.current_bet, 25)
+
+        self.app._add_chip_bet(100)
+        self.assertEqual(self.app.chip_visualizer.current_bet, 125)
+
+        # Clear Bet resets visualizer to 0
+        self.app._clear_bet()
+        self.assertEqual(self.app.chip_visualizer.current_bet, 0)
+
+        # Toggle Chips Mode OFF -> visualizer is hidden
+        self.app.chips_mode_var.set(False)
+        self.app._on_toggle_chips_mode()
+        self.assertFalse(bool(self.app.chip_visualizer.grid_info()))
+
+    def test_chip_visualizer_payout_and_loss_animations(self):
+        """Visualizer methods animate_win, animate_loss, and animate_push run safely."""
+        self.app.chips_mode_var.set(True)
+        self.app._on_toggle_chips_mode()
+
+        # Set bet to 50
+        self.app.chip_visualizer.set_bet(50, animate=False)
+        self.assertEqual(self.app.chip_visualizer.current_bet, 50)
+
+        # In headless tests, animations snap immediately without error
+        self.app.chip_visualizer.animate_win(50, animated=False)
+        self.app.chip_visualizer.animate_push(animated=False)
+        self.app.chip_visualizer.animate_loss(animated=False)
+        self.app.chip_visualizer.clear_timers()
 
 
 if __name__ == "__main__":

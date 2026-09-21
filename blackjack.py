@@ -213,6 +213,345 @@ def calculate_insurance_payout(dealer_has_blackjack: bool, insurance_bet: int, m
     return insurance_bet + (insurance_bet * INSURANCE_PAYOUT_RATIO)
 
 
+def breakdown_chips(amount: int) -> list[tuple[int, int]]:
+    """
+    Decomposes an integer wager into denomination counts greedily from highest to lowest.
+    Supported denominations: $500, $100, $25, $5, and $1 (silver remainder).
+
+    Args:
+        amount: Integer wager amount (>= 0).
+
+    Returns:
+        list[tuple[int, int]]: List of (denomination, count) pairs for denominations with count > 0.
+    """
+    if amount <= 0:
+        return []
+    result = []
+    remaining = amount
+    for denom in (500, 100, 25, 5, 1):
+        count = remaining // denom
+        if count > 0:
+            result.append((denom, count))
+            remaining %= denom
+    return result
+
+
+# Visual styling map for 2.5D procedural chip rendering
+CHIP_STYLES = {
+    500: {"bg": "#212121", "fg": "#ffd700", "rim": "#111111", "stripe": "#ffd700"},
+    100: {"bg": "#2e7d32", "fg": "#ffffff", "rim": "#1b5e20", "stripe": "#ffffff"},
+    25:  {"bg": "#c62828", "fg": "#ffffff", "rim": "#8e0000", "stripe": "#ffffff"},
+    5:   {"bg": "#f5f5f5", "fg": "#212121", "rim": "#bdbdbd", "stripe": "#c62828"},
+    1:   {"bg": "#9e9e9e", "fg": "#ffffff", "rim": "#616161", "stripe": "#ffffff"},
+}
+
+
+class ChipVisualizer(tkinter.Canvas):
+    """
+    Renders a procedural 2.5D casino felt betting spot with 3D stacked chips
+    and non-blocking micro-animations for drops, clears, payouts, sweeps, and pushes.
+    """
+
+    def __init__(self, master, width=180, height=135, background=PANEL_BACKGROUND_COLOR, **kwargs):
+        super().__init__(
+            master, width=width, height=height, background=background,
+            highlightthickness=0, borderwidth=0, relief="flat", **kwargs
+        )
+        self.canvas_width = width
+        self.canvas_height = height
+        self.cx = width // 2
+        self.cy = height // 2
+        self.current_bet = 0
+        self._active_timers = set()
+
+        self._draw_base_spot()
+
+    def _draw_base_spot(self):
+        """Draws the felt betting spot: outer dashed gold ellipse, inner accent ring, watermark, and badge."""
+        self.delete("all")
+        cx, cy = self.cx, self.cy
+
+        # 1. Outer betting circle felt background and golden dashed ring
+        self.create_oval(
+            cx - 74, cy - 38, cx + 74, cy + 38,
+            outline="#d4af37", width=2, dash=(4, 3), fill="#053c14", tags="spot_base"
+        )
+        # 2. Inner subtle gold accent ring
+        self.create_oval(
+            cx - 66, cy - 32, cx + 66, cy + 32,
+            outline="#8a6d1b", width=1, dash=(2, 3), tags="spot_ring"
+        )
+        # 3. Felt watermark
+        self.create_text(
+            cx, cy + 1, text="BETTING SPOT", fill="#144d21",
+            font=("Arial", 7, "bold"), tags="watermark"
+        )
+        # 4. Top badge for bet amount
+        self.create_text(
+            cx, 13, text="", fill="#ffd700",
+            font=("Arial", 9, "bold"), tags="badge"
+        )
+
+    def _is_animation_enabled(self) -> bool:
+        """Determines if animations should run (only when window is actively mapped)."""
+        try:
+            return bool(self.winfo_exists() and self.winfo_ismapped())
+        except Exception:
+            return False
+
+    def _schedule(self, ms: int, callback):
+        """Wraps root.after to automatically register and clean up active timer callbacks."""
+        timer_id = None
+        def wrapper():
+            if timer_id in self._active_timers:
+                self._active_timers.discard(timer_id)
+            if self.winfo_exists():
+                callback()
+
+        timer_id = self.after(ms, wrapper)
+        self._active_timers.add(timer_id)
+        return timer_id
+
+    def clear_timers(self):
+        """Cancels all active animation callbacks."""
+        for tid in list(self._active_timers):
+            try:
+                self.after_cancel(tid)
+            except Exception:
+                pass
+        self._active_timers.clear()
+
+    def set_bet(self, amount: int, animate: bool = True):
+        """Updates the visualized bet amount."""
+        self.current_bet = amount
+        if amount <= 0:
+            self.animate_clear(animated=animate)
+        else:
+            self.render_stacks(amount)
+
+    def render_stacks(self, amount: int):
+        """Procedurally draws 2.5D chip stacks representing the specified amount."""
+        self.delete("chip")
+        self.delete("anim_chip")
+        self.delete("floating_text")
+
+        if amount <= 0:
+            self.itemconfigure("badge", text="")
+            return
+
+        self.itemconfigure("badge", text=f"BET: ${amount:,}")
+
+        breakdown = breakdown_chips(amount)
+        if not breakdown:
+            return
+
+        num_stacks = len(breakdown)
+        spacing = 26 if num_stacks >= 4 else 30
+        total_span = (num_stacks - 1) * spacing
+        start_x = self.cx - (total_span // 2)
+        base_y = self.cy + 10
+
+        for s_idx, (denom, count) in enumerate(breakdown):
+            stack_x = start_x + (s_idx * spacing)
+            style = CHIP_STYLES.get(denom, CHIP_STYLES[5])
+
+            offset_y = 0
+            if num_stacks >= 3 and s_idx % 2 == 1:
+                offset_y = -3
+
+            visible_count = min(count, 6)
+            for c_idx in range(visible_count):
+                chip_y = (base_y + offset_y) - (c_idx * 3)
+                is_top = (c_idx == visible_count - 1)
+                self._draw_single_chip(
+                    stack_x, chip_y, denom, style, is_top=is_top,
+                    count=count if count > 6 and is_top else None, tags="chip"
+                )
+
+    def _draw_single_chip(self, x: int, y: int, denom: int, style: dict, is_top: bool = False, count: int = None, tags="chip"):
+        """Draws one 2.5D chip with rim thickness, edge stripes, top face, and denomination."""
+        rx, ry, depth = 15, 8, 4
+
+        # 1. Shadow / bottom rim
+        self.create_oval(
+            x - rx, y - ry + depth, x + rx, y + ry + depth,
+            fill=style["rim"], outline=style["rim"], tags=tags
+        )
+        self.create_rectangle(
+            x - rx, y, x + rx, y + depth,
+            fill=style["rim"], outline=style["rim"], tags=tags
+        )
+
+        # 2. Edge stripes
+        self.create_line(x - 8, y + 1, x - 8, y + depth, fill=style["stripe"], width=2, tags=tags)
+        self.create_line(x + 8, y + 1, x + 8, y + depth, fill=style["stripe"], width=2, tags=tags)
+
+        # 3. Top face
+        self.create_oval(
+            x - rx, y - ry, x + rx, y + ry,
+            fill=style["bg"], outline="#ffffff", width=1, tags=tags
+        )
+        # Inner dashed circle
+        self.create_oval(
+            x - rx + 3, y - ry + 2, x + rx - 3, y + ry - 2,
+            outline=style["fg"], dash=(2, 2), tags=tags
+        )
+
+        # 4. Text (denomination or count badge if stack is capped)
+        display_text = f"x{count}" if (count and count > 6) else f"${denom}"
+        self.create_text(
+            x, y, text=display_text, fill=style["fg"],
+            font=("Arial", 6 if len(display_text) > 3 else 7, "bold"), tags=tags
+        )
+
+    def animate_chip_drop(self, added_amount: int, new_total: int, animated: bool = True):
+        """Plays a tactile drop-and-bounce animation when a chip is added."""
+        self.current_bet = new_total
+        if not animated or not self._is_animation_enabled():
+            self.render_stacks(new_total)
+            return
+
+        style = CHIP_STYLES.get(added_amount, CHIP_STYLES[5])
+        drop_x = self.cx
+        target_y = self.cy + 10
+        start_y = target_y - 24
+
+        drop_tag = "anim_chip"
+        self.delete(drop_tag)
+        self._draw_single_chip(drop_x, start_y, added_amount, style, is_top=True, tags=drop_tag)
+
+        def frame1():
+            self.move(drop_tag, 0, 12)
+            self._schedule(16, frame2)
+
+        def frame2():
+            self.move(drop_tag, 0, 14)
+            self._schedule(16, frame3)
+
+        def frame3():
+            self.delete(drop_tag)
+            self.render_stacks(new_total)
+
+        self._schedule(16, frame1)
+
+    def animate_clear(self, animated: bool = True):
+        """Animates chips sliding downwards off the table when bet is cleared."""
+        self.current_bet = 0
+        if not animated or not self._is_animation_enabled():
+            self.delete("chip")
+            self.delete("anim_chip")
+            self.delete("floating_text")
+            self.itemconfigure("badge", text="")
+            return
+
+        def step(count=0):
+            if count >= 4:
+                self.delete("chip")
+                self.delete("anim_chip")
+                self.delete("floating_text")
+                self.itemconfigure("badge", text="")
+            else:
+                self.move("chip", 0, 14)
+                self.move("anim_chip", 0, 14)
+                self._schedule(16, lambda: step(count + 1))
+
+        step()
+
+    def animate_win(self, profit: int, animated: bool = True):
+        """Animates dealer payout sliding in from top, glowing +$XX text, and chip collection."""
+        if not animated or not self._is_animation_enabled():
+            return
+
+        payout_tag = "payout_stack"
+        text_tag = "floating_text"
+        self.delete(payout_tag)
+        self.delete(text_tag)
+
+        breakdown = breakdown_chips(max(profit, 5))
+        top_denom = breakdown[0][0] if breakdown else 25
+        style = CHIP_STYLES.get(top_denom, CHIP_STYLES[25])
+
+        for c in range(min(3, len(breakdown))):
+            self._draw_single_chip(self.cx + 20, -20 - (c * 3), top_denom, style, is_top=(c == 2), tags=payout_tag)
+
+        def slide_payout(frame=0):
+            if frame >= 5:
+                self.create_text(
+                    self.cx, self.cy - 16, text=f"+${profit:,}", fill="#ffd700",
+                    font=("Arial", 11, "bold"), tags=text_tag
+                )
+                self._schedule(20, float_text)
+            else:
+                self.move(payout_tag, 0, 18)
+                self._schedule(18, lambda: slide_payout(frame + 1))
+
+        def float_text(frame=0):
+            if frame >= 4:
+                self._schedule(400, collect_chips)
+            else:
+                self.move(text_tag, 0, -3)
+                self._schedule(20, lambda: float_text(frame + 1))
+
+        def collect_chips(frame=0):
+            if frame >= 5:
+                self.delete(payout_tag)
+                self.delete("chip")
+                self.delete(text_tag)
+                self.itemconfigure("badge", text="")
+            else:
+                self.move(payout_tag, -12, 16)
+                self.move("chip", -12, 16)
+                self.move(text_tag, -4, 4)
+                self._schedule(18, lambda: collect_chips(frame + 1))
+
+        slide_payout()
+
+    def animate_loss(self, animated: bool = True):
+        """Animates dealer sweeping the chips upward toward the dealer tray."""
+        if not animated or not self._is_animation_enabled():
+            self.delete("chip")
+            self.delete("anim_chip")
+            self.delete("floating_text")
+            self.itemconfigure("badge", text="")
+            return
+
+        text_tag = "floating_text"
+        self.delete(text_tag)
+
+        def sweep_chips(frame=0):
+            if frame >= 5:
+                self.delete("chip")
+                self.delete("anim_chip")
+                self.delete(text_tag)
+                self.itemconfigure("badge", text="")
+            else:
+                self.move("chip", 0, -18)
+                self.move("anim_chip", 0, -18)
+                self._schedule(18, lambda: sweep_chips(frame + 1))
+
+        sweep_chips()
+
+    def animate_push(self, animated: bool = True):
+        """Highlights the betting spot on push and returns chips to player."""
+        if not animated or not self._is_animation_enabled():
+            return
+
+        text_tag = "floating_text"
+        self.delete(text_tag)
+        self.create_text(
+            self.cx, self.cy - 16, text="PUSH", fill="#ffffff",
+            font=("Arial", 10, "bold"), tags=text_tag
+        )
+
+        self.itemconfigure("spot_base", outline="#ffffff")
+
+        def reset_ring():
+            self.itemconfigure("spot_base", outline="#d4af37")
+            self.animate_clear(animated=True)
+
+        self._schedule(450, reset_ring)
+
+
 def load_images(card_images):
     """
     Loads all 52 card PNG images into a list of Card instances.
@@ -415,6 +754,13 @@ class BlackjackApp:
         self.player_cards_frame = tkinter.Frame(card_table_frame, background=PANEL_BACKGROUND_COLOR)
         self.player_cards_frame.grid(row=2, column=1, sticky="ew", rowspan=2, padx=10, pady=5)
 
+        # 2.5D Casino Felt Betting Spot Visualizer (visible in Chips Mode)
+        self.chip_visualizer = ChipVisualizer(
+            card_table_frame, width=180, height=135, background=PANEL_BACKGROUND_COLOR
+        )
+        self.chip_visualizer.grid(row=2, column=2, rowspan=2, padx=(10, 5), pady=5, sticky="e")
+        self.chip_visualizer.grid_remove()  # Hidden by default in Casual Mode
+
         # Betting Controls Bar (visible in Chips Mode)
         self.betting_frame = tkinter.Frame(self.root, background=TABLE_BACKGROUND_COLOR)
         self.betting_frame.grid(row=2, column=0, columnspan=3, pady=(4, 6))
@@ -538,6 +884,8 @@ class BlackjackApp:
             except Exception:
                 pass
             self._dealer_timer_id = None
+        if hasattr(self, "chip_visualizer"):
+            self.chip_visualizer.clear_timers()
 
         # 1. Reset deck and hands
         self.deck = list(self.all_cards)
@@ -591,6 +939,9 @@ class BlackjackApp:
                     self.current_bet_var.set(0)
             self.result_var.set("Place your bet and click 'Deal Hand'")
 
+        if hasattr(self, "chip_visualizer"):
+            self.chip_visualizer.set_bet(self.current_bet_var.get(), animate=False)
+
         self._update_bankroll_display()
         self._update_betting_controls()
 
@@ -631,6 +982,9 @@ class BlackjackApp:
             # Chips Mode activated
             self.bankroll_label.grid()
             self.betting_frame.grid()
+            if hasattr(self, "chip_visualizer"):
+                self.chip_visualizer.grid()
+                self.chip_visualizer.set_bet(self.current_bet_var.get(), animate=False)
             self._update_bankroll_display()
             # If idle / round ended, start betting phase
             if not self.dealer_hand or self.new_game_button["state"] == "normal":
@@ -641,6 +995,9 @@ class BlackjackApp:
             # Chips Mode deactivated (Casual Mode)
             self.bankroll_label.grid_remove()
             self.betting_frame.grid_remove()
+            if hasattr(self, "chip_visualizer"):
+                self.chip_visualizer.grid_remove()
+                self.chip_visualizer.clear_timers()
             if hasattr(self, "insurance_frame"):
                 self.insurance_frame.grid_remove()
             self.last_insurance_lost = 0
@@ -661,7 +1018,10 @@ class BlackjackApp:
         current_bet = self.current_bet_var.get()
         bankroll = self.bankroll_var.get()
         if current_bet + amount <= bankroll:
-            self.current_bet_var.set(current_bet + amount)
+            new_bet = current_bet + amount
+            self.current_bet_var.set(new_bet)
+            if hasattr(self, "chip_visualizer"):
+                self.chip_visualizer.animate_chip_drop(amount, new_bet)
             self._update_bankroll_display()
             self._update_betting_controls()
 
@@ -670,6 +1030,8 @@ class BlackjackApp:
         if not self.is_betting_phase:
             return
         self.current_bet_var.set(0)
+        if hasattr(self, "chip_visualizer"):
+            self.chip_visualizer.animate_clear()
         self._update_bankroll_display()
         self._update_betting_controls()
 
@@ -680,6 +1042,8 @@ class BlackjackApp:
         bankroll = self.bankroll_var.get()
         if bankroll >= MINIMUM_BET:
             self.current_bet_var.set(bankroll)
+            if hasattr(self, "chip_visualizer"):
+                self.chip_visualizer.set_bet(bankroll, animate=False)
             self._update_bankroll_display()
             self._update_betting_controls()
 
@@ -694,6 +1058,8 @@ class BlackjackApp:
         self.bankroll_var.set(bankroll - bet)
         self.hand_bets = [bet]
         self.is_betting_phase = False
+        if hasattr(self, "chip_visualizer"):
+            self.chip_visualizer.set_bet(bet, animate=False)
         self._update_bankroll_display()
         self._update_betting_controls()
         self._start_round_deal()
@@ -981,6 +1347,8 @@ class BlackjackApp:
                 return  # Insufficient funds to match bet
             self.bankroll_var.set(self.bankroll_var.get() - hand1_bet)
             self.hand_bets.append(hand1_bet)
+            if hasattr(self, "chip_visualizer"):
+                self.chip_visualizer.set_bet(sum(self.hand_bets), animate=False)
             self._update_bankroll_display()
 
         # 1. Ensure action buttons are active and disable split button
@@ -1120,6 +1488,16 @@ class BlackjackApp:
                     ins_str = f" | Insurance lost (-${self.last_insurance_lost})"
                     self.last_insurance_lost = 0
                 self.result_var.set(f"{message}{net_str}{ins_str}")
+
+                if hasattr(self, "chip_visualizer"):
+                    ins_gain = ins_profit if 'ins_profit' in locals() else 0
+                    net_round = profit + ins_gain
+                    if net_round > 0:
+                        self.chip_visualizer.animate_win(net_round)
+                    elif net_round < 0:
+                        self.chip_visualizer.animate_loss()
+                    else:
+                        self.chip_visualizer.animate_push()
             else:
                 self.last_insurance_lost = 0
                 self.result_var.set(message)
@@ -1142,6 +1520,15 @@ class BlackjackApp:
                 ins_str = f" | Insurance lost (-${self.last_insurance_lost})" if self.last_insurance_lost > 0 else ""
                 self.last_insurance_lost = 0
                 self.result_var.set(f"Hand 1: {msg1} ({p1_str}) | Hand 2: {msg2} ({p2_str}){ins_str}")
+
+                if hasattr(self, "chip_visualizer"):
+                    total_profit = profit1 + profit2
+                    if total_profit > 0:
+                        self.chip_visualizer.animate_win(total_profit)
+                    elif total_profit < 0:
+                        self.chip_visualizer.animate_loss()
+                    else:
+                        self.chip_visualizer.animate_push()
             else:
                 self.last_insurance_lost = 0
                 self.result_var.set(f"Hand 1: {msg1} | Hand 2: {msg2}")
@@ -1178,6 +1565,8 @@ class BlackjackApp:
             except Exception:
                 pass
             self._dealer_timer_id = None
+        if hasattr(self, "chip_visualizer"):
+            self.chip_visualizer.clear_timers()
         try:
             if self.root.winfo_exists():
                 self.root.destroy()

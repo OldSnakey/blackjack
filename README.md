@@ -27,6 +27,7 @@ Designed as an educational project for Python learners and junior developers, th
 - **Dual Play Modes (Chips Mode Toggle)**:
   - **Casual Mode (Chips OFF)**: Instant deals, zero-stress casual play with win/loss tracking and no bankroll overhead.
   - **Casino Mode (Chips ON)**: Authentic wagering system with a $1,000 starting bankroll, authentic casino chips ($5, $25, $100, $500), an **"All In"** button to easily bet entire bankrolls (even odd sums like $187), staged betting, 3:2 Natural Blackjack payouts, and a $1,000 rebuy feature.
+- **Procedural 2.5D Chip Visualizer & Micro-Animations**: A casino felt betting circle displaying live 3D stacked chips with drop shadows, clay edge stripes, and dynamic micro-animations for chip drops, dealer payouts, house scoops, and pushes.
 - **Authentic Dealer Hole Card**: Dealer receives one card face-up and one card face-down (`back.png`). The hidden card is revealed only after the player stands.
 - **Dynamic Score Tracking**: Dealer's visible score shows only the upcard (`"X + ?"`) until the hole card is revealed.
 - **Scoreboard Tracking**: Real-time tracking of Dealer Wins, Player Wins, Ties, and Bankroll.
@@ -191,7 +192,7 @@ card_image_path = ASSETS_DIR / f"{card}_{suit}.png"
 
 ## Automated Testing
 
-The project includes a comprehensive automated test suite with **63 unit tests** written with Python's built-in `unittest` framework.
+The project includes a comprehensive automated test suite with **68 unit tests** written with Python's built-in `unittest` framework.
 
 ### Running the Tests
 To run all tests with verbose output:
@@ -208,7 +209,7 @@ python -m unittest discover tests -v
 | [`tests/test_game_rules.py`](tests/test_game_rules.py) | Tests win/loss/push evaluations, dealer AI hit/stand rules, and Natural Blackjack detection on both player and dealer. |
 | [`tests/test_gui_state.py`](tests/test_gui_state.py) | Validates actual `BlackjackApp` widget states (Hit, Stand, New Game buttons, ties, timer cleanup) across real game lifecycle transitions. |
 | [`tests/test_split.py`](tests/test_split.py) | Tests hand split qualification (`can_split`), multi-hand turn progression, button states, and independent outcome resolution. |
-| [`tests/test_betting.py`](tests/test_betting.py) | Tests pure payout calculations (3:2, 1:1, push, loss), 2:1 insurance payouts with odd-bet breakeven guarantees, Casual vs. Casino mode toggling, staged chip betting, "All In" max wagering, split wagers, insurance prompts and decisions, and the rebuy mechanic. |
+| [`tests/test_betting.py`](tests/test_betting.py) | Tests pure payout calculations (3:2, 1:1, push, loss), 2:1 insurance payouts with odd-bet breakeven guarantees, greedy chip denomination breakdowns, ChipVisualizer state sync/animations, Casual vs. Casino mode toggling, staged chip betting, "All In" max wagering, split wagers, insurance prompts and decisions, and the rebuy mechanic. |
 
 ---
 
@@ -221,7 +222,7 @@ Blackjack/
 ├── README.md              # Documentation and learning guide
 ├── .gitignore             # Git exclusions for Python cache, IDEs, and OS artifacts
 ├── cards/                 # 52 playing card images + back.png and jokers
-└── tests/                 # Automated test suite (63 tests)
+└── tests/                 # Automated test suite (68 tests)
     ├── __init__.py
     ├── test_betting.py
     ├── test_deck.py
