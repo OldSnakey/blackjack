@@ -189,21 +189,28 @@ def calculate_payout(outcome: str, bet: int) -> int:
         return 0
 
 
-def calculate_insurance_payout(dealer_has_blackjack: bool, insurance_bet: int) -> int:
+def calculate_insurance_payout(dealer_has_blackjack: bool, insurance_bet: int, main_bet: int = 0) -> int:
     """
     Calculates the total payout returned for an Insurance side bet.
-    Insurance pays 2:1, returning the original insurance bet plus 2x profit (3x total).
+    Insurance pays 2:1. When main_bet is specified and insurance_bet is full insurance
+    for an odd wager (e.g. $2 insurance on a $5 bet), the payout is rounded up to fully
+    cover the main bet, guaranteeing a $0 net breakeven round. Partial insurance wagers
+    pay standard 2:1.
 
     Args:
         dealer_has_blackjack: True if the dealer has a 2-card 21 (Natural Blackjack).
         insurance_bet: The amount wagered on insurance (integer >= 0).
+        main_bet: The original main bet being insured (optional integer >= 0).
 
     Returns:
-        int: Total return to the player (insurance_bet * 3 if dealer has 21, 0 otherwise).
+        int: Total return to the player (original insurance_bet + profit).
     """
     if insurance_bet <= 0 or not dealer_has_blackjack:
         return 0
-    return insurance_bet * 3
+    if main_bet > 0 and insurance_bet == main_bet // 2:
+        profit = max(main_bet, insurance_bet * INSURANCE_PAYOUT_RATIO)
+        return insurance_bet + profit
+    return insurance_bet + (insurance_bet * INSURANCE_PAYOUT_RATIO)
 
 
 def load_images(card_images):
@@ -282,6 +289,7 @@ class BlackjackApp:
         self.hand_bets = [0]
         self.is_betting_phase = False
         self.insurance_bet = 0
+        self.last_insurance_lost = 0
         self.is_insurance_phase = False
         self.chip_buttons = []
 
@@ -551,6 +559,7 @@ class BlackjackApp:
         self.player_score_var.set("0")
         self.result_var.set("")
         self.insurance_bet = 0
+        self.last_insurance_lost = 0
         self.is_insurance_phase = False
         if hasattr(self, "insurance_frame"):
             self.insurance_frame.grid_remove()
@@ -592,6 +601,7 @@ class BlackjackApp:
         self.split_button.configure(state="disabled")
         self.new_game_button.configure(state="normal")
         self.insurance_bet = 0
+        self.last_insurance_lost = 0
         if hasattr(self, "insurance_frame"):
             self.insurance_frame.grid_remove()
 
@@ -633,6 +643,7 @@ class BlackjackApp:
             self.betting_frame.grid_remove()
             if hasattr(self, "insurance_frame"):
                 self.insurance_frame.grid_remove()
+            self.last_insurance_lost = 0
             if self.is_insurance_phase:
                 self.is_insurance_phase = False
                 if self.insurance_bet > 0:
@@ -786,7 +797,8 @@ class BlackjackApp:
         if dealer_has_bj:
             # Dealer has Natural Blackjack
             if self.insurance_bet > 0:
-                payout = calculate_insurance_payout(True, self.insurance_bet)
+                main_bet = self.hand_bets[0] if self.hand_bets else 0
+                payout = calculate_insurance_payout(True, self.insurance_bet, main_bet=main_bet)
                 self.bankroll_var.set(self.bankroll_var.get() + payout)
                 self._update_bankroll_display()
             self._reveal_dealer_hole_card()
@@ -795,6 +807,7 @@ class BlackjackApp:
             # Dealer does not have Blackjack
             if self.insurance_bet > 0:
                 lost_amount = self.insurance_bet
+                self.last_insurance_lost = lost_amount
                 self.insurance_bet = 0  # Insurance lost
                 self.result_var.set(f"Dealer has no Blackjack. Insurance lost (-${lost_amount}). Your turn!")
             else:
@@ -1098,11 +1111,17 @@ class BlackjackApp:
                 ins_str = ""
                 dealer_has_bj = (len(self.dealer_hand) == 2 and score_hand(self.dealer_hand) == BLACKJACK_TARGET)
                 if self.insurance_bet > 0 and dealer_has_bj:
-                    ins_profit = self.insurance_bet * 2
+                    main_bet = self.hand_bets[0] if self.hand_bets else 0
+                    ins_payout = calculate_insurance_payout(True, self.insurance_bet, main_bet=main_bet)
+                    ins_profit = ins_payout - self.insurance_bet
                     ins_str = f" | Insurance won (+${ins_profit})"
                     self.insurance_bet = 0
+                elif self.last_insurance_lost > 0:
+                    ins_str = f" | Insurance lost (-${self.last_insurance_lost})"
+                    self.last_insurance_lost = 0
                 self.result_var.set(f"{message}{net_str}{ins_str}")
             else:
+                self.last_insurance_lost = 0
                 self.result_var.set(message)
         else:
             # Evaluate each split hand independently
@@ -1120,8 +1139,11 @@ class BlackjackApp:
                 profit2 = payout2 - bet2
                 p1_str = f"+${profit1}" if profit1 > 0 else (f"-${abs(profit1)}" if profit1 < 0 else "Push")
                 p2_str = f"+${profit2}" if profit2 > 0 else (f"-${abs(profit2)}" if profit2 < 0 else "Push")
-                self.result_var.set(f"Hand 1: {msg1} ({p1_str}) | Hand 2: {msg2} ({p2_str})")
+                ins_str = f" | Insurance lost (-${self.last_insurance_lost})" if self.last_insurance_lost > 0 else ""
+                self.last_insurance_lost = 0
+                self.result_var.set(f"Hand 1: {msg1} ({p1_str}) | Hand 2: {msg2} ({p2_str}){ins_str}")
             else:
+                self.last_insurance_lost = 0
                 self.result_var.set(f"Hand 1: {msg1} | Hand 2: {msg2}")
 
         if self.chips_mode_var.get():

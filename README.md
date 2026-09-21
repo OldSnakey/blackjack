@@ -30,7 +30,7 @@ Designed as an educational project for Python learners and junior developers, th
 - **Authentic Dealer Hole Card**: Dealer receives one card face-up and one card face-down (`back.png`). The hidden card is revealed only after the player stands.
 - **Dynamic Score Tracking**: Dealer's visible score shows only the upcard (`"X + ?"`) until the hole card is revealed.
 - **Scoreboard Tracking**: Real-time tracking of Dealer Wins, Player Wins, Ties, and Bankroll.
-- **Insurance Option**: When the dealer's visible upcard is an Ace in Casino Mode, players are offered an Insurance side bet costing half their main bet and paying 2:1 against a Dealer Natural Blackjack (providing breakeven $0 net protection).
+- **Insurance Option**: When the dealer's visible upcard is an Ace in Casino Mode, players are offered an Insurance side bet costing half their main bet and paying 2:1 against a Dealer Natural Blackjack (with odd-bet rounding ensuring an exact $0 net breakeven round on all wagers).
 - **Hand Splitting**: When dealt a pair of cards of the same rank, split into two independent hands with active hand indicators and multi-hand resolution. In Chips Mode, Hand 2 requires an additional matching bet.
 - **Natural Blackjack Detection**: Automatically detects 2-card 21s for both player and dealer on the deal, paying 3:2 in Chips Mode.
 - **Auto-Stand Protection**: Automatically stands when a player hits to 21, preventing accidental bust clicks.
@@ -191,7 +191,7 @@ card_image_path = ASSETS_DIR / f"{card}_{suit}.png"
 
 ## Automated Testing
 
-The project includes a comprehensive automated test suite with **61 unit tests** written with Python's built-in `unittest` framework.
+The project includes a comprehensive automated test suite with **63 unit tests** written with Python's built-in `unittest` framework.
 
 ### Running the Tests
 To run all tests with verbose output:
@@ -208,7 +208,7 @@ python -m unittest discover tests -v
 | [`tests/test_game_rules.py`](tests/test_game_rules.py) | Tests win/loss/push evaluations, dealer AI hit/stand rules, and Natural Blackjack detection on both player and dealer. |
 | [`tests/test_gui_state.py`](tests/test_gui_state.py) | Validates actual `BlackjackApp` widget states (Hit, Stand, New Game buttons, ties, timer cleanup) across real game lifecycle transitions. |
 | [`tests/test_split.py`](tests/test_split.py) | Tests hand split qualification (`can_split`), multi-hand turn progression, button states, and independent outcome resolution. |
-| [`tests/test_betting.py`](tests/test_betting.py) | Tests pure payout calculations (3:2, 1:1, push, loss), 2:1 insurance payouts, Casual vs. Casino mode toggling, staged chip betting, "All In" max wagering, split wagers, insurance prompts and decisions, and the rebuy mechanic. |
+| [`tests/test_betting.py`](tests/test_betting.py) | Tests pure payout calculations (3:2, 1:1, push, loss), 2:1 insurance payouts with odd-bet breakeven guarantees, Casual vs. Casino mode toggling, staged chip betting, "All In" max wagering, split wagers, insurance prompts and decisions, and the rebuy mechanic. |
 
 ---
 
@@ -221,7 +221,7 @@ Blackjack/
 ├── README.md              # Documentation and learning guide
 ├── .gitignore             # Git exclusions for Python cache, IDEs, and OS artifacts
 ├── cards/                 # 52 playing card images + back.png and jokers
-└── tests/                 # Automated test suite (61 tests)
+└── tests/                 # Automated test suite (63 tests)
     ├── __init__.py
     ├── test_betting.py
     ├── test_deck.py

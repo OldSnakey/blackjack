@@ -26,8 +26,21 @@ class TestPayoutCalculation(unittest.TestCase):
         # $25 insurance returns $75 (original $25 + $50 profit)
         self.assertEqual(calculate_insurance_payout(True, 25), 75)
         self.assertEqual(calculate_insurance_payout(True, 10), 30)
+        # Odd bets with main_bet parameter: payout covers main_bet for exact breakeven
+        # $5 bet: insurance $2 -> payout $7 (original $2 + $5 profit)
+        self.assertEqual(calculate_insurance_payout(True, 2, main_bet=5), 7)
+        # $25 bet: insurance $12 -> payout $37 (original $12 + $25 profit)
+        self.assertEqual(calculate_insurance_payout(True, 12, main_bet=25), 37)
+        # $187 bet: insurance $93 -> payout $280 (original $93 + $187 profit)
+        self.assertEqual(calculate_insurance_payout(True, 93, main_bet=187), 280)
+        # Even bet with main_bet parameter: pays standard 2:1 (returning $75: $25 wager + $50 profit)
+        self.assertEqual(calculate_insurance_payout(True, 25, main_bet=50), 75)
+        # Partial insurance bet with main_bet parameter: pays standard 2:1 without exploiting main_bet
+        # $100 main bet with $10 insurance: pays $30 ($10 wager + $20 profit), NOT $110
+        self.assertEqual(calculate_insurance_payout(True, 10, main_bet=100), 30)
         # Dealer no blackjack -> 0
         self.assertEqual(calculate_insurance_payout(False, 25), 0)
+        self.assertEqual(calculate_insurance_payout(False, 2, main_bet=5), 0)
         # Non-positive wager -> 0
         self.assertEqual(calculate_insurance_payout(True, 0), 0)
         self.assertEqual(calculate_insurance_payout(True, -10), 0)
@@ -439,6 +452,37 @@ class TestBettingGuiAndState(unittest.TestCase):
         self.assertIn("Insurance won", self.app.result_var.get())
         self.assertIn("+$50", self.app.result_var.get())
 
+    def test_insurance_odd_bet_5_dollars_exact_breakeven(self):
+        """Odd bet of $5 with $2 insurance payout rounds up to $5 profit, guaranteeing $0 net breakeven."""
+        self.app.chips_mode_var.set(True)
+        self.app.new_game()
+        # Initial bankroll 1000, player wagered $5 (bankroll = 995)
+        self.app.bankroll_var.set(995)
+        self.app.hand_bets = [5]
+
+        card_ace = Card(1, self.app.back_image, rank="ace", suit="spade")
+        card_king = Card(10, self.app.back_image, rank="king", suit="heart")
+        self.app.dealer_hand = [card_ace, card_king]
+        self.app.player_hands = [[
+            Card(10, self.app.back_image, rank="10", suit="diamond"),
+            Card(8, self.app.back_image, rank="8", suit="club"),
+        ]]
+
+        self.app._prompt_insurance()
+        # Insurance cost is 5 // 2 = $2
+        self.assertIn("$2", self.app.take_insurance_button["text"])
+
+        # Take Insurance ($2 cost, bankroll becomes 995 - 2 = 993)
+        self.app._on_take_insurance()
+
+        # Dealer has Blackjack:
+        # Main bet loses $5 (-$5)
+        # Insurance returns $2 wager + $5 profit = $7 (+7)
+        # Bankroll becomes 993 + 7 = 1000 (EXACTLY BREAK EVEN!)
+        self.assertEqual(self.app.bankroll_var.get(), 1000)
+        self.assertIn("Insurance won (+$5)", self.app.result_var.get())
+        self.assertIn("(-$5)", self.app.result_var.get())
+
     def test_insurance_taken_dealer_does_not_have_blackjack_resumes_play(self):
         """Taking insurance when dealer lacks Blackjack consumes the insurance wager and resumes player turn."""
         self.app.chips_mode_var.set(True)
@@ -511,6 +555,34 @@ class TestBettingGuiAndState(unittest.TestCase):
         self.app._on_take_insurance()
         self.assertEqual(self.app.bankroll_var.get(), 10)
         self.assertEqual(self.app.insurance_bet, 0)
+
+    def test_insurance_taken_player_natural_blackjack_dealer_no_blackjack(self):
+        """When player has Natural 21 and dealer lacks BJ, round concludes showing BJ win and insurance lost."""
+        self.app.chips_mode_var.set(True)
+        self.app.new_game()
+        self.app.bankroll_var.set(950)
+        self.app.hand_bets = [50]
+
+        card_ace_dealer = Card(1, self.app.back_image, rank="ace", suit="spade")
+        card_7_dealer = Card(7, self.app.back_image, rank="7", suit="heart")
+        self.app.dealer_hand = [card_ace_dealer, card_7_dealer]
+
+        card_ace_player = Card(1, self.app.back_image, rank="ace", suit="heart")
+        card_king_player = Card(10, self.app.back_image, rank="king", suit="club")
+        self.app.player_hands = [[card_ace_player, card_king_player]]
+
+        self.app._prompt_insurance()
+        # Take insurance ($25 cost: bankroll 950 - 25 = 925)
+        self.app._on_take_insurance()
+
+        # Dealer lacks Blackjack -> insurance lost (-$25)
+        # Player has Natural Blackjack -> pays 3:2: $50 bet + $75 profit = $125 return
+        # Net bankroll: 925 + 125 = 1050 (net +$50 profit, exactly Even Money!)
+        self.assertEqual(self.app.bankroll_var.get(), 1050)
+        self.assertFalse(self.app.is_insurance_phase)
+        self.assertIn("Player has Blackjack! You win!", self.app.result_var.get())
+        self.assertIn("+$75", self.app.result_var.get())
+        self.assertIn("Insurance lost (-$25)", self.app.result_var.get())
 
 
 if __name__ == "__main__":
