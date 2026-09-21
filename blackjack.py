@@ -10,17 +10,18 @@ This implementation demonstrates:
 - Safe cross-platform asset path resolution using Python's `pathlib`.
 """
 
+from __future__ import annotations
+
 import random
 import tkinter
 from pathlib import Path
 
 # Optional pygame.mixer support for authentic tactile casino audio
 try:
-    import pygame
-    import pygame.mixer as pygame_mixer
+    # pyrefly: ignore [missing-import]
+    from pygame import mixer as pygame_mixer
     PYGAME_AVAILABLE = True
 except (ImportError, Exception):
-    pygame = None
     pygame_mixer = None
     PYGAME_AVAILABLE = False
 
