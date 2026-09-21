@@ -28,3 +28,8 @@ htmlcov/
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+# Packaging & Distribution
+build/
+dist/
+*.spec.bak

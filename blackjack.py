@@ -13,6 +13,7 @@ This implementation demonstrates:
 from __future__ import annotations
 
 import random
+import sys
 import tkinter
 from pathlib import Path
 
@@ -63,9 +64,27 @@ PLAYER_CARD_OVERLAP_OFFSET = 26
 TABLE_BACKGROUND_COLOR = "#0b6623"  # Classic casino felt green
 PANEL_BACKGROUND_COLOR = "#074c1a"  # Slightly darker green for contrasting frames
 
-# Asset paths resolved relative to this script's directory for portability
-ASSETS_DIR = Path(__file__).resolve().parent / "cards"
-AUDIO_DIR = Path(__file__).resolve().parent / "audio"
+# Asset paths resolved relative to bundle/script directory for portability
+def get_base_dir() -> Path:
+    """
+    Resolves the base directory for resource loading across standard Python execution
+    and PyInstaller frozen bundles (both --onedir and --onefile).
+    """
+    if getattr(sys, "frozen", False):
+        if hasattr(sys, "_MEIPASS"):
+            mei_path = Path(sys._MEIPASS)
+            if (mei_path / "cards").exists():
+                return mei_path
+        exe_parent = Path(sys.executable).resolve().parent
+        if (exe_parent / "cards").exists():
+            return exe_parent
+    return Path(__file__).resolve().parent
+
+
+BASE_DIR = get_base_dir()
+ASSETS_DIR = BASE_DIR / "cards"
+AUDIO_DIR = BASE_DIR / "audio"
+ASSETS_EXTRA_DIR = BASE_DIR / "assets"
 DEFAULT_SOUND_VOLUME = 0.7
 
 
@@ -801,6 +820,19 @@ class BlackjackApp:
         self.root.geometry(f"{DEFAULT_WINDOW_WIDTH}x{DEFAULT_WINDOW_HEIGHT}")
         self.root.minsize(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)
         self.root.configure(background=TABLE_BACKGROUND_COLOR, padx=10, pady=10)
+
+        # Window icon configuration (supports .png via PhotoImage and .ico fallback)
+        self._icon_photo = None
+        icon_png = ASSETS_EXTRA_DIR / "icon.png"
+        icon_ico = ASSETS_EXTRA_DIR / "icon.ico"
+        try:
+            if icon_png.exists():
+                self._icon_photo = tkinter.PhotoImage(file=str(icon_png))
+                self.root.iconphoto(False, self._icon_photo)
+            elif icon_ico.exists():
+                self.root.iconbitmap(default=str(icon_ico))
+        except Exception:
+            pass  # Graceful fallback if window icon fails on headless or unsupported display
 
         # Allow responsive centering/scaling on window resize
         self.root.columnconfigure(0, weight=1)

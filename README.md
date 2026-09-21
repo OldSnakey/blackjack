@@ -69,6 +69,15 @@ You can also run the game via the external module test script:
 python import_test.py
 ```
 
+### Packaging for Distribution (Standalone Executable / itch.io)
+To package a self-contained, zero-install Windows release for non-engineers:
+1. Double-click `build_itch_release.bat` (or run `./build_itch_release.ps1` in PowerShell).
+2. The automated pipeline runs regression tests, invokes PyInstaller, bundles documentation, and outputs:
+   - `dist/Blackjack-Windows/`: Unpacked folder containing `Blackjack.exe` and bundled assets.
+   - `dist/Blackjack-Windows-v1.0.0.zip`: Optimized ZIP archive ready to upload to [itch.io](https://itch.io).
+
+For complete store page copy, metadata, and upload instructions, see [docs/ITCH_IO_GUIDE.md](docs/ITCH_IO_GUIDE.md).
+
 ---
 
 ## Game Rules & Flow
