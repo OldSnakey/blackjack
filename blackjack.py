@@ -78,6 +78,8 @@ def get_base_dir() -> Path:
         exe_parent = Path(sys.executable).resolve().parent
         if (exe_parent / "cards").exists():
             return exe_parent
+        if (exe_parent / "_internal" / "cards").exists():
+            return exe_parent / "_internal"
     return Path(__file__).resolve().parent
 
 
@@ -85,6 +87,7 @@ BASE_DIR = get_base_dir()
 ASSETS_DIR = BASE_DIR / "cards"
 AUDIO_DIR = BASE_DIR / "audio"
 ASSETS_EXTRA_DIR = BASE_DIR / "assets"
+OVERLAY_ICONS_DIR = ASSETS_EXTRA_DIR / "overlay_icons"
 DEFAULT_SOUND_VOLUME = 0.7
 
 
@@ -804,6 +807,55 @@ class SoundManager:
 
 
 # ============================================================================
+# Keyboard & Input Prompts Asset Loader
+# ============================================================================
+
+class KeyboardIconLoader:
+    """
+    Loads, scales, and caches Kenney keyboard & mouse prompt PNG sprites.
+    Provides graceful fallback to text-based badges if assets are missing.
+    """
+
+    def __init__(self, icons_dir: Path | None = None):
+        self.icons_dir = icons_dir or OVERLAY_ICONS_DIR
+        self._cache: dict[tuple[str, int], tkinter.PhotoImage] = {}
+
+    def get_icon(self, icon_name: str, scale_div: int = 2) -> tkinter.PhotoImage | None:
+        """
+        Retrieves a cached PhotoImage for the given icon name and scale divisor.
+        Example: get_icon('keyboard_space', 2) loads keyboard_space.png subsampled by (2, 2) -> 32x32.
+        """
+        key = (icon_name, scale_div)
+        if key in self._cache:
+            return self._cache[key]
+
+        candidates = []
+        if self.icons_dir:
+            candidates.append(self.icons_dir / f"{icon_name}.png")
+            if not icon_name.startswith("keyboard_") and not icon_name.startswith("mouse_"):
+                candidates.append(self.icons_dir / f"keyboard_{icon_name}.png")
+
+        # Local development fallback to raw Kenney pack if curated dir not yet populated
+        raw_fallback = BASE_DIR / "Keyboard & Mouse" / "Default"
+        candidates.append(raw_fallback / f"{icon_name}.png")
+        if not icon_name.startswith("keyboard_") and not icon_name.startswith("mouse_"):
+            candidates.append(raw_fallback / f"keyboard_{icon_name}.png")
+
+        for path in candidates:
+            if path.exists():
+                try:
+                    img = tkinter.PhotoImage(file=str(path))
+                    if scale_div > 1:
+                        img = img.subsample(scale_div, scale_div)
+                    self._cache[key] = img
+                    return img
+                except Exception:
+                    continue
+
+        return None
+
+
+# ============================================================================
 # GUI Application: Object-Oriented Presentation Layer
 # ============================================================================
 
@@ -910,10 +962,13 @@ class BlackjackApp:
             self.player_hands[self.active_hand_index] = list(cards)
 
     def _load_assets(self):
-        """Loads 52 card face images and the card back image."""
+        """Loads 52 card face images, card back image, and keyboard overlay icons."""
         load_images(self.all_cards)
         back_path = ASSETS_DIR / "back.png"
         self.back_image = tkinter.PhotoImage(file=str(back_path))
+        self.icon_loader = KeyboardIconLoader(OVERLAY_ICONS_DIR)
+        self.icon_question_small = self.icon_loader.get_icon("keyboard_question", scale_div=3)
+        self._shortcuts_dialog = None
 
     def _build_ui(self):
         """Builds all Tkinter frames, scoreboards, card tables, and action buttons."""
@@ -974,12 +1029,36 @@ class BlackjackApp:
         )
         self.sound_button.grid(row=0, column=8, padx=(15, 0))
 
+        # Shortcuts / Help Button
+        help_btn_kwargs = {
+            "font": ("Arial", 9, "bold"),
+            "background": PANEL_BACKGROUND_COLOR,
+            "fg": "#ffeb3b",
+            "activebackground": TABLE_BACKGROUND_COLOR,
+            "activeforeground": "#ffeb3b",
+            "relief": "ridge",
+            "borderwidth": 1,
+            "cursor": "hand2",
+            "command": self._toggle_shortcuts_overlay,
+        }
+        if self.icon_question_small:
+            self.help_button = tkinter.Button(
+                scoreboard_frame, text=" Help", image=self.icon_question_small, compound="left",
+                **help_btn_kwargs
+            )
+        else:
+            self.help_button = tkinter.Button(
+                scoreboard_frame, text="[?] Help",
+                **help_btn_kwargs
+            )
+        self.help_button.grid(row=0, column=9, padx=(10, 0))
+
         # Bankroll and Bet summary (visible in Chips Mode)
         self.bankroll_label = tkinter.Label(
             scoreboard_frame, text="Bankroll: $1,000  |  Bet: $0",
             font=("Arial", 11, "bold"), background=TABLE_BACKGROUND_COLOR, fg="#81c784"
         )
-        self.bankroll_label.grid(row=1, column=0, columnspan=9, pady=(2, 2))
+        self.bankroll_label.grid(row=1, column=0, columnspan=10, pady=(2, 2))
         self.bankroll_label.grid_remove()  # Hidden by default in Casual Mode
 
         # Status / Result banner
@@ -987,7 +1066,7 @@ class BlackjackApp:
             scoreboard_frame, textvariable=self.result_var, font=("Arial", 13, "bold"),
             background=TABLE_BACKGROUND_COLOR, fg="#ffeb3b"
         )
-        self.result_label.grid(row=2, column=0, columnspan=9, pady=(2, 4))
+        self.result_label.grid(row=2, column=0, columnspan=10, pady=(2, 4))
 
         # Main Card Table Area
         card_table_frame = tkinter.Frame(
@@ -1162,6 +1241,8 @@ class BlackjackApp:
             self.root.bind_class("Button", key, self._on_key_deal_or_hit)
 
         # Action shortcuts (case-insensitive)
+        for key in ("<h>", "<H>"):
+            self.root.bind(key, lambda e: self._on_key_action(self.on_hit, self.hit_button))
         for key in ("<s>", "<S>"):
             self.root.bind(key, lambda e: self._on_key_action(self.on_stand, self.stand_button))
         for key in ("<d>", "<D>"):
@@ -1176,6 +1257,10 @@ class BlackjackApp:
             self.root.bind(key, lambda e: self._on_key_action(self._all_in, getattr(self, "all_in_button", None)))
         for key in ("<m>", "<M>"):
             self.root.bind(key, lambda e: self._on_toggle_sound())
+
+        # Shortcuts / Help Overlay toggle shortcuts
+        for key in ("<question>", "?", "/", "<F1>"):
+            self.root.bind(key, lambda e: self._toggle_shortcuts_overlay())
 
         # Insurance shortcuts (Y = Take, N / Escape = Decline)
         for key in ("<y>", "<Y>"):
@@ -1247,6 +1332,197 @@ class BlackjackApp:
         is_enabled = self.sound_manager.toggle_mute()
         self.sound_status_var.set("🔊 Sound: ON" if is_enabled else "🔇 Sound: OFF")
         return "break"
+
+    def _toggle_shortcuts_overlay(self):
+        """Toggles the display of the keyboard shortcut help overlay dialog."""
+        if self._shortcuts_dialog is not None and self._shortcuts_dialog.winfo_exists():
+            self._close_shortcuts_overlay()
+        else:
+            self._show_shortcuts_overlay()
+        return "break"
+
+    def _close_shortcuts_overlay(self):
+        """Closes and destroys the shortcuts help overlay dialog."""
+        if self._shortcuts_dialog is not None:
+            try:
+                if self._shortcuts_dialog.winfo_exists():
+                    self._shortcuts_dialog.destroy()
+            except Exception:
+                pass
+            self._shortcuts_dialog = None
+
+    def _show_shortcuts_overlay(self):
+        """Displays a clean modal HUD dialog illustrating all keyboard and mouse controls."""
+        if self._shortcuts_dialog is not None and self._shortcuts_dialog.winfo_exists():
+            self._shortcuts_dialog.lift()
+            self._shortcuts_dialog.focus_set()
+            return
+
+        dialog = tkinter.Toplevel(self.root)
+        dialog.title("Blackjack - Keyboard Shortcuts & Controls")
+        dialog.transient(self.root)
+        dialog.resizable(False, False)
+        dialog.configure(background=PANEL_BACKGROUND_COLOR, padx=14, pady=12)
+
+        if getattr(self, "_icon_photo", None):
+            try:
+                dialog.iconphoto(False, self._icon_photo)
+            except Exception:
+                pass
+
+        # Center dialog relative to main window
+        dialog_w, dialog_h = 740, 530
+        try:
+            root_x = self.root.winfo_rootx()
+            root_y = self.root.winfo_rooty()
+            root_w = self.root.winfo_width()
+            root_h = self.root.winfo_height()
+            pos_x = max(root_x + (root_w - dialog_w) // 2, 0)
+            pos_y = max(root_y + (root_h - dialog_h) // 2, 0)
+            dialog.geometry(f"{dialog_w}x{dialog_h}+{pos_x}+{pos_y}")
+        except Exception:
+            dialog.geometry(f"{dialog_w}x{dialog_h}")
+
+        # Top Header Bar
+        header_frame = tkinter.Frame(dialog, background=PANEL_BACKGROUND_COLOR)
+        header_frame.pack(fill="x", pady=(0, 10))
+
+        q_icon = self.icon_loader.get_icon("keyboard_question", scale_div=2)
+        if q_icon:
+            q_lbl = tkinter.Label(header_frame, image=q_icon, background=PANEL_BACKGROUND_COLOR)
+            q_lbl.image = q_icon
+            q_lbl.pack(side="left", padx=(0, 8))
+
+        title_box = tkinter.Frame(header_frame, background=PANEL_BACKGROUND_COLOR)
+        title_box.pack(side="left")
+
+        tkinter.Label(
+            title_box, text="KEYBOARD SHORTCUTS & CONTROLS",
+            font=("Arial", 13, "bold"), fg="#ffd700", background=PANEL_BACKGROUND_COLOR
+        ).pack(anchor="w")
+
+        tkinter.Label(
+            title_box, text="Full hands-free keyboard accessibility for authentic casino gameplay",
+            font=("Arial", 8, "italic"), fg="#80cbc4", background=PANEL_BACKGROUND_COLOR
+        ).pack(anchor="w")
+
+        close_btn = tkinter.Button(
+            header_frame, text="✕ Close (Esc)", font=("Arial", 9, "bold"),
+            background="#c62828", foreground="#ffffff", activebackground="#e53935",
+            activeforeground="#ffffff", relief="raised", borderwidth=1, cursor="hand2",
+            takefocus=False, command=self._close_shortcuts_overlay
+        )
+        close_btn.pack(side="right")
+
+        # 2x2 Grid of Categorized Panels
+        grid_frame = tkinter.Frame(dialog, background=PANEL_BACKGROUND_COLOR)
+        grid_frame.pack(fill="both", expand=True)
+        grid_frame.columnconfigure(0, weight=1)
+        grid_frame.columnconfigure(1, weight=1)
+        grid_frame.rowconfigure(0, weight=1)
+        grid_frame.rowconfigure(1, weight=1)
+
+        def make_panel(parent, title_text, row_idx, col_idx):
+            panel = tkinter.Frame(
+                parent, background="#053612", relief="ridge", borderwidth=2,
+                padx=10, pady=8
+            )
+            panel.grid(row=row_idx, column=col_idx, sticky="nsew", padx=5, pady=5)
+            tkinter.Label(
+                panel, text=title_text, font=("Arial", 10, "bold"),
+                fg="#ffeb3b", background="#053612"
+            ).pack(anchor="w", pady=(0, 4))
+            return panel
+
+        def add_row(parent_panel, icon_names: list[str], action_text: str, hint_text: str = ""):
+            r = tkinter.Frame(parent_panel, background="#053612")
+            r.pack(fill="x", pady=2)
+
+            badges = tkinter.Frame(r, background="#053612")
+            badges.pack(side="left")
+
+            for i, name in enumerate(icon_names):
+                if i > 0:
+                    tkinter.Label(
+                        badges, text="or", font=("Arial", 8, "bold"),
+                        fg="#80cbc4", background="#053612"
+                    ).pack(side="left", padx=2)
+
+                icon = self.icon_loader.get_icon(name, scale_div=2)
+                if icon:
+                    l = tkinter.Label(badges, image=icon, background="#053612")
+                    l.image = icon
+                    l.pack(side="left", padx=1)
+                else:
+                    disp = name.replace("keyboard_", "").replace("mouse_", "").upper()
+                    tkinter.Label(
+                        badges, text=f"[{disp}]", font=("Consolas", 8, "bold"),
+                        background="#ffffff", foreground="#000000",
+                        padx=3, pady=1, relief="raised", bd=1
+                    ).pack(side="left", padx=1)
+
+            tkinter.Label(
+                r, text=action_text, font=("Arial", 9, "bold"),
+                fg="#ffffff", background="#053612"
+            ).pack(side="left", padx=(6, 2))
+
+            if hint_text:
+                tkinter.Label(
+                    r, text=hint_text, font=("Arial", 8),
+                    fg="#a5d6a7", background="#053612"
+                ).pack(side="left")
+
+        # 1. Table Actions
+        panel_actions = make_panel(grid_frame, "🃏 TABLE ACTIONS", 0, 0)
+        add_row(panel_actions, ["keyboard_space", "keyboard_enter"], "Deal / Hit / Next", "(Context-sensitive)")
+        add_row(panel_actions, ["keyboard_h"], "Hit", "(Draw another card)")
+        add_row(panel_actions, ["keyboard_s"], "Stand", "(End turn, dealer plays)")
+        add_row(panel_actions, ["keyboard_d"], "Double Down", "(Double bet, draw 1 card)")
+        add_row(panel_actions, ["keyboard_p"], "Split Pair", "(Split equal rank cards)")
+        add_row(panel_actions, ["keyboard_r"], "Surrender", "(Forfeit half bet before hitting)")
+
+        # 2. Chips & Wagering
+        panel_betting = make_panel(grid_frame, "💰 CHIPS & WAGERING", 0, 1)
+        add_row(panel_betting, ["keyboard_1"], "Bet $5", "(White chip)")
+        add_row(panel_betting, ["keyboard_2"], "Bet $25", "(Red chip)")
+        add_row(panel_betting, ["keyboard_3"], "Bet $100", "(Green chip)")
+        add_row(panel_betting, ["keyboard_4"], "Bet $500", "(Black & Gold chip)")
+        add_row(panel_betting, ["keyboard_a"], "All In", "(Wager entire bankroll)")
+        add_row(panel_betting, ["keyboard_c"], "Clear Bet", "(Reset bet to $0)")
+
+        # 3. Insurance Phase
+        panel_insurance = make_panel(grid_frame, "🛡️ INSURANCE DECISIONS", 1, 0)
+        add_row(panel_insurance, ["keyboard_y"], "Take Insurance", "(Pays 2:1 on Dealer Ace)")
+        add_row(panel_insurance, ["keyboard_n", "keyboard_escape"], "Decline", "(Decline side bet)")
+
+        # 4. System & Controls
+        panel_system = make_panel(grid_frame, "⚙️ SYSTEM & CONTROLS", 1, 1)
+        add_row(panel_system, ["keyboard_m"], "Toggle Sound", "(Mute / Unmute)")
+        add_row(panel_system, ["keyboard_question", "keyboard_f1"], "Toggle Help", "(Show / Hide this overlay)")
+        add_row(panel_system, ["mouse_left"], "Click Button / Chip", "(Direct mouse interaction)")
+
+        # Footer Tip Banner
+        footer_frame = tkinter.Frame(dialog, background=PANEL_BACKGROUND_COLOR)
+        footer_frame.pack(fill="x", pady=(8, 0))
+
+        tkinter.Label(
+            footer_frame,
+            text="💡 Tip: Keyboard shortcuts are context-sensitive and only activate when the corresponding button is enabled.",
+            font=("Arial", 8, "italic"), fg="#ffe082", background=PANEL_BACKGROUND_COLOR
+        ).pack(anchor="center")
+
+        # Window event bindings
+        def _close_dialog_event(e=None):
+            self._close_shortcuts_overlay()
+            return "break"
+
+        dialog.protocol("WM_DELETE_WINDOW", self._close_shortcuts_overlay)
+        for k in ("<Escape>", "<question>", "?", "/", "<F1>"):
+            dialog.bind(k, _close_dialog_event)
+            close_btn.bind(k, _close_dialog_event)
+
+        dialog.focus_set()
+        self._shortcuts_dialog = dialog
 
     # ------------------------------------------------------------------------
     # Game Flow & Actions
@@ -2138,6 +2414,7 @@ class BlackjackApp:
 
     def _on_close(self):
         """Safely cleans up any pending timer callback before window destruction."""
+        self._close_shortcuts_overlay()
         if self._dealer_timer_id:
             try:
                 self.root.after_cancel(self._dealer_timer_id)

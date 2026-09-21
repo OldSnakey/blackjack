@@ -33,3 +33,6 @@ Desktop.ini
 build/
 dist/
 *.spec.bak
+
+# Asset Source Packs (curated icons are copied to assets/overlay_icons/)
+Keyboard & Mouse/

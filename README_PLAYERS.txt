@@ -26,17 +26,23 @@ MOUSE CONTROLS:
 - Click "Deal" to begin the round.
 - Click "Hit", "Stand", "Double", "Split", or "Surrender" as desired.
 - Click "All In" to wager your entire bankroll in Casino Mode.
-- Click the sound icon in the top right to toggle audio ON or OFF.
+- Click "[M] Sound" to toggle audio ON or OFF.
+- Click "[?] Help" in the top bar to open the visual keyboard shortcuts HUD.
 
-KEYBOARD SHORTCUTS:
-- [Enter] or [Space] : Deal new hand / Hit
-- [S]                : Stand
-- [D]                : Double Down
-- [P]                : Split Pair
-- [R]                : Surrender
+KEYBOARD SHORTCUTS (Hands-Free Play):
+- [Enter] or [Space] : Context-sensitive action (Deal Hand / Hit / Next Game)
+- [H]                : Hit (Draw card)
+- [S]                : Stand (End turn)
+- [D]                : Double Down (Double bet, draw 1 card)
+- [P]                : Split Pair (Split equal-rank cards into 2 hands)
+- [R]                : Surrender (Forfeit half bet before hitting)
+- [1], [2], [3], [4] : Add $5, $25, $100, $500 chip to bet
+- [A]                : All In (Wager full bankroll)
+- [C]                : Clear Current Bet
+- [Y] / [N, Esc]     : Take / Decline Insurance on Dealer Ace
 - [M]                : Mute / Unmute Audio Toggle
-- [C]                : Clear Staged Bet (before deal)
-- [A]                : All In
+- [?] or [F1]        : Toggle Keyboard Shortcuts Informational Overlay
+- [Esc]              : Close Shortcuts Overlay / Decline Insurance
 
 ------------------------------------------------------------------------------
 GAME MODES
