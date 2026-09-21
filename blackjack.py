@@ -428,7 +428,9 @@ class BlackjackApp:
             # Face-down hole card
             self.dealer_hole_card = card
             self.dealer_hole_widget = tkinter.Label(
-                self.dealer_cards_frame, image=self.back_image, relief="raised"
+                self.dealer_cards_frame, image=self.back_image,
+                relief="flat", borderwidth=0, highlightthickness=0,
+                background=PANEL_BACKGROUND_COLOR
             )
             self.dealer_hole_widget.pack(side="left", padx=2)
             # Display only the upcard score while hole card remains hidden
@@ -437,7 +439,9 @@ class BlackjackApp:
         else:
             # Face-up card
             tkinter.Label(
-                self.dealer_cards_frame, image=card[1], relief="raised"
+                self.dealer_cards_frame, image=card[1],
+                relief="flat", borderwidth=0, highlightthickness=0,
+                background=PANEL_BACKGROUND_COLOR
             ).pack(side="left", padx=2)
             self.dealer_score_var.set(str(score_hand(self.dealer_hand)))
 
@@ -484,7 +488,9 @@ class BlackjackApp:
 
             for i, card in enumerate(hand):
                 lbl = tkinter.Label(
-                    cards_frame, image=card[1], relief="raised", borderwidth=1
+                    cards_frame, image=card[1],
+                    relief="flat", borderwidth=0, highlightthickness=0,
+                    background=PANEL_BACKGROUND_COLOR
                 )
                 lbl.place(x=i * PLAYER_CARD_OVERLAP_OFFSET, y=0, width=CARD_WIDTH, height=CARD_HEIGHT)
 
@@ -624,7 +630,9 @@ class BlackjackApp:
             card = self._draw_card()
             self.dealer_hand.append(card)
             tkinter.Label(
-                self.dealer_cards_frame, image=card[1], relief="raised"
+                self.dealer_cards_frame, image=card[1],
+                relief="flat", borderwidth=0, highlightthickness=0,
+                background=PANEL_BACKGROUND_COLOR
             ).pack(side="left", padx=2)
             self.dealer_score_var.set(str(score_hand(self.dealer_hand)))
 
