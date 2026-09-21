@@ -40,7 +40,9 @@ Designed as an educational project for Python learners and junior developers, th
 - **Auto-Stand Protection**: Automatically stands when a player hits or doubles to 21, preventing accidental bust clicks.
 - **Mid-Hand Guarding**: Action buttons and New Game controls strictly guard against accidental mid-hand forfeit or re-entrancy.
 - **Non-Blocking Dealing Cadence**: Smooth, observable 700ms dealing pace without GUI freezes.
-- **Zero External Dependencies**: Runs entirely on Python's built-in standard library (`tkinter`, `random`, `pathlib`, `unittest`).
+- **Authentic Casino Audio Effects (`.ogg`)**: Tactile sound effects powered by `pygame.mixer` (via `pygame-ce`), featuring 42 organic audio variations: randomized card slides for dealing, crisp card placement on hole card reveals, riffle shoe shuffles, tactile chip drop and collision clicks, heavy all-in stacks, dealer chip rakes, and payout slides.
+- **Audio Mute & Accessibility**: Top scoreboard mute toggle (`🔊 Sound: ON` / `🔇 Sound: OFF`) and keyboard shortcut (`M`) for instant muting. Graceful headless fallback if audio devices or packages are unavailable.
+- **Zero Required External Dependencies**: Core game logic, cards, and GUI run entirely on Python's standard library (`tkinter`, `random`, `pathlib`, `unittest`). Audio support is optional via `pygame-ce`.
 
 ---
 
@@ -49,6 +51,7 @@ Designed as an educational project for Python learners and junior developers, th
 ### Requirements
 - Python 3.8+ (including Python 3.12, 3.13, 3.14+)
 - Tkinter (included by default with standard Windows and macOS Python installers)
+- **Audio Support (Optional)**: `pip install pygame-ce` (enables realistic casino `.ogg` audio effects; if omitted, the game runs smoothly in silent fallback mode)
 
 ### Launching the Game
 From the project directory:
@@ -198,7 +201,7 @@ card_image_path = ASSETS_DIR / f"{card}_{suit}.png"
 
 ## Automated Testing
 
-The project includes a comprehensive automated test suite with **83 unit tests** written with Python's built-in `unittest` framework.
+The project includes a comprehensive automated test suite with **92 unit tests** written with Python's built-in `unittest` framework.
 
 ### Running the Tests
 To run all tests with verbose output:
@@ -219,6 +222,7 @@ python -m unittest discover tests -v
 | [`tests/test_gui_state.py`](tests/test_gui_state.py) | Validates actual `BlackjackApp` widget states (Hit, Stand, Double, Split, Surrender, New Game buttons, ties, timer cleanup) across real game lifecycle transitions. |
 | [`tests/test_split.py`](tests/test_split.py) | Tests hand split qualification (`can_split`), multi-hand turn progression, button states, and independent outcome resolution. |
 | [`tests/test_betting.py`](tests/test_betting.py) | Tests pure payout calculations (3:2, 1:1, push, loss, surrender), 2:1 insurance payouts with odd-bet breakeven guarantees, greedy chip denomination breakdowns, ChipVisualizer state sync/animations, Casual vs. Casino mode toggle confirmation warnings and bankroll resets, staged chip betting, "All In" max wagering, split wagers, insurance prompts and decisions, and the rebuy mechanic. |
+| [`tests/test_sound.py`](tests/test_sound.py) | Validates SoundManager audio engine, 42-file .ogg catalog loading across 10 categories, polyphony, volume clamping, mute toggling, UI sound button synchronization, keyboard shortcut integration, and headless fail-safe degradation. |
 
 ---
 
@@ -226,12 +230,13 @@ python -m unittest discover tests -v
 
 ```
 Blackjack/
-├── blackjack.py           # Main application: pure game engine & Tkinter GUI
+├── blackjack.py           # Main application: pure game engine, SoundManager & Tkinter GUI
 ├── import_test.py         # Demonstrates importing and running the game externally
 ├── README.md              # Documentation and learning guide
 ├── .gitignore             # Git exclusions for Python cache, IDEs, and OS artifacts
 ├── cards/                 # 52 playing card images + back.png and jokers
-└── tests/                 # Automated test suite (83 tests)
+├── audio/                 # 42 tactile casino .ogg audio files (slides, chips, shuffles)
+└── tests/                 # Automated test suite (92 tests)
     ├── __init__.py
     ├── test_betting.py
     ├── test_deck.py
@@ -240,6 +245,7 @@ Blackjack/
     ├── test_gui_state.py
     ├── test_scoring.py
     ├── test_shoe.py
+    ├── test_sound.py
     ├── test_split.py
     └── test_surrender.py
 ```

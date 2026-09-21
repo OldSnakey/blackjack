@@ -14,6 +14,16 @@ import random
 import tkinter
 from pathlib import Path
 
+# Optional pygame.mixer support for authentic tactile casino audio
+try:
+    import pygame
+    import pygame.mixer as pygame_mixer
+    PYGAME_AVAILABLE = True
+except (ImportError, Exception):
+    pygame = None
+    pygame_mixer = None
+    PYGAME_AVAILABLE = False
+
 # ============================================================================
 # Named Constants & Configuration
 # ============================================================================
@@ -54,6 +64,8 @@ PANEL_BACKGROUND_COLOR = "#074c1a"  # Slightly darker green for contrasting fram
 
 # Asset paths resolved relative to this script's directory for portability
 ASSETS_DIR = Path(__file__).resolve().parent / "cards"
+AUDIO_DIR = Path(__file__).resolve().parent / "audio"
+DEFAULT_SOUND_VOLUME = 0.7
 
 
 # ============================================================================
@@ -605,6 +617,173 @@ def build_shoe(all_cards, num_decks: int = DEFAULT_DECK_COUNT) -> list:
 
 
 # ============================================================================
+# Audio System: Pygame Mixer Sound Manager
+# ============================================================================
+
+class SoundManager:
+    """
+    Manages sound effects playback using pygame.mixer for .ogg audio assets.
+
+    Features:
+    - Low-latency asynchronous audio playback via pygame.mixer buffer configuration.
+    - Polyphonic 16-channel mixing so cards and chips sound concurrently without clipping.
+    - Natural acoustic variety through randomized sample pools (e.g. 8 card slides, 6 chip sounds).
+    - Graceful headless degradation: silently no-ops if pygame is missing or audio hardware is absent.
+    - Master volume control and mute toggling with Tkinter reactive updates.
+    """
+
+    def __init__(self, audio_dir: Path = AUDIO_DIR, enabled: bool = True, volume: float = DEFAULT_SOUND_VOLUME):
+        self.audio_dir = Path(audio_dir)
+        self.enabled = enabled
+        self.volume = max(0.0, min(1.0, volume))
+        self.is_available = False
+        self.sounds = {
+            "card_slide": [],
+            "card_place": [],
+            "card_shove": [],
+            "card_shuffle": [],
+            "card_fan": [],
+            "cards_pack": [],
+            "chip_lay": [],
+            "chips_collide": [],
+            "chips_stack": [],
+            "chips_handle": [],
+        }
+
+        self._init_mixer()
+        if self.is_available:
+            self._load_sounds()
+
+    def _init_mixer(self):
+        """Initializes pygame.mixer safely with low latency and 16 channels."""
+        if not PYGAME_AVAILABLE or pygame_mixer is None:
+            self.is_available = False
+            return
+        try:
+            if not pygame_mixer.get_init():
+                pygame_mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
+            pygame_mixer.set_num_channels(16)
+            self.is_available = True
+        except Exception:
+            # Handles headless CI environments or missing sound card
+            self.is_available = False
+
+    def _load_sounds(self):
+        """Pre-loads all .ogg sound files from audio_dir into categorized pools."""
+        if not self.audio_dir.exists() or pygame_mixer is None:
+            return
+
+        patterns = {
+            "card_slide": "card-slide-*.ogg",
+            "card_place": "card-place-*.ogg",
+            "card_shove": "card-shove-*.ogg",
+            "card_shuffle": "card-shuffle.ogg",
+            "card_fan": "card-fan-*.ogg",
+            "cards_pack": "cards-pack-*.ogg",
+            "chip_lay": "chip-lay-*.ogg",
+            "chips_collide": "chips-collide-*.ogg",
+            "chips_stack": "chips-stack-*.ogg",
+            "chips_handle": "chips-handle-*.ogg",
+        }
+
+        for category, pattern in patterns.items():
+            for file_path in sorted(self.audio_dir.glob(pattern)):
+                try:
+                    sound = pygame_mixer.Sound(str(file_path))
+                    sound.set_volume(self.volume)
+                    self.sounds[category].append(sound)
+                except Exception:
+                    pass
+
+    def set_volume(self, volume: float):
+        """Sets master volume (0.0 to 1.0) and updates all loaded sounds."""
+        self.volume = max(0.0, min(1.0, volume))
+        for sound_list in self.sounds.values():
+            for sound in sound_list:
+                try:
+                    sound.set_volume(self.volume)
+                except Exception:
+                    pass
+
+    def toggle_mute(self) -> bool:
+        """Toggles mute state. Returns True if sound is now enabled, False if muted."""
+        self.enabled = not self.enabled
+        return self.enabled
+
+    @property
+    def is_muted(self) -> bool:
+        """Returns whether sound output is currently muted or unavailable."""
+        return (not self.enabled) or (not self.is_available)
+
+    def stop_all(self):
+        """Stops all currently playing audio channels."""
+        if self.is_available and pygame_mixer is not None:
+            try:
+                pygame_mixer.stop()
+            except Exception:
+                pass
+
+    def play(self, category: str):
+        """Plays a random sound from the specified category if sound is enabled."""
+        if not self.enabled or not self.is_available:
+            return
+        sound_pool = self.sounds.get(category)
+        if not sound_pool:
+            return
+        try:
+            sound = random.choice(sound_pool)
+            sound.play()
+        except Exception:
+            pass
+
+    # Convenience domain event playback methods
+    def play_card_deal(self):
+        """Plays random card slide sound when dealing cards."""
+        self.play("card_slide")
+
+    def play_card_place(self):
+        """Plays crisp card placement sound (e.g. flipping hole card or split)."""
+        self.play("card_place")
+
+    def play_card_shuffle(self):
+        """Plays riffle shuffle sound when resetting or cutting shoe."""
+        self.play("card_shuffle")
+
+    def play_card_fan(self):
+        """Plays card fanning sound."""
+        self.play("card_fan")
+
+    def play_chip_add(self):
+        """Plays chip click or lay sound when placing/increasing bets."""
+        cat = random.choice(["chip_lay", "chips_collide"])
+        self.play(cat)
+
+    def play_chip_stack(self):
+        """Plays heavy chip stack sound for all-in or large bets."""
+        self.play("chips_stack")
+
+    def play_chip_clear(self):
+        """Plays dealer chip handling sound when clearing bets."""
+        self.play("chips_handle")
+
+    def play_surrender(self):
+        """Plays card shove sound when player surrenders their hand."""
+        self.play("card_shove")
+
+    def play_payout(self):
+        """Plays dealer chip slide / handle sound on player win."""
+        self.play("chips_handle")
+
+    def play_loss(self):
+        """Plays dealer scooping chips sound on player loss/bust."""
+        self.play("chips_handle")
+
+    def play_push(self):
+        """Plays soft chip tap on push."""
+        self.play("chip_lay")
+
+
+# ============================================================================
 # GUI Application: Object-Oriented Presentation Layer
 # ============================================================================
 
@@ -615,7 +794,7 @@ class BlackjackApp:
     Supports hand splitting with independent turn progression and outcome resolution.
     """
 
-    def __init__(self, root: tkinter.Tk):
+    def __init__(self, root: tkinter.Tk, sound_enabled: bool = True):
         self.root = root
         self.root.title("Blackjack")
         self.root.geometry(f"{DEFAULT_WINDOW_WIDTH}x{DEFAULT_WINDOW_HEIGHT}")
@@ -629,6 +808,12 @@ class BlackjackApp:
         # Async timer management & graceful window destruction
         self._dealer_timer_id = None
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+        # Audio Manager & Reactive Sound State
+        self.sound_manager = SoundManager(audio_dir=AUDIO_DIR, enabled=sound_enabled)
+        self.sound_status_var = tkinter.StringVar(
+            value="🔊 Sound: ON" if self.sound_manager.enabled else "🔇 Sound: OFF"
+        )
 
         # Shoe and Multi-Deck Configuration
         self.deck_count = DEFAULT_DECK_COUNT
@@ -747,12 +932,21 @@ class BlackjackApp:
         )
         self.shoe_label.grid(row=0, column=7, padx=(15, 0))
 
+        # Sound Mute Toggle Button
+        self.sound_button = tkinter.Button(
+            scoreboard_frame, textvariable=self.sound_status_var, font=("Arial", 9, "bold"),
+            background=PANEL_BACKGROUND_COLOR, fg="white", activebackground=TABLE_BACKGROUND_COLOR,
+            activeforeground="white", relief="ridge", borderwidth=1, cursor="hand2",
+            command=self._on_toggle_sound
+        )
+        self.sound_button.grid(row=0, column=8, padx=(15, 0))
+
         # Bankroll and Bet summary (visible in Chips Mode)
         self.bankroll_label = tkinter.Label(
             scoreboard_frame, text="Bankroll: $1,000  |  Bet: $0",
             font=("Arial", 11, "bold"), background=TABLE_BACKGROUND_COLOR, fg="#81c784"
         )
-        self.bankroll_label.grid(row=1, column=0, columnspan=8, pady=(2, 2))
+        self.bankroll_label.grid(row=1, column=0, columnspan=9, pady=(2, 2))
         self.bankroll_label.grid_remove()  # Hidden by default in Casual Mode
 
         # Status / Result banner
@@ -760,7 +954,7 @@ class BlackjackApp:
             scoreboard_frame, textvariable=self.result_var, font=("Arial", 13, "bold"),
             background=TABLE_BACKGROUND_COLOR, fg="#ffeb3b"
         )
-        self.result_label.grid(row=2, column=0, columnspan=8, pady=(2, 4))
+        self.result_label.grid(row=2, column=0, columnspan=9, pady=(2, 4))
 
         # Main Card Table Area
         card_table_frame = tkinter.Frame(
@@ -924,6 +1118,15 @@ class BlackjackApp:
         )
         self.new_game_button.grid(row=0, column=5, padx=6)
 
+        # Keyboard shortcuts for sound toggle (M key)
+        self.root.bind("<m>", lambda event: self._on_toggle_sound())
+        self.root.bind("<M>", lambda event: self._on_toggle_sound())
+
+    def _on_toggle_sound(self):
+        """Toggles sound playback on or off and updates the UI button text."""
+        is_enabled = self.sound_manager.toggle_mute()
+        self.sound_status_var.set("🔊 Sound: ON" if is_enabled else "🔇 Sound: OFF")
+
     # ------------------------------------------------------------------------
     # Game Flow & Actions
     # ------------------------------------------------------------------------
@@ -986,6 +1189,8 @@ class BlackjackApp:
         if not self.deck or self.shoe_needs_reshuffle or len(self.deck) < 15:
             self.deck = build_shoe(self.all_cards, self.deck_count)
             self.shoe_needs_reshuffle = False
+            if hasattr(self, "sound_manager"):
+                self.sound_manager.play_card_shuffle()
 
         self._update_shoe_display()
         self.player_hands = [[]]
@@ -1146,6 +1351,8 @@ class BlackjackApp:
                 self.chip_visualizer.animate_chip_drop(amount, new_bet)
             self._update_bankroll_display()
             self._update_betting_controls()
+            if hasattr(self, "sound_manager"):
+                self.sound_manager.play_chip_add()
 
     def _clear_bet(self):
         """Resets the staged bet back to 0."""
@@ -1156,6 +1363,8 @@ class BlackjackApp:
             self.chip_visualizer.animate_clear()
         self._update_bankroll_display()
         self._update_betting_controls()
+        if hasattr(self, "sound_manager"):
+            self.sound_manager.play_chip_clear()
 
     def _all_in(self):
         """Sets the staged bet to the player's full remaining bankroll."""
@@ -1168,6 +1377,8 @@ class BlackjackApp:
                 self.chip_visualizer.set_bet(bankroll, animate=False)
             self._update_bankroll_display()
             self._update_betting_controls()
+            if hasattr(self, "sound_manager"):
+                self.sound_manager.play_chip_stack()
 
     def _deal_hand_with_bet(self):
         """Commits the staged bet, deducts it from bankroll, and begins the deal."""
@@ -1332,6 +1543,8 @@ class BlackjackApp:
         self.player_hands[hand_index].append(card)
         self._render_player_cards()
         self._update_player_score_display()
+        if hasattr(self, "sound_manager"):
+            self.sound_manager.play_card_deal()
 
     def _deal_card_to_dealer(self, is_hole_card=False):
         """
@@ -1340,6 +1553,8 @@ class BlackjackApp:
         """
         card = self._draw_card()
         self.dealer_hand.append(card)
+        if hasattr(self, "sound_manager"):
+            self.sound_manager.play_card_deal()
 
         if is_hole_card:
             # Face-down hole card
@@ -1439,6 +1654,8 @@ class BlackjackApp:
         if self.dealer_hole_widget and self.dealer_hole_card:
             self.dealer_hole_widget.configure(image=self.dealer_hole_card[1])
             self.dealer_score_var.set(str(score_hand(self.dealer_hand)))
+            if hasattr(self, "sound_manager"):
+                self.sound_manager.play_card_place()
 
     def on_split(self):
         """
@@ -1458,6 +1675,8 @@ class BlackjackApp:
             if hasattr(self, "chip_visualizer"):
                 self.chip_visualizer.set_bet(sum(self.hand_bets), animate=False)
             self._update_bankroll_display()
+            if hasattr(self, "sound_manager"):
+                self.sound_manager.play_chip_add()
 
         # 1. Separate into two hands
         card1 = self.player_hands[0][0]
@@ -1494,6 +1713,8 @@ class BlackjackApp:
             if hasattr(self, "chip_visualizer"):
                 self.chip_visualizer.animate_chip_drop(current_bet, sum(self.hand_bets))
             self._update_bankroll_display()
+            if hasattr(self, "sound_manager"):
+                self.sound_manager.play_chip_add()
 
         # Disable double, split, and surrender buttons immediately
         self.double_button.configure(state="disabled")
@@ -1540,6 +1761,8 @@ class BlackjackApp:
         self._set_action_buttons_state("disabled")
         self.new_game_button.configure(state="disabled")
         self._reveal_dealer_hole_card()
+        if hasattr(self, "sound_manager"):
+            self.sound_manager.play_surrender()
 
         if self.chips_mode_var.get() and self.hand_bets:
             bet = self.hand_bets[0]
@@ -1650,6 +1873,8 @@ class BlackjackApp:
                 background=PANEL_BACKGROUND_COLOR
             ).pack(side="left", padx=2)
             self.dealer_score_var.set(str(score_hand(self.dealer_hand)))
+            if hasattr(self, "sound_manager"):
+                self.sound_manager.play_card_deal()
 
             # Schedule the next dealer step after the delay
             self._dealer_timer_id = self.root.after(DEALER_DRAW_DELAY_MS, self._dealer_step)
@@ -1687,18 +1912,32 @@ class BlackjackApp:
                     self.last_insurance_lost = 0
                 self.result_var.set(f"{message}{net_str}{ins_str}")
 
+                ins_gain = ins_profit if 'ins_profit' in locals() else 0
+                net_round = profit + ins_gain
                 if hasattr(self, "chip_visualizer"):
-                    ins_gain = ins_profit if 'ins_profit' in locals() else 0
-                    net_round = profit + ins_gain
                     if net_round > 0:
                         self.chip_visualizer.animate_win(net_round)
                     elif net_round < 0:
                         self.chip_visualizer.animate_loss()
                     else:
                         self.chip_visualizer.animate_push()
+                if hasattr(self, "sound_manager"):
+                    if net_round > 0:
+                        self.sound_manager.play_payout()
+                    elif net_round < 0:
+                        self.sound_manager.play_loss()
+                    else:
+                        self.sound_manager.play_push()
             else:
                 self.last_insurance_lost = 0
                 self.result_var.set(message)
+                if hasattr(self, "sound_manager"):
+                    if outcome in ('PLAYER_WINS', 'DEALER_BUST', 'NATURAL_BLACKJACK'):
+                        self.sound_manager.play_payout()
+                    elif outcome in ('DEALER_WINS', 'PLAYER_BUST'):
+                        self.sound_manager.play_loss()
+                    else:
+                        self.sound_manager.play_push()
         else:
             # Evaluate each split hand independently with is_split=True
             outcome1, msg1 = determine_outcome(self.player_hands[0], self.dealer_hand, is_split=True)
@@ -1719,17 +1958,33 @@ class BlackjackApp:
                 self.last_insurance_lost = 0
                 self.result_var.set(f"Hand 1: {msg1} ({p1_str}) | Hand 2: {msg2} ({p2_str}){ins_str}")
 
+                total_profit = profit1 + profit2
                 if hasattr(self, "chip_visualizer"):
-                    total_profit = profit1 + profit2
                     if total_profit > 0:
                         self.chip_visualizer.animate_win(total_profit)
                     elif total_profit < 0:
                         self.chip_visualizer.animate_loss()
                     else:
                         self.chip_visualizer.animate_push()
+                if hasattr(self, "sound_manager"):
+                    if total_profit > 0:
+                        self.sound_manager.play_payout()
+                    elif total_profit < 0:
+                        self.sound_manager.play_loss()
+                    else:
+                        self.sound_manager.play_push()
             else:
                 self.last_insurance_lost = 0
                 self.result_var.set(f"Hand 1: {msg1} | Hand 2: {msg2}")
+                if hasattr(self, "sound_manager"):
+                    p_wins = sum(1 for o in (outcome1, outcome2) if o in ('PLAYER_WINS', 'DEALER_BUST', 'NATURAL_BLACKJACK'))
+                    d_wins = sum(1 for o in (outcome1, outcome2) if o in ('DEALER_WINS', 'PLAYER_BUST'))
+                    if p_wins > d_wins:
+                        self.sound_manager.play_payout()
+                    elif d_wins > p_wins:
+                        self.sound_manager.play_loss()
+                    else:
+                        self.sound_manager.play_push()
 
         if self.chips_mode_var.get():
             self._update_bankroll_display()
@@ -1770,6 +2025,8 @@ class BlackjackApp:
             self._dealer_timer_id = None
         if hasattr(self, "chip_visualizer"):
             self.chip_visualizer.clear_timers()
+        if hasattr(self, "sound_manager"):
+            self.sound_manager.stop_all()
         try:
             if self.root.winfo_exists():
                 self.root.destroy()
