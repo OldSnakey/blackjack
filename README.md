@@ -27,6 +27,7 @@ Designed as an educational project for Python learners and junior developers, th
 - **Authentic Dealer Hole Card**: Dealer receives one card face-up and one card face-down (`back.png`). The hidden card is revealed only after the player stands.
 - **Dynamic Score Tracking**: Dealer's visible score shows only the upcard (`"X + ?"`) until the hole card is revealed.
 - **Scoreboard Tracking**: Real-time tracking of Dealer Wins, Player Wins, and Ties.
+- **Hand Splitting**: When dealt a pair of cards of the same rank, split into two independent hands with active hand indicators and multi-hand resolution (awarding up to 2 wins/losses).
 - **Natural Blackjack Detection**: Automatically detects 2-card 21s for both player and dealer on the deal.
 - **Auto-Stand Protection**: Automatically stands when a player hits to 21, preventing accidental bust clicks.
 - **Non-Blocking Dealing Cadence**: Smooth, observable 700ms dealing pace without GUI freezes.
@@ -100,7 +101,8 @@ python import_test.py
    - `Ace` is worth `11` or `1` depending on which gives the highest non-busting total.
 2. **Player Actions**:
    - **Hit**: Draw an additional card. If your score exceeds 21, you bust and the dealer wins immediately.
-   - **Stand**: Conclude your turn and pass control to the dealer.
+   - **Stand**: Conclude your turn and pass control to the dealer (or the next split hand).
+   - **Split**: If dealt two cards of matching rank on the deal, separate them into two hands, each receiving a new card and played independently.
 3. **Dealer Rules**:
    - The dealer must hit on any score below 17.
    - The dealer must stand on 17 or higher (standard casino S17 rule).
@@ -185,7 +187,7 @@ card_image_path = ASSETS_DIR / f"{card}_{suit}.png"
 
 ## Automated Testing
 
-The project includes an automated test suite with **25 unit tests** written with Python's built-in `unittest` framework.
+The project includes an automated test suite with **33 unit tests** written with Python's built-in `unittest` framework.
 
 ### Running the Tests
 To run all tests with verbose output:
@@ -201,6 +203,7 @@ python -m unittest discover tests -v
 | [`tests/test_deck.py`](tests/test_deck.py) | Verifies all 52 card PNGs and `back.png` exist, validates deck distribution, and tests `Card` tuple subclass properties. |
 | [`tests/test_game_rules.py`](tests/test_game_rules.py) | Tests win/loss/push evaluations, dealer AI hit/stand rules, and Natural Blackjack detection on both player and dealer. |
 | [`tests/test_gui_state.py`](tests/test_gui_state.py) | Validates actual `BlackjackApp` widget states (Hit, Stand, New Game buttons, ties, timer cleanup) across real game lifecycle transitions. |
+| [`tests/test_split.py`](tests/test_split.py) | Tests hand split qualification (`can_split`), multi-hand turn progression, button states, and independent outcome resolution. |
 
 ---
 
@@ -213,10 +216,11 @@ Blackjack/
 ├── README.md              # Documentation and learning guide
 ├── .gitignore             # Git exclusions for Python cache, IDEs, and OS artifacts
 ├── cards/                 # 52 playing card images + back.png and jokers
-└── tests/                 # Automated test suite (25 tests)
+└── tests/                 # Automated test suite (33 tests)
     ├── __init__.py
     ├── test_deck.py
     ├── test_game_rules.py
     ├── test_gui_state.py
-    └── test_scoring.py
+    ├── test_scoring.py
+    └── test_split.py
 ```

@@ -83,6 +83,7 @@ class TestGuiStateInvariants(unittest.TestCase):
 
     def test_initial_deal_player_natural_blackjack(self):
         """Player natural blackjack ends the round immediately, disabling action buttons."""
+        initial_wins = self.app.player_wins_var.get()
         self.app.player_hand = [
             Card(1, self.app.back_image, "ace", "spade"),
             Card(10, self.app.back_image, "king", "heart"),
@@ -94,12 +95,14 @@ class TestGuiStateInvariants(unittest.TestCase):
         self.app._check_initial_blackjack()
         self.assertEqual(self.app.hit_button["state"], "disabled")
         self.assertEqual(self.app.stand_button["state"], "disabled")
+        self.assertEqual(self.app.split_button["state"], "disabled")
         self.assertEqual(self.app.new_game_button["state"], "normal")
-        self.assertEqual(self.app.player_wins_var.get(), 1)
+        self.assertEqual(self.app.player_wins_var.get(), initial_wins + 1)
         self.assertIn("Blackjack", self.app.result_var.get())
 
     def test_initial_deal_dealer_natural_blackjack(self):
         """Dealer natural blackjack ends the round immediately, disabling action buttons."""
+        initial_dealer_wins = self.app.dealer_wins_var.get()
         self.app.player_hand = [
             Card(10, self.app.back_image, "10", "heart"),
             Card(8, self.app.back_image, "8", "spade"),
@@ -111,12 +114,14 @@ class TestGuiStateInvariants(unittest.TestCase):
         self.app._check_initial_blackjack()
         self.assertEqual(self.app.hit_button["state"], "disabled")
         self.assertEqual(self.app.stand_button["state"], "disabled")
+        self.assertEqual(self.app.split_button["state"], "disabled")
         self.assertEqual(self.app.new_game_button["state"], "normal")
-        self.assertEqual(self.app.dealer_wins_var.get(), 1)
+        self.assertEqual(self.app.dealer_wins_var.get(), initial_dealer_wins + 1)
         self.assertIn("Dealer has Blackjack", self.app.result_var.get())
 
     def test_player_bust_disables_actions(self):
         """Player bust disables Hit/Stand, reveals hole card, and enables New Game."""
+        initial_dealer_wins = self.app.dealer_wins_var.get()
         self.app.player_hand = [
             Card(10, self.app.back_image, "10", "heart"),
             Card(6, self.app.back_image, "6", "spade"),
@@ -125,20 +130,23 @@ class TestGuiStateInvariants(unittest.TestCase):
         self.app._conclude_round()
         self.assertEqual(self.app.hit_button["state"], "disabled")
         self.assertEqual(self.app.stand_button["state"], "disabled")
+        self.assertEqual(self.app.split_button["state"], "disabled")
         self.assertEqual(self.app.new_game_button["state"], "normal")
         self.assertIn("bust", self.app.result_var.get().lower())
-        self.assertEqual(self.app.dealer_wins_var.get(), 1)
+        self.assertEqual(self.app.dealer_wins_var.get(), initial_dealer_wins + 1)
 
     def test_player_stand_disables_actions_during_dealer_turn(self):
         """Clicking Stand disables Hit, Stand, AND New Game during asynchronous dealer drawing."""
         self.app.on_stand()
         self.assertEqual(self.app.hit_button["state"], "disabled")
         self.assertEqual(self.app.stand_button["state"], "disabled")
+        self.assertEqual(self.app.split_button["state"], "disabled")
         self.assertEqual(self.app.new_game_button["state"], "disabled")
         self.assertIsNotNone(self.app._dealer_timer_id)
 
     def test_dealer_completion_enables_new_game(self):
         """Dealer turn completion enables New Game button and keeps Hit/Stand disabled."""
+        initial_wins = self.app.player_wins_var.get()
         self.app.player_hand = [
             Card(10, self.app.back_image, "10", "heart"),
             Card(9, self.app.back_image, "9", "spade"),
@@ -150,8 +158,9 @@ class TestGuiStateInvariants(unittest.TestCase):
         self.app._conclude_round()
         self.assertEqual(self.app.hit_button["state"], "disabled")
         self.assertEqual(self.app.stand_button["state"], "disabled")
+        self.assertEqual(self.app.split_button["state"], "disabled")
         self.assertEqual(self.app.new_game_button["state"], "normal")
-        self.assertEqual(self.app.player_wins_var.get(), 1)
+        self.assertEqual(self.app.player_wins_var.get(), initial_wins + 1)
 
     def test_push_increments_ties_var(self):
         """Equal scores correctly increment ties_var counter."""
