@@ -26,7 +26,8 @@ Designed as an educational project for Python learners and junior developers, th
 - **Casino Felt GUI**: Visual card display on a classic green felt table.
 - **Authentic Dealer Hole Card**: Dealer receives one card face-up and one card face-down (`back.png`). The hidden card is revealed only after the player stands.
 - **Dynamic Score Tracking**: Dealer's visible score shows only the upcard (`"X + ?"`) until the hole card is revealed.
-- **Natural Blackjack Detection**: Automatically detects 2-card 21s on the deal.
+- **Scoreboard Tracking**: Real-time tracking of Dealer Wins, Player Wins, and Ties.
+- **Natural Blackjack Detection**: Automatically detects 2-card 21s for both player and dealer on the deal.
 - **Auto-Stand Protection**: Automatically stands when a player hits to 21, preventing accidental bust clicks.
 - **Non-Blocking Dealing Cadence**: Smooth, observable 700ms dealing pace without GUI freezes.
 - **Zero External Dependencies**: Runs entirely on Python's built-in standard library (`tkinter`, `random`, `pathlib`, `unittest`).
@@ -66,15 +67,15 @@ python import_test.py
                      |  Dealer: 1 up, 1 hole (?) |
                      +-------------+-------------+
                                    |
-                  +----------------┴----------------+
-                  | Does Player have Natural 21?    |
-                  +-------+-----------------+-------+
-                     YES  |                 | NO
-                          ▼                 ▼
-             +-----------------------+   +-----------------------+
-             | Reveal Dealer Hole    |   |      Player Turn      |
-             | Check for Tie / Win   |   | [Hit] -> Draw card    |
-             +-----------------------+   | [Stand] -> End turn   |
+                +------------------┴------------------+
+                | Does Player or Dealer have 21?      |
+                +-------+---------------------+-------+
+                   YES  |                     | NO
+                        ▼                     ▼
+           +-----------------------+     +-----------------------+
+           | Reveal Dealer Hole    |     |      Player Turn      |
+           | Check for Tie / Win   |     | [Hit] -> Draw card    |
+           +-----------------------+     | [Stand] -> End turn   |
                                          +-----------+-----------+
                                                      | (Stand or 21)
                                                      ▼
@@ -158,22 +159,15 @@ def on_stand(self):
 ### 4. Dynamic Ace Valuation Algorithm
 Blackjack hands with Aces can be "soft" (Ace counted as 11) or "hard" (Ace counted as 1).
 
-Because $11 + 11 = 22 > 21$, a hand can **never** have more than one Ace counted as 11. The pure logic function `score_hand(hand)` implements this concisely:
+Because $11 + 11 = 22 > 21$, a hand can **never** have more than one Ace counted as 11. Rather than complex state flags inside a loop, the pure logic function `score_hand(hand)` sums all cards with Aces initially counted as 1, then promotes at most one Ace to 11 if doing so does not cause a bust:
 
 ```python
 def score_hand(hand):
-    score = 0
-    ace = False
-    for card in hand:
-        value = card[0] if isinstance(card, (tuple, list)) else card
-        if value == 1 and not ace:
-            ace = True
-            value = 11
-        score += value
-        # If counting an Ace as 11 causes a bust, downgrade it to 1
-        if score > BLACKJACK_TARGET and ace:
-            score -= 10
-            ace = False
+    values = [card[0] if isinstance(card, (tuple, list)) else card for card in hand]
+    score = sum(values)
+    # If an Ace is present and counting it as 11 doesn't bust, add 10
+    if 1 in values and score + 10 <= BLACKJACK_TARGET:
+        score += 10
     return score
 ```
 
@@ -191,7 +185,7 @@ card_image_path = ASSETS_DIR / f"{card}_{suit}.png"
 
 ## Automated Testing
 
-The project includes an automated test suite with **23 unit tests** written with Python's built-in `unittest` framework.
+The project includes an automated test suite with **25 unit tests** written with Python's built-in `unittest` framework.
 
 ### Running the Tests
 To run all tests with verbose output:
@@ -204,9 +198,9 @@ python -m unittest discover tests -v
 | Test File | Description |
 | :--- | :--- |
 | [`tests/test_scoring.py`](tests/test_scoring.py) | Verifies `score_hand()` across empty hands, multiple Aces, soft-to-hard shifts, and busts. |
-| [`tests/test_deck.py`](tests/test_deck.py) | Verifies that all 52 card PNGs and `back.png` exist, and card values follow standard deck distribution. |
-| [`tests/test_game_rules.py`](tests/test_game_rules.py) | Tests win/loss/push evaluations, dealer AI hit/stand rules, and Natural Blackjack detection. |
-| [`tests/test_gui_state.py`](tests/test_gui_state.py) | Validates UI state transitions and verifies buttons are disabled during dealer turns to prevent race conditions. |
+| [`tests/test_deck.py`](tests/test_deck.py) | Verifies all 52 card PNGs and `back.png` exist, validates deck distribution, and tests `Card` tuple subclass properties. |
+| [`tests/test_game_rules.py`](tests/test_game_rules.py) | Tests win/loss/push evaluations, dealer AI hit/stand rules, and Natural Blackjack detection on both player and dealer. |
+| [`tests/test_gui_state.py`](tests/test_gui_state.py) | Validates actual `BlackjackApp` widget states (Hit, Stand, New Game buttons, ties, timer cleanup) across real game lifecycle transitions. |
 
 ---
 
@@ -219,7 +213,7 @@ Blackjack/
 ├── README.md              # Documentation and learning guide
 ├── .gitignore             # Git exclusions for Python cache, IDEs, and OS artifacts
 ├── cards/                 # 52 playing card images + back.png and jokers
-└── tests/                 # Automated test suite (23 tests)
+└── tests/                 # Automated test suite (25 tests)
     ├── __init__.py
     ├── test_deck.py
     ├── test_game_rules.py

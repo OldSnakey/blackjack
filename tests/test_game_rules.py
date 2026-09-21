@@ -36,6 +36,13 @@ class TestGameRules(unittest.TestCase):
         outcome, _ = determine_outcome([1, 10], [10, 8])
         self.assertEqual(outcome, 'NATURAL_BLACKJACK')
 
+        # Dealer has Natural Blackjack on deal, player has regular hand
+        outcome, _ = determine_outcome([10, 8], [1, 10])
+        self.assertEqual(outcome, 'DEALER_WINS')
+
+        outcome, _ = determine_outcome([9, 8], [10, 1])
+        self.assertEqual(outcome, 'DEALER_WINS')
+
         # Both have Ace + 10 = 21 -> Push
         outcome, _ = determine_outcome([1, 10], [10, 1])
         self.assertEqual(outcome, 'PUSH')

@@ -40,6 +40,26 @@ ASSETS_DIR = Path(__file__).resolve().parent / "cards"
 # Pure Game Logic (Independent of GUI)
 # ============================================================================
 
+class Card(tuple):
+    """
+    Represents a playing card.
+    Subclasses tuple for backwards compatibility:
+      card[0] == value
+      card[1] == PhotoImage
+    Provides rank and suit attributes for inspection and extensibility.
+    """
+    def __new__(cls, value: int, image: tkinter.PhotoImage, rank: str = "", suit: str = ""):
+        instance = super().__new__(cls, (value, image))
+        instance.value = value
+        instance.image = image
+        instance.rank = rank
+        instance.suit = suit
+        return instance
+
+    def __repr__(self):
+        return f"Card({self.rank.capitalize()} of {self.suit.capitalize()}, value={self.value})"
+
+
 def score_hand(hand):
     """
     Calculates the best Blackjack score for a hand.
@@ -53,25 +73,14 @@ def score_hand(hand):
     How Ace handling works:
     - Number cards (2-10) count as their face value.
     - Face cards (Jack, Queen, King) have value 10.
-    - An Ace initially counts as 11 if doing so doesn't cause a bust (> 21).
-      If the total score subsequently exceeds 21, that Ace is reduced by 10
-      (effectively counting as 1).
-    - Multiple Aces: Because 11 + 11 = 22, at most ONE Ace can count as 11.
-      All subsequent Aces must count as 1.
+    - Aces initially count as 1. If promoting one Ace to 11 does not cause
+      the total score to exceed 21, 10 is added. At most ONE Ace can count as 11,
+      because 11 + 11 = 22 > 21.
     """
-    score = 0
-    ace = False
-    for card in hand:
-        # Extract integer value whether card is a raw int or a (val, image) tuple
-        value = card[0] if isinstance(card, (tuple, list)) else card
-        if value == 1 and not ace:
-            ace = True
-            value = 11
-        score += value
-        # If score exceeds 21 and we counted an Ace as 11, downgrade it to 1
-        if score > BLACKJACK_TARGET and ace:
-            score -= 10
-            ace = False
+    values = [card[0] if isinstance(card, (tuple, list)) else card for card in hand]
+    score = sum(values)
+    if 1 in values and score + 10 <= BLACKJACK_TARGET:
+        score += 10
     return score
 
 
@@ -123,7 +132,7 @@ def determine_outcome(player_hand, dealer_hand):
 
 def load_images(card_images):
     """
-    Loads all 52 card PNG images into a list of (value, PhotoImage) tuples.
+    Loads all 52 card PNG images into a list of Card instances.
     Preserved for backward compatibility with test suites and external callers.
     """
     suits = ["heart", "club", "diamond", "spade"]
@@ -134,13 +143,14 @@ def load_images(card_images):
         for card in range(1, 11):
             name = ASSETS_DIR / f"{card}_{suit}.png"
             image = tkinter.PhotoImage(file=str(name))
-            card_images.append((card, image))
+            rank = "ace" if card == 1 else str(card)
+            card_images.append(Card(value=card, image=image, rank=rank, suit=suit))
 
         # Face cards (Jack, Queen, King all value 10)
         for card in face_cards:
             name = ASSETS_DIR / f"{card}_{suit}.png"
             image = tkinter.PhotoImage(file=str(name))
-            card_images.append((10, image))
+            card_images.append(Card(value=10, image=image, rank=card, suit=suit))
 
 
 # ============================================================================
@@ -159,6 +169,14 @@ class BlackjackApp:
         self.root.geometry(f"{DEFAULT_WINDOW_WIDTH}x{DEFAULT_WINDOW_HEIGHT}")
         self.root.configure(background=TABLE_BACKGROUND_COLOR, padx=10, pady=10)
 
+        # Allow responsive centering/scaling on window resize
+        self.root.columnconfigure(0, weight=1)
+        self.root.rowconfigure(1, weight=1)
+
+        # Async timer management & graceful window destruction
+        self._dealer_timer_id = None
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+
         # Game State Collections
         self.deck = []
         self.all_cards = []
@@ -166,13 +184,14 @@ class BlackjackApp:
         self.dealer_hand = []
 
         # Dealer Hole Card Tracking (Face-down card mechanics)
-        self.dealer_hole_card = None        # (value, PhotoImage) of the hidden card
+        self.dealer_hole_card = None        # Card of the hidden card
         self.dealer_hole_widget = None      # Tkinter Label displaying the card back
         self.back_image = None              # PhotoImage for cards/back.png
 
         # Reactive GUI Variables
         self.dealer_wins_var = tkinter.IntVar(value=0)
         self.player_wins_var = tkinter.IntVar(value=0)
+        self.ties_var = tkinter.IntVar(value=0)
         self.dealer_score_var = tkinter.StringVar(value="0")
         self.player_score_var = tkinter.IntVar(value=0)
         self.result_var = tkinter.StringVar(value="")
@@ -194,7 +213,7 @@ class BlackjackApp:
 
     def _build_ui(self):
         """Builds all Tkinter frames, scoreboards, card tables, and action buttons."""
-        # Top Scoreboard: Win counters and status message
+        # Top Scoreboard: Win/Tie counters and status message
         scoreboard_frame = tkinter.Frame(self.root, background=TABLE_BACKGROUND_COLOR)
         scoreboard_frame.grid(row=0, column=0, columnspan=3, pady=(0, 10))
 
@@ -205,7 +224,7 @@ class BlackjackApp:
         tkinter.Label(
             scoreboard_frame, textvariable=self.dealer_wins_var, font=("Arial", 11),
             background=TABLE_BACKGROUND_COLOR, fg="white"
-        ).grid(row=0, column=1, padx=(0, 20))
+        ).grid(row=0, column=1, padx=(0, 15))
 
         tkinter.Label(
             scoreboard_frame, text="Player Wins: ", font=("Arial", 11, "bold"),
@@ -214,20 +233,30 @@ class BlackjackApp:
         tkinter.Label(
             scoreboard_frame, textvariable=self.player_wins_var, font=("Arial", 11),
             background=TABLE_BACKGROUND_COLOR, fg="white"
-        ).grid(row=0, column=3)
+        ).grid(row=0, column=3, padx=(0, 15))
+
+        tkinter.Label(
+            scoreboard_frame, text="Ties: ", font=("Arial", 11, "bold"),
+            background=TABLE_BACKGROUND_COLOR, fg="white"
+        ).grid(row=0, column=4)
+        tkinter.Label(
+            scoreboard_frame, textvariable=self.ties_var, font=("Arial", 11),
+            background=TABLE_BACKGROUND_COLOR, fg="white"
+        ).grid(row=0, column=5)
 
         # Status / Result banner
         self.result_label = tkinter.Label(
             scoreboard_frame, textvariable=self.result_var, font=("Arial", 13, "bold"),
             background=TABLE_BACKGROUND_COLOR, fg="#ffeb3b"
         )
-        self.result_label.grid(row=1, column=0, columnspan=4, pady=5)
+        self.result_label.grid(row=1, column=0, columnspan=6, pady=5)
 
         # Main Card Table Area
         card_table_frame = tkinter.Frame(
             self.root, relief="sunken", borderwidth=2, background=PANEL_BACKGROUND_COLOR, padx=10, pady=10
         )
-        card_table_frame.grid(row=1, column=0, sticky="ew", columnspan=3, rowspan=2)
+        card_table_frame.grid(row=1, column=0, sticky="nsew", columnspan=3)
+        card_table_frame.columnconfigure(1, weight=1)
 
         # Dealer Section
         tkinter.Label(
@@ -257,7 +286,7 @@ class BlackjackApp:
 
         # Bottom Button Bar
         button_frame = tkinter.Frame(self.root, background=TABLE_BACKGROUND_COLOR)
-        button_frame.grid(row=3, column=0, columnspan=3, sticky="ew", pady=15)
+        button_frame.grid(row=2, column=0, columnspan=3, sticky="ew", pady=15)
 
         self.hit_button = tkinter.Button(
             button_frame, text="Hit", width=10, font=("Arial", 10, "bold"),
@@ -283,6 +312,14 @@ class BlackjackApp:
 
     def new_game(self):
         """Starts a fresh round of Blackjack with a newly shuffled deck."""
+        # 0. Cancel any active dealer timer from a prior round
+        if self._dealer_timer_id:
+            try:
+                self.root.after_cancel(self._dealer_timer_id)
+            except Exception:
+                pass
+            self._dealer_timer_id = None
+
         # 1. Reset deck and hands
         self.deck = list(self.all_cards)
         random.shuffle(self.deck)
@@ -311,7 +348,7 @@ class BlackjackApp:
         self._deal_card_to_dealer(is_hole_card=False)
         self._deal_card_to_dealer(is_hole_card=True)
 
-        # 5. Check for Natural Blackjack on deal
+        # 5. Check for Natural Blackjack on deal (both player and dealer)
         self._check_initial_blackjack()
 
     def _draw_card(self):
@@ -319,7 +356,7 @@ class BlackjackApp:
         if not self.deck:
             self.deck = list(self.all_cards)
             random.shuffle(self.deck)
-        return self.deck.pop(0)
+        return self.deck.pop()
 
     def _deal_card_to_player(self):
         """Deals one card to the player and updates the player's score."""
@@ -356,10 +393,12 @@ class BlackjackApp:
     def _check_initial_blackjack(self):
         """
         Inspects hands immediately after initial deal for Natural Blackjacks (21 on 2 cards).
+        Resolves immediately if either player or dealer has 21.
         """
         player_score = score_hand(self.player_hand)
-        if player_score == BLACKJACK_TARGET:
-            # Player has Blackjack! Reveal dealer hole card and resolve immediately
+        dealer_score = score_hand(self.dealer_hand)
+        if player_score == BLACKJACK_TARGET or dealer_score == BLACKJACK_TARGET:
+            # Natural Blackjack on initial deal! Reveal hole card and resolve immediately
             self._reveal_dealer_hole_card()
             self._conclude_round()
 
@@ -378,12 +417,9 @@ class BlackjackApp:
         current_score = score_hand(self.player_hand)
 
         if current_score > BLACKJACK_TARGET:
-            # Player Busted! Reveal hole card, update stats, and end round
+            # Player Busted! Reveal hole card and conclude round via unified handler
             self._reveal_dealer_hole_card()
-            self.result_var.set("You bust, dealer wins!")
-            self.dealer_wins_var.set(self.dealer_wins_var.get() + 1)
-            self._set_action_buttons_state("disabled")
-            self.new_game_button.configure(state="normal")
+            self._conclude_round()
         elif current_score == BLACKJACK_TARGET:
             # Player reached 21! Auto-stand to prevent accidental bust
             self.on_stand()
@@ -404,7 +440,7 @@ class BlackjackApp:
         self._reveal_dealer_hole_card()
 
         # 3. Begin non-blocking dealer card drawing
-        self.root.after(DEALER_DRAW_DELAY_MS, self._dealer_step)
+        self._dealer_timer_id = self.root.after(DEALER_DRAW_DELAY_MS, self._dealer_step)
 
     def _dealer_step(self):
         """
@@ -416,6 +452,8 @@ class BlackjackApp:
           Control immediately returns to the Tkinter event loop, keeping the UI responsive.
         - If NO: concludes the round and awards wins.
         """
+        self._dealer_timer_id = None
+
         # Guard against window close during active callback
         if not self.root.winfo_exists():
             return
@@ -430,7 +468,7 @@ class BlackjackApp:
             self.dealer_score_var.set(str(score_hand(self.dealer_hand)))
 
             # Schedule the next dealer step after the delay
-            self.root.after(DEALER_DRAW_DELAY_MS, self._dealer_step)
+            self._dealer_timer_id = self.root.after(DEALER_DRAW_DELAY_MS, self._dealer_step)
         else:
             # Dealer stands or busts; conclude round
             self._conclude_round()
@@ -444,6 +482,8 @@ class BlackjackApp:
             self.player_wins_var.set(self.player_wins_var.get() + 1)
         elif outcome in ('DEALER_WINS', 'PLAYER_BUST'):
             self.dealer_wins_var.set(self.dealer_wins_var.get() + 1)
+        elif outcome == 'PUSH':
+            self.ties_var.set(self.ties_var.get() + 1)
 
         # Disable Hit/Stand, enable New Game
         self._set_action_buttons_state("disabled")
@@ -453,6 +493,20 @@ class BlackjackApp:
         """Helper to set the state of both Hit and Stand buttons simultaneously."""
         self.hit_button.configure(state=state)
         self.stand_button.configure(state=state)
+
+    def _on_close(self):
+        """Safely cleans up any pending timer callback before window destruction."""
+        if self._dealer_timer_id:
+            try:
+                self.root.after_cancel(self._dealer_timer_id)
+            except Exception:
+                pass
+            self._dealer_timer_id = None
+        try:
+            if self.root.winfo_exists():
+                self.root.destroy()
+        except tkinter.TclError:
+            pass
 
 
 # ============================================================================

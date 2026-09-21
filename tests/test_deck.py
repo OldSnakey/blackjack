@@ -70,6 +70,17 @@ class TestDeckAndAssets(unittest.TestCase):
                 for val, img in card_list:
                     self.assertIsInstance(val, int)
                     self.assertIsInstance(img, tkinter.PhotoImage)
+
+                # Verify Card class attributes and backwards compatibility
+                first_card = card_list[0]
+                self.assertIsInstance(first_card, blackjack.Card)
+                self.assertIsInstance(first_card, tuple)
+                self.assertEqual(len(first_card), 2)
+                self.assertTrue(hasattr(first_card, 'rank'))
+                self.assertTrue(hasattr(first_card, 'suit'))
+                self.assertTrue(hasattr(first_card, 'value'))
+                self.assertTrue(hasattr(first_card, 'image'))
+                self.assertIn("of", repr(first_card))
             finally:
                 os.chdir(old_cwd)
         finally:
