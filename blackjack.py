@@ -21,6 +21,17 @@ from pathlib import Path
 BLACKJACK_TARGET = 21
 DEALER_STAND_THRESHOLD = 17  # Standard casino rule: Dealer must stand on 17 or higher
 
+# Bankroll and Betting Configuration
+STARTING_BANKROLL = 1000
+MINIMUM_BET = 5
+CHIP_DENOMINATIONS = [
+    (5, "#f5f5f5", "#000000"),    # White $5
+    (25, "#c62828", "#ffffff"),   # Red $25
+    (100, "#2e7d32", "#ffffff"),  # Green $100
+    (500, "#212121", "#ffd700"),  # Black & Gold $500
+]
+INSURANCE_PAYOUT_RATIO = 2  # Standard casino rule: Insurance pays 2 to 1
+
 # UI Animation Timing (in milliseconds)
 # 700ms provides an authentic, observable card-dealing cadence without feeling sluggish
 # or stalling the game flow.
@@ -28,9 +39,9 @@ DEALER_DRAW_DELAY_MS = 700
 
 # Window dimensions and styling
 DEFAULT_WINDOW_WIDTH = 840
-DEFAULT_WINDOW_HEIGHT = 560
+DEFAULT_WINDOW_HEIGHT = 580
 MIN_WINDOW_WIDTH = 760
-MIN_WINDOW_HEIGHT = 500
+MIN_WINDOW_HEIGHT = 520
 CARD_WIDTH = 74
 CARD_HEIGHT = 107
 PLAYER_CARD_OVERLAP_OFFSET = 26
@@ -152,6 +163,49 @@ def determine_outcome(player_hand, dealer_hand):
         return 'PUSH', "It's a draw"
 
 
+def calculate_payout(outcome: str, bet: int) -> int:
+    """
+    Calculates the total payout (return of wager plus winnings) for a given outcome and bet.
+
+    Args:
+        outcome: Outcome code from determine_outcome ('NATURAL_BLACKJACK', 'PLAYER_WINS',
+                 'DEALER_BUST', 'PUSH', 'DEALER_WINS', 'PLAYER_BUST').
+        bet: The amount wagered on this hand (integer >= 0).
+
+    Returns:
+        int: Total return to the player (0 for loss, bet for push, 2*bet for standard win,
+             bet + int(bet * 1.5) for 3:2 natural blackjack).
+    """
+    if bet <= 0:
+        return 0
+    if outcome == 'NATURAL_BLACKJACK':
+        return bet + int(bet * 1.5)
+    elif outcome in ('PLAYER_WINS', 'DEALER_BUST'):
+        return bet * 2
+    elif outcome == 'PUSH':
+        return bet
+    else:
+        # 'DEALER_WINS', 'PLAYER_BUST', or any other loss outcome
+        return 0
+
+
+def calculate_insurance_payout(dealer_has_blackjack: bool, insurance_bet: int) -> int:
+    """
+    Calculates the total payout returned for an Insurance side bet.
+    Insurance pays 2:1, returning the original insurance bet plus 2x profit (3x total).
+
+    Args:
+        dealer_has_blackjack: True if the dealer has a 2-card 21 (Natural Blackjack).
+        insurance_bet: The amount wagered on insurance (integer >= 0).
+
+    Returns:
+        int: Total return to the player (insurance_bet * 3 if dealer has 21, 0 otherwise).
+    """
+    if insurance_bet <= 0 or not dealer_has_blackjack:
+        return 0
+    return insurance_bet * 3
+
+
 def load_images(card_images):
     """
     Loads all 52 card PNG images into a list of Card instances.
@@ -221,6 +275,16 @@ class BlackjackApp:
         self.player_score_var = tkinter.StringVar(value="0")
         self.result_var = tkinter.StringVar(value="")
 
+        # Chips and Wagering State
+        self.chips_mode_var = tkinter.BooleanVar(value=False)
+        self.bankroll_var = tkinter.IntVar(value=STARTING_BANKROLL)
+        self.current_bet_var = tkinter.IntVar(value=0)
+        self.hand_bets = [0]
+        self.is_betting_phase = False
+        self.insurance_bet = 0
+        self.is_insurance_phase = False
+        self.chip_buttons = []
+
         # Load card visual assets
         self._load_assets()
 
@@ -256,7 +320,7 @@ class BlackjackApp:
         """Builds all Tkinter frames, scoreboards, card tables, and action buttons."""
         # Top Scoreboard: Win/Tie counters and status message
         scoreboard_frame = tkinter.Frame(self.root, background=TABLE_BACKGROUND_COLOR)
-        scoreboard_frame.grid(row=0, column=0, columnspan=3, pady=(0, 10))
+        scoreboard_frame.grid(row=0, column=0, columnspan=3, pady=(0, 6))
 
         tkinter.Label(
             scoreboard_frame, text="Dealer Wins: ", font=("Arial", 11, "bold"),
@@ -285,12 +349,30 @@ class BlackjackApp:
             background=TABLE_BACKGROUND_COLOR, fg="white"
         ).grid(row=0, column=5)
 
+        # Chips Mode Toggle Checkbutton
+        self.chips_mode_check = tkinter.Checkbutton(
+            scoreboard_frame, text="Chips Mode", variable=self.chips_mode_var,
+            command=self._on_toggle_chips_mode, font=("Arial", 10, "bold"),
+            background=TABLE_BACKGROUND_COLOR, fg="white",
+            selectcolor=PANEL_BACKGROUND_COLOR, activebackground=TABLE_BACKGROUND_COLOR,
+            activeforeground="white"
+        )
+        self.chips_mode_check.grid(row=0, column=6, padx=(15, 0))
+
+        # Bankroll and Bet summary (visible in Chips Mode)
+        self.bankroll_label = tkinter.Label(
+            scoreboard_frame, text="Bankroll: $1,000  |  Bet: $0",
+            font=("Arial", 11, "bold"), background=TABLE_BACKGROUND_COLOR, fg="#81c784"
+        )
+        self.bankroll_label.grid(row=1, column=0, columnspan=7, pady=(2, 2))
+        self.bankroll_label.grid_remove()  # Hidden by default in Casual Mode
+
         # Status / Result banner
         self.result_label = tkinter.Label(
             scoreboard_frame, textvariable=self.result_var, font=("Arial", 13, "bold"),
             background=TABLE_BACKGROUND_COLOR, fg="#ffeb3b"
         )
-        self.result_label.grid(row=1, column=0, columnspan=6, pady=5)
+        self.result_label.grid(row=2, column=0, columnspan=7, pady=(2, 4))
 
         # Main Card Table Area
         card_table_frame = tkinter.Frame(
@@ -325,9 +407,91 @@ class BlackjackApp:
         self.player_cards_frame = tkinter.Frame(card_table_frame, background=PANEL_BACKGROUND_COLOR)
         self.player_cards_frame.grid(row=2, column=1, sticky="ew", rowspan=2, padx=10, pady=5)
 
+        # Betting Controls Bar (visible in Chips Mode)
+        self.betting_frame = tkinter.Frame(self.root, background=TABLE_BACKGROUND_COLOR)
+        self.betting_frame.grid(row=2, column=0, columnspan=3, pady=(4, 6))
+        self.betting_frame.grid_remove()  # Hidden by default in Casual Mode
+
+        tkinter.Label(
+            self.betting_frame, text="Bet Chips:", font=("Arial", 10, "bold"),
+            background=TABLE_BACKGROUND_COLOR, fg="white"
+        ).pack(side="left", padx=(0, 6))
+
+        self.chip_buttons.clear()
+        for amount, bg_color, fg_color in CHIP_DENOMINATIONS:
+            btn = tkinter.Button(
+                self.betting_frame, text=f"${amount}", font=("Arial", 9, "bold"),
+                width=5, background=bg_color, foreground=fg_color,
+                activebackground=bg_color, activeforeground=fg_color,
+                relief="raised", borderwidth=2, cursor="hand2",
+                command=lambda a=amount: self._add_chip_bet(a)
+            )
+            btn.pack(side="left", padx=3)
+            self.chip_buttons.append(btn)
+
+        self.all_in_button = tkinter.Button(
+            self.betting_frame, text="All In", font=("Arial", 9, "bold"),
+            width=7, background="#e65100", foreground="#ffffff",
+            activebackground="#f57c00", activeforeground="#ffffff",
+            relief="raised", borderwidth=2, cursor="hand2",
+            command=self._all_in
+        )
+        self.all_in_button.pack(side="left", padx=4)
+
+        self.clear_bet_button = tkinter.Button(
+            self.betting_frame, text="Clear Bet", font=("Arial", 9, "bold"),
+            width=8, command=self._clear_bet
+        )
+        self.clear_bet_button.pack(side="left", padx=5)
+
+        self.deal_bet_button = tkinter.Button(
+            self.betting_frame, text="Deal Hand", font=("Arial", 9, "bold"),
+            width=10, background="#ffd700", foreground="#000000",
+            activebackground="#ffea00", activeforeground="#000000",
+            relief="raised", borderwidth=2, cursor="hand2",
+            command=self._deal_hand_with_bet
+        )
+        self.deal_bet_button.pack(side="left", padx=5)
+
+        self.rebuy_button = tkinter.Button(
+            self.betting_frame, text="Rebuy ($1,000)", font=("Arial", 9, "bold"),
+            width=13, background="#ff9800", foreground="#000000",
+            activebackground="#ffa726", relief="raised", borderwidth=2,
+            cursor="hand2", command=self._rebuy
+        )
+        self.rebuy_button.pack(side="left", padx=5)
+
+        # Insurance Prompt Bar (visible when dealer shows an Ace in Chips Mode)
+        self.insurance_frame = tkinter.Frame(
+            self.root, background=PANEL_BACKGROUND_COLOR, padx=10, pady=5,
+            relief="ridge", borderwidth=2
+        )
+        self.insurance_frame.grid(row=3, column=0, columnspan=3, pady=(2, 6))
+        self.insurance_frame.grid_remove()  # Hidden by default
+
+        self.insurance_label = tkinter.Label(
+            self.insurance_frame, text="Dealer shows an Ace! Insurance pays 2:1 against Dealer Blackjack.",
+            font=("Arial", 10, "bold"), background=PANEL_BACKGROUND_COLOR, fg="#ffeb3b"
+        )
+        self.insurance_label.pack(side="left", padx=(0, 10))
+
+        self.take_insurance_button = tkinter.Button(
+            self.insurance_frame, text="Take Insurance ($25)", font=("Arial", 9, "bold"),
+            background="#ff9800", foreground="#000000", activebackground="#ffa726",
+            relief="raised", borderwidth=2, cursor="hand2",
+            command=self._on_take_insurance
+        )
+        self.take_insurance_button.pack(side="left", padx=5)
+
+        self.decline_insurance_button = tkinter.Button(
+            self.insurance_frame, text="Decline", font=("Arial", 9, "bold"),
+            width=8, command=self._on_decline_insurance
+        )
+        self.decline_insurance_button.pack(side="left", padx=5)
+
         # Bottom Button Bar
         button_frame = tkinter.Frame(self.root, background=TABLE_BACKGROUND_COLOR)
-        button_frame.grid(row=2, column=0, columnspan=3, sticky="ew", pady=15)
+        button_frame.grid(row=4, column=0, columnspan=3, sticky="ew", pady=(4, 10))
 
         self.hit_button = tkinter.Button(
             button_frame, text="Hit", width=10, font=("Arial", 10, "bold"),
@@ -358,7 +522,7 @@ class BlackjackApp:
     # ------------------------------------------------------------------------
 
     def new_game(self):
-        """Starts a fresh round of Blackjack with a newly shuffled deck."""
+        """Starts a fresh round of Blackjack or enters betting phase depending on Chips Mode."""
         # 0. Cancel any active dealer timer from a prior round
         if self._dealer_timer_id:
             try:
@@ -382,13 +546,58 @@ class BlackjackApp:
         for child in self.player_cards_frame.winfo_children():
             child.destroy()
 
-        # 3. Reset result text and control buttons
+        # 3. Reset scores and status
+        self.dealer_score_var.set("0")
+        self.player_score_var.set("0")
+        self.result_var.set("")
+        self.insurance_bet = 0
+        self.is_insurance_phase = False
+        if hasattr(self, "insurance_frame"):
+            self.insurance_frame.grid_remove()
+
+        if self.chips_mode_var.get():
+            self._enter_betting_phase()
+        else:
+            self.is_betting_phase = False
+            self._start_round_deal()
+
+    def _enter_betting_phase(self):
+        """Transitions game state into the betting phase where player places chips."""
+        self.is_betting_phase = True
+        self._set_action_buttons_state("disabled")
+        self.new_game_button.configure(state="disabled")
+
+        bankroll = self.bankroll_var.get()
+        if bankroll < MINIMUM_BET and self.current_bet_var.get() < MINIMUM_BET:
+            self.current_bet_var.set(0)
+            self.result_var.set("Bankroll empty! Click Rebuy ($1,000) to keep playing.")
+        else:
+            # Default staged bet: preserve previous bet if affordable, or MINIMUM_BET
+            if self.current_bet_var.get() == 0 or self.current_bet_var.get() > bankroll:
+                if self.hand_bets and 0 < self.hand_bets[0] <= bankroll:
+                    self.current_bet_var.set(self.hand_bets[0])
+                elif bankroll >= MINIMUM_BET:
+                    self.current_bet_var.set(MINIMUM_BET)
+                else:
+                    self.current_bet_var.set(0)
+            self.result_var.set("Place your bet and click 'Deal Hand'")
+
+        self._update_bankroll_display()
+        self._update_betting_controls()
+
+    def _start_round_deal(self):
+        """Authentic initial deal: 2 cards to player, 2 to dealer (1 face-down hole card)."""
         self.result_var.set("")
         self._set_action_buttons_state("normal")
         self.split_button.configure(state="disabled")
         self.new_game_button.configure(state="normal")
+        self.insurance_bet = 0
+        if hasattr(self, "insurance_frame"):
+            self.insurance_frame.grid_remove()
 
-        # 4. Authentic initial deal:
+        if self.chips_mode_var.get():
+            self._update_betting_controls()
+
         # Player gets 2 cards face-up
         self._deal_card_to_player(hand_index=0)
         self._deal_card_to_player(hand_index=0)
@@ -397,8 +606,219 @@ class BlackjackApp:
         self._deal_card_to_dealer(is_hole_card=False)
         self._deal_card_to_dealer(is_hole_card=True)
 
-        # 5. Check for Natural Blackjack and Split availability
-        self._check_initial_blackjack()
+        # Check for Insurance (Dealer upcard is Ace in Chips Mode)
+        dealer_upcard = self.dealer_hand[0]
+        is_ace = getattr(dealer_upcard, "rank", "") == "ace" or (isinstance(dealer_upcard, (tuple, list)) and dealer_upcard[0] == 1)
+        if self.chips_mode_var.get() and is_ace:
+            self._prompt_insurance()
+        else:
+            # Check for Natural Blackjack and Split availability
+            self._check_initial_blackjack()
+
+    def _on_toggle_chips_mode(self):
+        """Handles switching between Casual Mode (Chips OFF) and Casino Mode (Chips ON)."""
+        if self.chips_mode_var.get():
+            # Chips Mode activated
+            self.bankroll_label.grid()
+            self.betting_frame.grid()
+            self._update_bankroll_display()
+            # If idle / round ended, start betting phase
+            if not self.dealer_hand or self.new_game_button["state"] == "normal":
+                self.new_game()
+            else:
+                self._update_betting_controls()
+        else:
+            # Chips Mode deactivated (Casual Mode)
+            self.bankroll_label.grid_remove()
+            self.betting_frame.grid_remove()
+            if hasattr(self, "insurance_frame"):
+                self.insurance_frame.grid_remove()
+            if self.is_insurance_phase:
+                self.is_insurance_phase = False
+                if self.insurance_bet > 0:
+                    self.bankroll_var.set(self.bankroll_var.get() + self.insurance_bet)
+                    self.insurance_bet = 0
+                self._check_initial_blackjack()
+            elif self.is_betting_phase:
+                self.is_betting_phase = False
+                self._start_round_deal()
+
+    def _add_chip_bet(self, amount: int):
+        """Adds chip amount to the staged bet, bounded by available bankroll."""
+        if not self.is_betting_phase:
+            return
+        current_bet = self.current_bet_var.get()
+        bankroll = self.bankroll_var.get()
+        if current_bet + amount <= bankroll:
+            self.current_bet_var.set(current_bet + amount)
+            self._update_bankroll_display()
+            self._update_betting_controls()
+
+    def _clear_bet(self):
+        """Resets the staged bet back to 0."""
+        if not self.is_betting_phase:
+            return
+        self.current_bet_var.set(0)
+        self._update_bankroll_display()
+        self._update_betting_controls()
+
+    def _all_in(self):
+        """Sets the staged bet to the player's full remaining bankroll."""
+        if not self.is_betting_phase:
+            return
+        bankroll = self.bankroll_var.get()
+        if bankroll >= MINIMUM_BET:
+            self.current_bet_var.set(bankroll)
+            self._update_bankroll_display()
+            self._update_betting_controls()
+
+    def _deal_hand_with_bet(self):
+        """Commits the staged bet, deducts it from bankroll, and begins the deal."""
+        if not self.is_betting_phase:
+            return
+        bet = self.current_bet_var.get()
+        bankroll = self.bankroll_var.get()
+        if bet < MINIMUM_BET or bet > bankroll:
+            return
+        self.bankroll_var.set(bankroll - bet)
+        self.hand_bets = [bet]
+        self.is_betting_phase = False
+        self._update_bankroll_display()
+        self._update_betting_controls()
+        self._start_round_deal()
+
+    def _rebuy(self):
+        """Replenishes player bankroll if it drops below the minimum bet."""
+        if self.bankroll_var.get() < MINIMUM_BET and self.current_bet_var.get() < MINIMUM_BET:
+            self.bankroll_var.set(STARTING_BANKROLL)
+            self.current_bet_var.set(0)
+            self.result_var.set("Bankroll replenished to $1,000! Place your bet.")
+            self._update_bankroll_display()
+            self._update_betting_controls()
+
+    def _update_bankroll_display(self):
+        """Updates the bankroll & bet label text."""
+        if not hasattr(self, "bankroll_label"):
+            return
+        bankroll = self.bankroll_var.get()
+        bet = self.current_bet_var.get() if self.is_betting_phase else sum(self.hand_bets)
+        self.bankroll_label.configure(
+            text=f"Bankroll: ${bankroll:,}  |  Bet: ${bet:,}"
+        )
+
+    def _update_betting_controls(self):
+        """Updates states of chip buttons, clear bet, deal, and rebuy buttons."""
+        if not self.chips_mode_var.get() or not hasattr(self, "chip_buttons") or not self.chip_buttons:
+            return
+
+        bankroll = self.bankroll_var.get()
+        staged_bet = self.current_bet_var.get()
+        remaining = bankroll - staged_bet
+
+        if self.is_betting_phase:
+            for btn, (denom, _, _) in zip(self.chip_buttons, CHIP_DENOMINATIONS):
+                btn.configure(state="normal" if remaining >= denom else "disabled")
+            if hasattr(self, "all_in_button"):
+                self.all_in_button.configure(state="normal" if bankroll >= MINIMUM_BET and staged_bet < bankroll else "disabled")
+            self.clear_bet_button.configure(state="normal" if staged_bet > 0 else "disabled")
+            self.deal_bet_button.configure(state="normal" if staged_bet >= MINIMUM_BET else "disabled")
+            if bankroll < MINIMUM_BET and staged_bet < MINIMUM_BET:
+                self.rebuy_button.configure(state="normal")
+            else:
+                self.rebuy_button.configure(state="disabled")
+        else:
+            # During active card play or dealer turn, betting controls are disabled
+            for btn in self.chip_buttons:
+                btn.configure(state="disabled")
+            if hasattr(self, "all_in_button"):
+                self.all_in_button.configure(state="disabled")
+            self.clear_bet_button.configure(state="disabled")
+            self.deal_bet_button.configure(state="disabled")
+            self.rebuy_button.configure(state="disabled")
+
+    def _prompt_insurance(self):
+        """Offers the insurance side bet when the dealer shows an Ace in Chips Mode."""
+        self.is_insurance_phase = True
+        self._set_action_buttons_state("disabled")
+        self.new_game_button.configure(state="disabled")
+
+        main_bet = self.hand_bets[0] if self.hand_bets else 0
+        insurance_cost = main_bet // 2
+        bankroll = self.bankroll_var.get()
+        can_afford = (bankroll >= insurance_cost and insurance_cost >= 1)
+
+        self.take_insurance_button.configure(
+            text=f"Take Insurance (${insurance_cost})",
+            state="normal" if can_afford else "disabled"
+        )
+        self.result_var.set("Dealer shows an Ace. Take insurance?")
+        self.insurance_frame.grid()
+
+    def _on_take_insurance(self):
+        """Handles player taking insurance."""
+        if not self.is_insurance_phase:
+            return
+        main_bet = self.hand_bets[0] if self.hand_bets else 0
+        insurance_cost = main_bet // 2
+        if self.bankroll_var.get() < insurance_cost or insurance_cost < 1:
+            return
+
+        self.bankroll_var.set(self.bankroll_var.get() - insurance_cost)
+        self.insurance_bet = insurance_cost
+        self._update_bankroll_display()
+        self._resolve_insurance_decision()
+
+    def _on_decline_insurance(self):
+        """Handles player declining insurance."""
+        if not self.is_insurance_phase:
+            return
+        self.insurance_bet = 0
+        self._resolve_insurance_decision()
+
+    def _resolve_insurance_decision(self):
+        """Concludes insurance phase, peeks at dealer hole card, and resolves or resumes play."""
+        self.is_insurance_phase = False
+        self.insurance_frame.grid_remove()
+
+        dealer_score = score_hand(self.dealer_hand)
+        dealer_has_bj = (len(self.dealer_hand) == 2 and dealer_score == BLACKJACK_TARGET)
+
+        if dealer_has_bj:
+            # Dealer has Natural Blackjack
+            if self.insurance_bet > 0:
+                payout = calculate_insurance_payout(True, self.insurance_bet)
+                self.bankroll_var.set(self.bankroll_var.get() + payout)
+                self._update_bankroll_display()
+            self._reveal_dealer_hole_card()
+            self._conclude_round()
+        else:
+            # Dealer does not have Blackjack
+            if self.insurance_bet > 0:
+                lost_amount = self.insurance_bet
+                self.insurance_bet = 0  # Insurance lost
+                self.result_var.set(f"Dealer has no Blackjack. Insurance lost (-${lost_amount}). Your turn!")
+            else:
+                self.result_var.set("")
+
+            # Check if player has Natural Blackjack
+            player_score = score_hand(self.player_hands[0])
+            if player_score == BLACKJACK_TARGET:
+                self._reveal_dealer_hole_card()
+                self._conclude_round()
+            else:
+                # Normal player turn
+                self._set_action_buttons_state("normal")
+                self.new_game_button.configure(state="normal")
+                if can_split(self.player_hands[0]):
+                    if self.chips_mode_var.get() and self.hand_bets:
+                        if self.bankroll_var.get() >= self.hand_bets[0]:
+                            self.split_button.configure(state="normal")
+                        else:
+                            self.split_button.configure(state="disabled")
+                    else:
+                        self.split_button.configure(state="normal")
+                else:
+                    self.split_button.configure(state="disabled")
 
     def _draw_card(self):
         """Pops the next card from the deck, reshuffling if necessary."""
@@ -506,7 +926,7 @@ class BlackjackApp:
         """
         Inspects hands immediately after initial deal for Natural Blackjacks (21 on 2 cards).
         Resolves immediately if either player or dealer has 21.
-        Otherwise, enables the Split button if the player was dealt a pair.
+        Otherwise, enables the Split button if the player was dealt a pair (and has matching bet in Chips Mode).
         """
         player_score = score_hand(self.player_hands[0])
         dealer_score = score_hand(self.dealer_hand)
@@ -516,7 +936,14 @@ class BlackjackApp:
             self._conclude_round()
         else:
             if can_split(self.player_hands[0]):
-                self.split_button.configure(state="normal")
+                if self.chips_mode_var.get() and self.hand_bets:
+                    # Require bankroll to match Hand 1 bet
+                    if self.bankroll_var.get() >= self.hand_bets[0]:
+                        self.split_button.configure(state="normal")
+                    else:
+                        self.split_button.configure(state="disabled")
+                else:
+                    self.split_button.configure(state="normal")
             else:
                 self.split_button.configure(state="disabled")
 
@@ -530,9 +957,18 @@ class BlackjackApp:
         """
         Handles the 'Split' action. Separates the initial two matching cards
         into two independent hands and deals one card to each.
+        In Chips Mode, requires and deducts a matching wager for the second hand.
         """
         if not can_split(self.player_hands[0]):
             return
+
+        if self.chips_mode_var.get():
+            hand1_bet = self.hand_bets[0] if self.hand_bets else 0
+            if self.bankroll_var.get() < hand1_bet:
+                return  # Insufficient funds to match bet
+            self.bankroll_var.set(self.bankroll_var.get() - hand1_bet)
+            self.hand_bets.append(hand1_bet)
+            self._update_bankroll_display()
 
         # 1. Ensure action buttons are active and disable split button
         self._set_action_buttons_state("normal")
@@ -643,18 +1079,54 @@ class BlackjackApp:
             self._conclude_round()
 
     def _conclude_round(self):
-        """Determines the winner for all player hands, updates win counters, and enables 'New Game'."""
+        """Determines the winner for all player hands, updates win counters, resolves payouts, and enables 'New Game'."""
         if len(self.player_hands) == 1:
             outcome, message = determine_outcome(self.player_hands[0], self.dealer_hand)
-            self.result_var.set(message)
             self._record_outcome(outcome)
+            if self.chips_mode_var.get() and self.hand_bets:
+                bet = self.hand_bets[0]
+                payout = calculate_payout(outcome, bet)
+                self.bankroll_var.set(self.bankroll_var.get() + payout)
+                profit = payout - bet
+                if profit > 0:
+                    net_str = f" (+${profit})"
+                elif profit < 0:
+                    net_str = f" (-${abs(profit)})"
+                else:
+                    net_str = " (Push)"
+
+                ins_str = ""
+                dealer_has_bj = (len(self.dealer_hand) == 2 and score_hand(self.dealer_hand) == BLACKJACK_TARGET)
+                if self.insurance_bet > 0 and dealer_has_bj:
+                    ins_profit = self.insurance_bet * 2
+                    ins_str = f" | Insurance won (+${ins_profit})"
+                    self.insurance_bet = 0
+                self.result_var.set(f"{message}{net_str}{ins_str}")
+            else:
+                self.result_var.set(message)
         else:
             # Evaluate each split hand independently
             outcome1, msg1 = determine_outcome(self.player_hands[0], self.dealer_hand)
             outcome2, msg2 = determine_outcome(self.player_hands[1], self.dealer_hand)
             self._record_outcome(outcome1)
             self._record_outcome(outcome2)
-            self.result_var.set(f"Hand 1: {msg1} | Hand 2: {msg2}")
+            if self.chips_mode_var.get() and self.hand_bets:
+                bet1 = self.hand_bets[0] if len(self.hand_bets) > 0 else 0
+                bet2 = self.hand_bets[1] if len(self.hand_bets) > 1 else 0
+                payout1 = calculate_payout(outcome1, bet1)
+                payout2 = calculate_payout(outcome2, bet2)
+                self.bankroll_var.set(self.bankroll_var.get() + payout1 + payout2)
+                profit1 = payout1 - bet1
+                profit2 = payout2 - bet2
+                p1_str = f"+${profit1}" if profit1 > 0 else (f"-${abs(profit1)}" if profit1 < 0 else "Push")
+                p2_str = f"+${profit2}" if profit2 > 0 else (f"-${abs(profit2)}" if profit2 < 0 else "Push")
+                self.result_var.set(f"Hand 1: {msg1} ({p1_str}) | Hand 2: {msg2} ({p2_str})")
+            else:
+                self.result_var.set(f"Hand 1: {msg1} | Hand 2: {msg2}")
+
+        if self.chips_mode_var.get():
+            self._update_bankroll_display()
+            self._update_betting_controls()
 
         # Disable Hit/Stand/Split, enable New Game
         self._set_action_buttons_state("disabled")
