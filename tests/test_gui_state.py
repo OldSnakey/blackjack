@@ -185,6 +185,54 @@ class TestGuiStateInvariants(unittest.TestCase):
         self.app._on_close()
         self.assertIsNone(self.app._dealer_timer_id)
 
+    def test_keyboard_deal_or_hit_in_active_turn(self):
+        """Space / Enter triggers on_hit when Hit button is normal."""
+        hit_invoked = []
+        orig_on_hit = self.app.on_hit
+        self.app.on_hit = lambda: hit_invoked.append(True)
+        try:
+            self.app.hit_button.configure(state="normal")
+            ret = self.app._on_key_deal_or_hit()
+            self.assertEqual(ret, "break")
+            self.assertEqual(len(hit_invoked), 1)
+        finally:
+            self.app.on_hit = orig_on_hit
+
+    def test_keyboard_stand_shortcut(self):
+        """'S' key triggers on_stand only when Stand button is enabled."""
+        stand_invoked = []
+        orig_on_stand = self.app.on_stand
+        self.app.on_stand = lambda: stand_invoked.append(True)
+        try:
+            self.app.stand_button.configure(state="normal")
+            self.app._on_key_action(self.app.on_stand, self.app.stand_button)
+            self.assertEqual(len(stand_invoked), 1)
+
+            # Guarded when disabled
+            self.app.stand_button.configure(state="disabled")
+            self.app._on_key_action(self.app.on_stand, self.app.stand_button)
+            self.assertEqual(len(stand_invoked), 1)
+        finally:
+            self.app.on_stand = orig_on_stand
+
+    def test_keyboard_chips_mode_shortcuts(self):
+        """Key '3' adds $100, 'A' sets All In, 'C' clears bet in betting phase."""
+        self.app.chips_mode_var.set(True)
+        self.app._on_toggle_chips_mode()
+        self.app.current_bet_var.set(0)
+
+        # Key '3' adds $100
+        self.app._on_key_chip(100)
+        self.assertEqual(self.app.current_bet_var.get(), 100)
+
+        # Key 'C' clears bet
+        self.app._on_key_action(self.app._clear_bet, self.app.clear_bet_button)
+        self.assertEqual(self.app.current_bet_var.get(), 0)
+
+        # Key 'A' goes All In
+        self.app._on_key_action(self.app._all_in, self.app.all_in_button)
+        self.assertEqual(self.app.current_bet_var.get(), 1000)
+
 
 if __name__ == "__main__":
     unittest.main()

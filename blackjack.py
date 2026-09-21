@@ -1045,7 +1045,7 @@ class BlackjackApp:
                 self.betting_frame, text=f"${amount}", font=("Arial", 9, "bold"),
                 width=5, background=bg_color, foreground=fg_color,
                 activebackground=bg_color, activeforeground=fg_color,
-                relief="raised", borderwidth=2, cursor="hand2",
+                relief="raised", borderwidth=2, cursor="hand2", takefocus=False,
                 command=lambda a=amount: self._add_chip_bet(a)
             )
             btn.pack(side="left", padx=3)
@@ -1055,14 +1055,14 @@ class BlackjackApp:
             self.betting_frame, text="All In", font=("Arial", 9, "bold"),
             width=7, background="#e65100", foreground="#ffffff",
             activebackground="#f57c00", activeforeground="#ffffff",
-            relief="raised", borderwidth=2, cursor="hand2",
+            relief="raised", borderwidth=2, cursor="hand2", takefocus=False,
             command=self._all_in
         )
         self.all_in_button.pack(side="left", padx=4)
 
         self.clear_bet_button = tkinter.Button(
             self.betting_frame, text="Clear Bet", font=("Arial", 9, "bold"),
-            width=8, command=self._clear_bet
+            width=8, takefocus=False, command=self._clear_bet
         )
         self.clear_bet_button.pack(side="left", padx=5)
 
@@ -1070,7 +1070,7 @@ class BlackjackApp:
             self.betting_frame, text="Deal Hand", font=("Arial", 9, "bold"),
             width=10, background="#ffd700", foreground="#000000",
             activebackground="#ffea00", activeforeground="#000000",
-            relief="raised", borderwidth=2, cursor="hand2",
+            relief="raised", borderwidth=2, cursor="hand2", takefocus=False,
             command=self._deal_hand_with_bet
         )
         self.deal_bet_button.pack(side="left", padx=5)
@@ -1079,7 +1079,7 @@ class BlackjackApp:
             self.betting_frame, text="Rebuy ($1,000)", font=("Arial", 9, "bold"),
             width=13, background="#ff9800", foreground="#000000",
             activebackground="#ffa726", relief="raised", borderwidth=2,
-            cursor="hand2", command=self._rebuy
+            cursor="hand2", takefocus=False, command=self._rebuy
         )
         self.rebuy_button.pack(side="left", padx=5)
 
@@ -1100,14 +1100,14 @@ class BlackjackApp:
         self.take_insurance_button = tkinter.Button(
             self.insurance_frame, text="Take Insurance ($25)", font=("Arial", 9, "bold"),
             background="#ff9800", foreground="#000000", activebackground="#ffa726",
-            relief="raised", borderwidth=2, cursor="hand2",
+            relief="raised", borderwidth=2, cursor="hand2", takefocus=False,
             command=self._on_take_insurance
         )
         self.take_insurance_button.pack(side="left", padx=5)
 
         self.decline_insurance_button = tkinter.Button(
             self.insurance_frame, text="Decline", font=("Arial", 9, "bold"),
-            width=8, command=self._on_decline_insurance
+            width=8, takefocus=False, command=self._on_decline_insurance
         )
         self.decline_insurance_button.pack(side="left", padx=5)
 
@@ -1117,48 +1117,136 @@ class BlackjackApp:
 
         self.hit_button = tkinter.Button(
             button_frame, text="Hit", width=8, font=("Arial", 10, "bold"),
-            command=self.on_hit
+            takefocus=False, command=self.on_hit
         )
         self.hit_button.grid(row=0, column=0, padx=6)
 
         self.stand_button = tkinter.Button(
             button_frame, text="Stand", width=8, font=("Arial", 10, "bold"),
-            command=self.on_stand
+            takefocus=False, command=self.on_stand
         )
         self.stand_button.grid(row=0, column=1, padx=6)
 
         self.double_button = tkinter.Button(
             button_frame, text="Double", width=8, font=("Arial", 10, "bold"),
-            command=self.on_double_down, state="disabled"
+            takefocus=False, command=self.on_double_down, state="disabled"
         )
         self.double_button.grid(row=0, column=2, padx=6)
 
         self.split_button = tkinter.Button(
             button_frame, text="Split", width=8, font=("Arial", 10, "bold"),
-            command=self.on_split, state="disabled"
+            takefocus=False, command=self.on_split, state="disabled"
         )
         self.split_button.grid(row=0, column=3, padx=6)
 
         self.surrender_button = tkinter.Button(
             button_frame, text="Surrender", width=9, font=("Arial", 10, "bold"),
-            command=self.on_surrender, state="disabled"
+            takefocus=False, command=self.on_surrender, state="disabled"
         )
         self.surrender_button.grid(row=0, column=4, padx=6)
 
         self.new_game_button = tkinter.Button(
             button_frame, text="New Game", width=9, font=("Arial", 10, "bold"),
-            command=self.new_game
+            takefocus=False, command=self.new_game
         )
         self.new_game_button.grid(row=0, column=5, padx=6)
 
-        # Keyboard shortcuts for sound toggle (M key)
-        self.root.bind("<m>", lambda event: self._on_toggle_sound())
-        self.root.bind("<M>", lambda event: self._on_toggle_sound())
+        # Keyboard shortcuts initialization
+        self._setup_keyboard_shortcuts()
+
+    def _setup_keyboard_shortcuts(self):
+        """Binds full keyboard shortcut support across the window for gameplay accessibility."""
+        # Deal / Hit / New Game shortcuts (Enter and Space)
+        for key in ("<Return>", "<KP_Enter>", "<space>"):
+            self.root.bind(key, self._on_key_deal_or_hit)
+            self.root.bind_class("Button", key, self._on_key_deal_or_hit)
+
+        # Action shortcuts (case-insensitive)
+        for key in ("<s>", "<S>"):
+            self.root.bind(key, lambda e: self._on_key_action(self.on_stand, self.stand_button))
+        for key in ("<d>", "<D>"):
+            self.root.bind(key, lambda e: self._on_key_action(self.on_double_down, self.double_button))
+        for key in ("<p>", "<P>"):
+            self.root.bind(key, lambda e: self._on_key_action(self.on_split, self.split_button))
+        for key in ("<r>", "<R>"):
+            self.root.bind(key, lambda e: self._on_key_action(self.on_surrender, self.surrender_button))
+        for key in ("<c>", "<C>"):
+            self.root.bind(key, lambda e: self._on_key_action(self._clear_bet, getattr(self, "clear_bet_button", None)))
+        for key in ("<a>", "<A>"):
+            self.root.bind(key, lambda e: self._on_key_action(self._all_in, getattr(self, "all_in_button", None)))
+        for key in ("<m>", "<M>"):
+            self.root.bind(key, lambda e: self._on_toggle_sound())
+
+        # Insurance shortcuts (Y = Take, N / Escape = Decline)
+        for key in ("<y>", "<Y>"):
+            self.root.bind(key, lambda e: self._on_key_action(self._on_take_insurance, getattr(self, "take_insurance_button", None)))
+        for key in ("<n>", "<N>", "<Escape>"):
+            self.root.bind(key, lambda e: self._on_key_action(self._on_decline_insurance, getattr(self, "decline_insurance_button", None)))
+
+        # Chip denomination shortcuts: 1=$5, 2=$25, 3=$100, 4=$500
+        chip_keys = {
+            "<Key-1>": 5, "<KP_1>": 5,
+            "<Key-2>": 25, "<KP_2>": 25,
+            "<Key-3>": 100, "<KP_3>": 100,
+            "<Key-4>": 500, "<KP_4>": 500,
+        }
+        for k, amt in chip_keys.items():
+            self.root.bind(k, lambda e, a=amt: self._on_key_chip(a))
+
+    def _on_key_action(self, action_fn, button=None):
+        """Invokes an action function if the corresponding button is currently enabled."""
+        if button is not None:
+            try:
+                if str(button.cget("state")) != "normal":
+                    return "break"
+            except Exception:
+                pass
+        action_fn()
+        return "break"
+
+    def _on_key_chip(self, amount: int):
+        """Adds chip bet if currently in the betting phase."""
+        if getattr(self, "is_betting_phase", False) and self.chips_mode_var.get():
+            self._add_chip_bet(amount)
+        return "break"
+
+    def _on_key_deal_or_hit(self, event=None):
+        """
+        Handles Enter and Space key presses dynamically based on game state:
+        1. If insurance is offered -> takes insurance if enabled.
+        2. If betting phase in Chips Mode -> deals hand if bet is valid.
+        3. If player's turn -> hits if Hit is enabled.
+        4. If round is over -> deals a new game.
+        """
+        # 1. Insurance phase
+        if getattr(self, "is_insurance_phase", False):
+            if hasattr(self, "take_insurance_button") and str(self.take_insurance_button.cget("state")) == "normal":
+                self._on_take_insurance()
+                return "break"
+
+        # 2. Betting phase (Chips Mode)
+        if getattr(self, "is_betting_phase", False) and self.chips_mode_var.get():
+            if hasattr(self, "deal_bet_button") and str(self.deal_bet_button.cget("state")) == "normal":
+                self._deal_hand_with_bet()
+                return "break"
+
+        # 3. Active card turn: Hit
+        if hasattr(self, "hit_button") and str(self.hit_button.cget("state")) == "normal":
+            self.on_hit()
+            return "break"
+
+        # 4. Round completed: New Game
+        if hasattr(self, "new_game_button") and str(self.new_game_button.cget("state")) == "normal":
+            self.new_game()
+            return "break"
+
+        return "break"
 
     def _on_toggle_sound(self):
         """Toggles sound playback on or off and updates the UI button text."""
         is_enabled = self.sound_manager.toggle_mute()
         self.sound_status_var.set("🔊 Sound: ON" if is_enabled else "🔇 Sound: OFF")
+        return "break"
 
     # ------------------------------------------------------------------------
     # Game Flow & Actions

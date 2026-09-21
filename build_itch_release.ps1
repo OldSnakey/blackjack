@@ -34,8 +34,10 @@ Write-Host "Test suite passed cleanly." -ForegroundColor Green
 
 # 3. Clean previous build artifacts
 Write-Host "`n[3/5] Cleaning previous build artifacts..." -ForegroundColor Yellow
-if (Test-Path "build") { Remove-Item -Recurse -Force "build" }
-if (Test-Path "dist")  { Remove-Item -Recurse -Force "dist" }
+Get-Process -Name "Blackjack" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Milliseconds 300
+if (Test-Path "build") { Remove-Item -Recurse -Force "build" -ErrorAction SilentlyContinue }
+if (Test-Path "dist")  { Remove-Item -Recurse -Force "dist" -ErrorAction SilentlyContinue }
 
 # 4. Compile standalone executable with PyInstaller
 Write-Host "`n[4/5] Packaging standalone executable via PyInstaller..." -ForegroundColor Yellow
