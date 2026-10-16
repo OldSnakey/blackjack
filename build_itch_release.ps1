@@ -7,12 +7,30 @@
     clean, ready-to-upload ZIP archive for itch.io.
 #>
 
+param(
+    [string]$Version = ""
+)
+
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $ScriptDir
 
+# Resolve release version dynamically if omitted
+if (-not $Version) {
+    try {
+        $output = (python -c "import os; os.environ['PYGAME_HIDE_SUPPORT_PROMPT']='1'; import blackjack; print(getattr(blackjack, '__version__', '1.0.0'))")
+        if ($output -is [array]) {
+            $Version = ($output | Where-Object { $_ -match '\S' } | Select-Object -Last 1).Trim()
+        } else {
+            $Version = $output.Trim()
+        }
+    } catch {
+        $Version = "1.0.0"
+    }
+}
+
 Write-Host "======================================================================" -ForegroundColor Cyan
-Write-Host "            BLACKJACK ITCH.IO RELEASE BUILD PIPELINE                  " -ForegroundColor Cyan
+Write-Host "            BLACKJACK ITCH.IO RELEASE BUILD PIPELINE (v$Version)      " -ForegroundColor Cyan
 Write-Host "======================================================================" -ForegroundColor Cyan
 
 # 1. Verify dependencies
@@ -60,7 +78,7 @@ if (-not (Test-Path $releaseFolder)) {
 Copy-Item -Path "README_PLAYERS.txt" -Destination $releaseFolder -Force
 
 # Create ZIP archive
-$zipOutput = Join-Path $ScriptDir "dist\Blackjack-Windows-v1.0.0.zip"
+$zipOutput = Join-Path $ScriptDir "dist\Blackjack-Windows-v$Version.zip"
 if (Test-Path $zipOutput) { Remove-Item -Force $zipOutput }
 
 # Zip the release folder

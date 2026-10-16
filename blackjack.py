@@ -12,10 +12,14 @@ This implementation demonstrates:
 
 from __future__ import annotations
 
+import os
 import random
 import sys
 import tkinter
 from pathlib import Path
+
+# Silence pygame greeting message on import to ensure clean stdout in CLI pipelines
+os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
 
 # Optional pygame.mixer support for authentic tactile casino audio
 try:
@@ -27,8 +31,10 @@ except (ImportError, Exception):
     PYGAME_AVAILABLE = False
 
 # ============================================================================
-# Named Constants & Configuration
+# Application Metadata & Named Constants
 # ============================================================================
+__version__ = "1.0.0"
+
 # Standard Blackjack target and casino dealer rules
 BLACKJACK_TARGET = 21
 DEALER_STAND_THRESHOLD = 17  # Standard casino rule: Dealer must stand on 17 or higher
@@ -868,7 +874,7 @@ class BlackjackApp:
 
     def __init__(self, root: tkinter.Tk, sound_enabled: bool = True):
         self.root = root
-        self.root.title("Blackjack")
+        self.root.title(f"Blackjack v{__version__}")
         self.root.geometry(f"{DEFAULT_WINDOW_WIDTH}x{DEFAULT_WINDOW_HEIGHT}")
         self.root.minsize(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)
         self.root.configure(background=TABLE_BACKGROUND_COLOR, padx=10, pady=10)
