@@ -3,9 +3,16 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# PyCharm / IntelliJ
+# PyCharm / IntelliJ / Antigravity
 .idea/
+.agents/
+.cursor/
+.claude/
 *.iml
+AGENTS.md
+
+# Development Roadmap
+development_roadmap/
 
 # VS Code
 .vscode/
@@ -36,3 +43,7 @@ dist/
 
 # Asset Source Packs (curated icons are copied to assets/overlay_icons/)
 Keyboard & Mouse/
+
+# Save Data & Game Progress
+blackjack_save.json
+*.tmp

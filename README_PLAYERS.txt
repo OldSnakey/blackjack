@@ -27,7 +27,10 @@ MOUSE CONTROLS:
 - Click "Hit", "Stand", "Double", "Split", or "Surrender" as desired.
 - Click "All In" to wager your entire bankroll in Casino Mode.
 - Click "[M] Sound" to toggle audio ON or OFF.
+- Click "[🔍 2x]" / "[🔍 1x]" to toggle 1x / 2x interface scaling.
+- Click "[⛶ Full]" / "[🗗 Window]" to toggle fullscreen display mode.
 - Click "[?] Help" in the top bar to open the visual keyboard shortcuts HUD.
+- Check "[ ] Chips Mode" in the bottom-right action bar to toggle Casino / Casual play.
 
 KEYBOARD SHORTCUTS (Hands-Free Play):
 - [Enter] or [Space] : Context-sensitive action (Deal Hand / Hit / Next Game)
@@ -41,8 +44,12 @@ KEYBOARD SHORTCUTS (Hands-Free Play):
 - [C]                : Clear Current Bet
 - [Y] / [N, Esc]     : Take / Decline Insurance on Dealer Ace
 - [M]                : Mute / Unmute Audio Toggle
+- [V]                : Toggle Dealer Portrait View ON / OFF
+- [X]                : Miracle Draw (Banish and redraw active card in Hell's Table)
+- [F10]              : Toggle 1x / 2x Interface Scaling
+- [F11]              : Toggle Fullscreen Mode
 - [?] or [F1]        : Toggle Keyboard Shortcuts Informational Overlay
-- [Esc]              : Close Shortcuts Overlay / Decline Insurance
+- [Esc]              : Close Shortcuts Overlay / Decline Insurance / Exit Fullscreen
 
 ------------------------------------------------------------------------------
 GAME MODES
@@ -55,6 +62,14 @@ GAME MODES
 - CASUAL MODE (Chips OFF):
   Zero-stress play with no bankroll overhead and instant deals. Perfect for 
   quick practice.
+
+- HAUNTED HALLOWEEN & HELL'S TABLE (Slow-Burn Mode):
+  Keep playing through standard hands to experience a subtle reality warp.
+  Survive the ominous Hand 13 and the extinguishing of the 5 candles to face
+  The Pit Fiend at Hell's Table! Draft Balatro-style Roguelike Angelic Blessings
+  (Seraph's Grace, Cherub's Shield, Eye of Providence, Miracle Draw, and more)
+  in a 2.5D Tug-of-War struggle for your mortal soul. Banish the demon to unlock
+  permanent Cursed Stakes, the Exorcist title, and +$6,666 bankroll!
 
 ------------------------------------------------------------------------------
 TROUBLESHOOTING

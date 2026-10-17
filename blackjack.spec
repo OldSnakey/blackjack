@@ -15,6 +15,8 @@ datas = [
     (str(base_dir / "cards"), "cards"),
     (str(base_dir / "audio"), "audio"),
     (str(base_dir / "assets"), "assets"),
+    (str(base_dir / "assets" / "haunted"), "assets/haunted"),
+    (str(base_dir / "audio" / "haunted"), "audio/haunted"),
 ]
 
 hiddenimports = [
@@ -23,6 +25,13 @@ hiddenimports = [
     "pygame._sdl2",
     "pygame._sdl2.audio",
     "tkinter",
+    "haunted_manager",
+    "save_manager",
+    "dealer_actor",
+    "dealer_wardrobe_dialog",
+    "PIL",
+    "PIL.Image",
+    "PIL.ImageTk",
 ]
 
 a = Analysis(

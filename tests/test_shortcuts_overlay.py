@@ -48,6 +48,8 @@ class TestKeyboardOverlayAssets(unittest.TestCase):
         "keyboard_n.png",
         "keyboard_escape.png",
         "keyboard_m.png",
+        "keyboard_f10.png",
+        "keyboard_f11.png",
         "mouse_left.png",
     ]
 
