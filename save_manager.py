@@ -46,7 +46,7 @@ class Achievements:
 class SaveData:
     version: str = "1.0"
     equipped_costume: str = "classic"
-    unlocked_costumes: List[str] = field(default_factory=lambda: ["classic"])
+    unlocked_costumes: List[str] = field(default_factory=lambda: ["classic", "tiffany"])
     highscores: HighScores = field(default_factory=HighScores)
     achievements: Achievements = field(default_factory=Achievements)
 
@@ -63,10 +63,15 @@ class SaveData:
     def from_dict(cls, data: Dict[str, Any]) -> SaveData:
         hs_data = data.get("highscores", {})
         ach_data = data.get("achievements", {})
+        unlocked = list(data.get("unlocked_costumes", ["classic", "tiffany"]))
+        if "classic" not in unlocked:
+            unlocked.append("classic")
+        if "tiffany" not in unlocked:
+            unlocked.append("tiffany")
         return cls(
             version=data.get("version", "1.0"),
             equipped_costume=data.get("equipped_costume", "classic"),
-            unlocked_costumes=data.get("unlocked_costumes", ["classic"]),
+            unlocked_costumes=unlocked,
             highscores=HighScores(
                 peak_bankroll=hs_data.get("peak_bankroll", 1000),
                 longest_win_streak=hs_data.get("longest_win_streak", 0),

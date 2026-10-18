@@ -98,6 +98,27 @@ class TestLateSurrender(unittest.TestCase):
         self.assertIn("Surrendered", self.app.result_var.get())
         self.assertEqual(self.app.new_game_button["state"], "normal")
 
+    def test_dealer_hits_remain_inside_centered_container(self):
+        """Dealer drawing on hit must keep all cards inside centered container without orphan labels."""
+        self.app.new_game()
+        self.app.dealer_hand = [
+            Card(2, self.app.all_cards[0].image, rank="2", suit="club"),
+            Card(6, self.app.all_cards[1].image, rank="6", suit="club"),
+        ]
+        self.app.is_hole_card_hidden = False
+        self.app._render_dealer_cards()
+        self.root.update_idletasks()
+
+        # Prior to fix, _dealer_step directly packed into self.dealer_cards_frame outside the container
+        self.app._dealer_step()
+        self.root.update_idletasks()
+
+        # All children of dealer_cards_frame must be exactly 1 container, not orphan labels
+        self.assertEqual(len(self.app.dealer_cards_frame.winfo_children()), 1)
+        container = self.app.dealer_cards_frame.winfo_children()[0]
+        # Container must hold all dealer cards
+        self.assertEqual(len(container.winfo_children()), len(self.app.dealer_hand))
+
 
 if __name__ == "__main__":
     unittest.main()

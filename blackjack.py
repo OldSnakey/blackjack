@@ -39,17 +39,19 @@ except (ImportError, Exception):
 
 # Optional Pillow support for dynamic in-memory High-DPI scaling
 try:
-    from PIL import Image, ImageTk
+    from PIL import Image, ImageTk, ImageDraw, ImageFont
     PIL_AVAILABLE = True
 except (ImportError, Exception):
     Image = None
     ImageTk = None
+    ImageDraw = None
+    ImageFont = None
     PIL_AVAILABLE = False
 
 # ============================================================================
 # Application Metadata & Named Constants
 # ============================================================================
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 
 # Standard Blackjack target and casino dealer rules
 BLACKJACK_TARGET = 21
@@ -337,20 +339,56 @@ class ChipVisualizer(tkinter.Canvas):
         self.cy = height // 2
         self.current_bet = 0
         self._active_timers = set()
+        self._felt_slice_photo: Optional[Any] = None
+        self._felt_source_img: Optional[Any] = None
+        self._felt_coords: Optional[tuple[int, int]] = None
 
         self._draw_base_spot()
 
+    def sync_felt_background(self, felt_img: Optional[Any], rel_x: int, rel_y: int):
+        """Draws the underlying felt texture slice as the canvas background item safely with no black borders."""
+        if not PIL_AVAILABLE or not felt_img:
+            return
+        self._felt_source_img = felt_img
+        self._felt_coords = (rel_x, rel_y)
+        w = max(10, self.canvas_width)
+        h = max(10, self.canvas_height)
+        try:
+            bg_rgb = (7, 76, 26)
+            if hasattr(self.master, "THEME_COLORS") and hasattr(self.master, "current_theme"):
+                bg_rgb = self.master.THEME_COLORS.get(self.master.current_theme, {}).get("base", bg_rgb)
+            slice_img = Image.new("RGB", (w, h), bg_rgb)
+            src_x1 = max(0, rel_x)
+            src_y1 = max(0, rel_y)
+            src_x2 = min(felt_img.width, rel_x + w)
+            src_y2 = min(felt_img.height, rel_y + h)
+            if src_x2 > src_x1 and src_y2 > src_y1:
+                cropped = felt_img.crop((src_x1, src_y1, src_x2, src_y2))
+                slice_img.paste(cropped, (src_x1 - rel_x, src_y1 - rel_y))
+            self._felt_slice_img = slice_img
+            self._felt_slice_photo = ImageTk.PhotoImage(slice_img, master=self)
+            if not self.find_withtag("felt_bg"):
+                self.create_image(0, 0, image=self._felt_slice_photo, anchor="nw", tags="felt_bg")
+            else:
+                self.itemconfigure("felt_bg", image=self._felt_slice_photo)
+            self.tag_lower("felt_bg")
+        except Exception:
+            pass
+
     def set_scale(self, scale: float):
-        """Scales visualizer canvas and re-renders base spot proportionally."""
+        """Scales visualizer canvas and re-renders base spot proportionally without table overflow."""
         self.scale = scale
         self.canvas_width = int(180 * scale)
-        self.canvas_height = int(135 * scale)
+        self.canvas_height = int(135 * (1.0 if scale <= 1.0 else 1.25))
         self.configure(width=self.canvas_width, height=self.canvas_height)
         self.cx = self.canvas_width // 2
         self.cy = self.canvas_height // 2
+        if self._felt_source_img and self._felt_coords:
+            self.sync_felt_background(self._felt_source_img, self._felt_coords[0], self._felt_coords[1])
         self._draw_base_spot()
         if self.current_bet > 0:
             self._render_chips(self.current_bet)
+
 
     def _draw_base_spot(self):
         """Draws the felt betting spot: outer dashed gold ellipse, inner accent ring, watermark, and badge."""
@@ -358,10 +396,14 @@ class ChipVisualizer(tkinter.Canvas):
         cx, cy = self.cx, self.cy
         s = getattr(self, "scale", 1.0)
 
-        # 1. Outer betting circle felt background and golden dashed ring
+        # 0. Underlying felt slice background
+        if getattr(self, "_felt_slice_photo", None):
+            self.create_image(0, 0, image=self._felt_slice_photo, anchor="nw", tags="felt_bg")
+
+        # 1. Outer betting circle felt background and golden dashed ring (fill empty for authentic felt texture)
         self.create_oval(
             cx - int(74 * s), cy - int(38 * s), cx + int(74 * s), cy + int(38 * s),
-            outline="#d4af37", width=max(1, int(2 * s)), dash=(4, 3), fill="#053c14", tags="spot_base"
+            outline="#d4af37", width=max(1, int(2 * s)), dash=(4, 3), fill="", tags="spot_base"
         )
         # 2. Inner subtle gold accent ring
         self.create_oval(
@@ -370,7 +412,7 @@ class ChipVisualizer(tkinter.Canvas):
         )
         # 3. Felt watermark
         self.create_text(
-            cx, cy + int(1 * s), text="BETTING SPOT", fill="#144d21",
+            cx, cy + int(1 * s), text="BETTING SPOT", fill="#8a6d1b",
             font=("Arial", max(6, int(7 * s)), "bold"), tags="watermark"
         )
         # 4. Top badge for bet amount
@@ -1379,14 +1421,14 @@ class DealerStageCanvas(tkinter.Canvas):
     - Dynamic resize handling and High-DPI in-memory scaling.
     """
 
-    DEFAULT_HEIGHT = 130
+    DEFAULT_HEIGHT = 250
 
     def __init__(
         self,
         parent: tkinter.Misc,
         app: Optional[Any] = None,
         width: int = 1000,
-        height: int = 130,
+        height: int = 250,
         on_hanger_click: Optional[Callable[[], None]] = None,
         **kwargs
     ):
@@ -1410,6 +1452,7 @@ class DealerStageCanvas(tkinter.Canvas):
         self.hanger_photo: Optional[Any] = None
         self.hanger_photo_2x: Optional[Any] = None
         self._active_backdrop_photo: Optional[Any] = None
+        self._dealer_photo: Optional[Any] = None
 
         self._load_backdrop_assets()
         self.bind("<Configure>", self._on_resize)
@@ -1417,6 +1460,29 @@ class DealerStageCanvas(tkinter.Canvas):
         self.bind("<Motion>", self._on_mouse_move)
 
         self._redraw_stage()
+
+    def set_dealer_image(self, photo: Optional[Any]):
+        """Sets and updates the dealer sprite rendered directly on the stage canvas."""
+        self._dealer_photo = photo
+        w = max(10, self.canvas_width)
+        h = max(10, self.canvas_height)
+        if self.find_withtag("dealer_sprite"):
+            if photo:
+                self.itemconfigure("dealer_sprite", image=photo)
+                self.coords("dealer_sprite", w // 2, h)
+                self.lift("dealer_sprite")
+                if self.find_withtag("dialogue_win"):
+                    self.lift("dialogue_win")
+                if self.find_withtag("hanger_btn"):
+                    self.lift("hanger_btn")
+            else:
+                self.delete("dealer_sprite")
+        elif photo:
+            self.create_image(w // 2, h, image=photo, anchor="s", tags="dealer_sprite")
+            if self.find_withtag("dialogue_win"):
+                self.lift("dialogue_win")
+            if self.find_withtag("hanger_btn"):
+                self.lift("hanger_btn")
 
     def _load_backdrop_assets(self):
         backdrops_dir = HAUNTED_ASSETS_DIR / "backdrops"
@@ -1488,6 +1554,30 @@ class DealerStageCanvas(tkinter.Canvas):
             hy = int(18 * self.scale_factor)
             self.create_image(hx, hy, image=hanger_img, anchor="center", tags="hanger_btn")
 
+        # 3. Position and update Centered Dealer Sprite directly on canvas
+        if getattr(self, "_dealer_photo", None):
+            if not self.find_withtag("dealer_sprite"):
+                self.create_image(w // 2, h, image=self._dealer_photo, anchor="s", tags="dealer_sprite")
+            else:
+                self.coords("dealer_sprite", w // 2, h)
+                self.itemconfigure("dealer_sprite", anchor="s")
+
+        # 4. Position Dialogue Window to the left of the dealer
+        if self.find_withtag("dialogue_win"):
+            bubble_x = w // 2 - int(105 * self.scale_factor)
+            bubble_y = h - int(16 * self.scale_factor)
+            self.coords("dialogue_win", bubble_x, bubble_y)
+            self.itemconfigure("dialogue_win", anchor="se")
+            self.lift("dialogue_win")
+
+        if self.find_withtag("hanger_btn"):
+            self.lift("hanger_btn")
+
+        # Legacy header_row support
+        if self.find_withtag("header_row"):
+            self.coords("header_row", w // 2, h - 2)
+            self.itemconfigure("header_row", anchor="s")
+
     def _is_over_hanger(self, x: int, y: int) -> bool:
         s = self.scale_factor
         w = max(10, self.canvas_width)
@@ -1514,9 +1604,213 @@ class DealerStageCanvas(tkinter.Canvas):
 
     def set_scale(self, scale_factor: float):
         self.scale_factor = scale_factor
-        self.canvas_height = int(self.DEFAULT_HEIGHT * scale_factor)
+        self.canvas_height = int(self.DEFAULT_HEIGHT * (1.0 if scale_factor <= 1.0 else 1.30))
         self.configure(height=self.canvas_height)
         self._redraw_stage()
+
+
+
+class TableFeltCanvas(tkinter.Canvas):
+    """
+    Panoramic Casino Table Felt Canvas.
+    Renders an authentic tactile woven baize felt texture with:
+    - High-frequency micro-fiber woolen noise and subtle cross-twill weave lines.
+    - Soft overhead table lamp ambient radial lighting vignette.
+    - Authentic casino table markings in muted antique gold:
+      * Dealer/insurance boundary arc
+      * 'BLACKJACK PAYS 3 TO 2'
+      * 'Dealer must stand on 17 and must draw to 16'
+      * 'INSURANCE PAYS 2 TO 1'
+    - Phase-specific felt color palettes (Classic, Creep, Hell, Celestial).
+    - Preserves container compatibility: grid(), rowconfigure(), columnconfigure(), ['background'].
+    """
+
+    THEME_COLORS = {
+        "casino": {
+            "base": (7, 76, 26),
+            "bg_hex": PANEL_BACKGROUND_COLOR,
+            "gold": (212, 175, 55),
+            "rules_fg": (240, 240, 240),
+        },
+        "creep": {
+            "base": (20, 32, 24),
+            "bg_hex": "#142018",
+            "gold": (180, 150, 190),
+            "rules_fg": (200, 190, 210),
+        },
+        "hell": {
+            "base": (42, 13, 18),
+            "bg_hex": "#2a0d12",
+            "gold": (255, 90, 50),
+            "rules_fg": (255, 180, 120),
+        },
+        "celestial": {
+            "base": (12, 35, 56),
+            "bg_hex": "#0c2338",
+            "gold": (0, 229, 255),
+            "rules_fg": (220, 245, 255),
+        },
+    }
+
+    def __init__(self, parent: tkinter.Misc, background: str = PANEL_BACKGROUND_COLOR, **kwargs):
+        hl = kwargs.pop("highlightthickness", 0)
+        bw = kwargs.pop("borderwidth", 0)
+        rel = kwargs.pop("relief", "flat")
+        self.padx = kwargs.pop("padx", 0)
+        self.pady = kwargs.pop("pady", 0)
+        super().__init__(
+            parent,
+            background=background,
+            highlightthickness=hl,
+            borderwidth=bw,
+            relief=rel,
+            **kwargs
+        )
+        self.current_theme = "casino"
+        self.scale_factor = 1.0
+        self.canvas_width = 900
+        self.canvas_height = 274
+        self._bg_hex = background
+        self._felt_photo: Optional[Any] = None
+        self._felt_cache: dict[tuple[str, int, int, float], Any] = {}
+
+        self.bind("<Configure>", self._on_resize)
+        self._redraw_felt()
+
+    def _on_resize(self, event):
+        if event.width > 20 and (event.width != self.canvas_width or event.height != self.canvas_height):
+            self.canvas_width = event.width
+            self.canvas_height = event.height
+            self._redraw_felt()
+
+    def set_theme(self, theme: str):
+        t = (theme or "casino").lower()
+        if t not in self.THEME_COLORS:
+            t = "casino"
+        if self.current_theme != t:
+            self.current_theme = t
+            theme_cfg = self.THEME_COLORS.get(t, self.THEME_COLORS["casino"])
+            self._bg_hex = theme_cfg["bg_hex"]
+            self.configure(background=self._bg_hex)
+            self._redraw_felt()
+
+    def set_scale(self, scale_factor: float):
+        if self.scale_factor != scale_factor:
+            self.scale_factor = scale_factor
+            self._redraw_felt()
+
+    def _generate_felt_image(self, w: int, h: int) -> Optional[Any]:
+        if not PIL_AVAILABLE:
+            return None
+        import numpy as np
+
+        cfg = self.THEME_COLORS.get(self.current_theme, self.THEME_COLORS["casino"])
+        base_rgb = np.array(cfg["base"], dtype=np.float32)
+
+        rng = np.random.RandomState(42)
+        noise = rng.normal(0, 5.0, (h, w, 1))
+
+        y_idx, x_idx = np.indices((h, w))
+        weave = ((x_idx + y_idx) % 4 == 0).astype(np.float32)[:, :, np.newaxis] * 2.5
+
+        cx, cy = w / 2.0, h * 0.45
+        dist = np.sqrt(((x_idx - cx) / (w * 0.6)) ** 2 + ((y_idx - cy) / (h * 0.7)) ** 2)
+        vignette = np.clip(1.06 - 0.18 * dist, 0.85, 1.10)[:, :, np.newaxis]
+
+        felt_arr = (base_rgb + noise + weave) * vignette
+        felt_arr = np.clip(felt_arr, 0, 255).astype(np.uint8)
+
+        felt_img = Image.fromarray(felt_arr, mode="RGB")
+        draw = ImageDraw.Draw(felt_img)
+
+        # Muted antique gold rules arc and middle ribbon markings
+        s = self.scale_factor
+        gold = cfg["gold"]
+
+        # Position middle ribbon safely between dealer hand (top) and player hand (bottom)
+        ribbon_y = int(h * 0.36)
+        rx = int(w * 0.38)
+        ry = int(h * 0.28)
+        draw.arc([cx - rx, ribbon_y - int(10 * s), cx + rx, ribbon_y + ry], start=22, end=158, fill=gold, width=max(1, int(2 * s)))
+
+        try:
+            from PIL import ImageFont
+            font_large = ImageFont.truetype("arial.ttf", int(12 * (1.0 if s <= 1.0 else 1.4)))
+            font_small = ImageFont.truetype("arial.ttf", int(9 * (1.0 if s <= 1.0 else 1.3)))
+        except Exception:
+            font_large = font_small = None
+
+        if font_large and font_small:
+            draw.text((cx, ribbon_y + int(10 * s)), "BLACKJACK PAYS 3 TO 2", fill=gold, font=font_large, anchor="mm")
+            draw.text((cx, ribbon_y + int(24 * s)), "Dealer must stand on 17 and must draw to 16", fill=cfg["rules_fg"], font=font_small, anchor="mm")
+            draw.text((cx, ribbon_y + int(36 * s)), "INSURANCE PAYS 2 TO 1", fill=gold, font=font_small, anchor="mm")
+
+        return felt_img
+
+    def _redraw_felt(self):
+        w = max(20, self.canvas_width)
+        h = max(20, self.canvas_height)
+        key = (self.current_theme, w, h, self.scale_factor)
+
+        if key in self._felt_cache:
+            self._felt_img, self._felt_photo = self._felt_cache[key]
+        elif PIL_AVAILABLE:
+            try:
+                img = self._generate_felt_image(w, h)
+                if img:
+                    self._felt_img = img
+                    self._felt_photo = ImageTk.PhotoImage(img, master=self)
+                    self._felt_cache[key] = (self._felt_img, self._felt_photo)
+            except Exception:
+                self._felt_img = None
+                self._felt_photo = None
+        else:
+            self._felt_img = None
+            self._felt_photo = None
+
+        if self._felt_photo:
+            if not self.find_withtag("felt_bg"):
+                self.create_image(0, 0, image=self._felt_photo, anchor="nw", tags="felt_bg")
+            else:
+                self.itemconfigure("felt_bg", image=self._felt_photo)
+            self.tag_lower("felt_bg")
+            try:
+                self.sync_children_felt()
+            except Exception:
+                pass
+
+    def get_felt_slice(self, x: int, y: int, width: int, height: int) -> Optional[Any]:
+        """Returns safe PIL Image slice of active felt texture with no black borders."""
+        if not getattr(self, "_felt_img", None) or not PIL_AVAILABLE:
+            return None
+        try:
+            cfg = self.THEME_COLORS.get(self.current_theme, self.THEME_COLORS["casino"])
+            slice_img = Image.new("RGB", (width, height), cfg["base"])
+            src_x1 = max(0, x)
+            src_y1 = max(0, y)
+            src_x2 = min(self._felt_img.width, x + width)
+            src_y2 = min(self._felt_img.height, y + height)
+            if src_x2 > src_x1 and src_y2 > src_y1:
+                cropped = self._felt_img.crop((src_x1, src_y1, src_x2, src_y2))
+                slice_img.paste(cropped, (src_x1 - x, src_y1 - y))
+            return slice_img
+        except Exception:
+            return None
+
+
+    def sync_children_felt(self):
+        """Synchronizes felt texture slices across child canvases and visualizers."""
+        if not getattr(self, "_felt_img", None):
+            return
+        for child in self.winfo_children():
+            if hasattr(child, "sync_felt_background") and bool(child.winfo_manager()):
+                try:
+                    cx = child.winfo_x()
+                    cy = child.winfo_y()
+                    if cx > 0 or cy > 0:
+                        child.sync_felt_background(self._felt_img, cx, cy)
+                except Exception:
+                    pass
 
 
 class AssetScaler:
@@ -2314,9 +2608,8 @@ class BlackjackApp:
         self._ambient_timer_id = None
         self._anim_frame_toggle = False
         self._active_story_dialog = None
-        self._active_draft_dialog = None
-        self.dealer_view_var = tkinter.BooleanVar(value=False)
-        self.dealer_view_status_var = tkinter.StringVar(value="👤 Dealer: OFF")
+        self.dealer_view_var = tkinter.BooleanVar(value=True)
+        self.dealer_view_status_var = tkinter.StringVar(value="👤 Dealer: ON")
         self.dealer_speech_var = tkinter.StringVar(value="")
         self.cursed_stakes_var = tkinter.BooleanVar(value=False)
         self.haunted_assets: dict[str, tkinter.PhotoImage] = {}
@@ -2353,6 +2646,9 @@ class BlackjackApp:
         # Build interface layout
         self._build_ui()
 
+        # Render dealer on stage canvas
+        self._update_dealer_avatar()
+
         # Bind emergency timer cleanup when root is destroyed directly
         try:
             self.root.bind("<Destroy>", self._on_root_destroyed, add="+")
@@ -2368,6 +2664,7 @@ class BlackjackApp:
 
         # Start first game
         self.new_game()
+
 
     @property
     def player_hand(self):
@@ -2514,14 +2811,15 @@ class BlackjackApp:
             )
         self.help_button.grid(row=0, column=9, padx=(10, 0))
 
-        # Dealer View Toggle Button
+        # Dealer View Toggle Button (retained as instance for compatibility, unmapped since dealer is permanent)
         self.dealer_view_button = tkinter.Button(
             scoreboard_frame, textvariable=self.dealer_view_status_var, font=("Arial", 9, "bold"),
             background=PANEL_BACKGROUND_COLOR, fg="white", activebackground=TABLE_BACKGROUND_COLOR,
             activeforeground="white", relief="ridge", borderwidth=1, cursor="hand2",
             command=self._on_toggle_dealer_view
         )
-        self.dealer_view_button.grid(row=0, column=10, padx=(10, 0))
+        # Omitted from header grid since dealer is always enabled
+
 
         # Scale Mode Toggle Button (1x <-> 2x High-DPI in-memory scaling)
         self.scale_button = tkinter.Button(
@@ -2593,7 +2891,7 @@ class BlackjackApp:
 
         # Dealer Actor Frame (Portrait + Theatrical Nameplate + Reactive Speech Dialogue)
         self.dealer_header_row = tkinter.Frame(self.dealer_stage_canvas, background=PANEL_BACKGROUND_COLOR)
-        self.dealer_stage_canvas.create_window(10, 6, window=self.dealer_header_row, anchor="nw", tags="header_row")
+        stage_init_h = int(DealerStageCanvas.DEFAULT_HEIGHT * self.scale_factor)
         self.dealer_actor_frame = self.dealer_header_row
 
         # Flickering Jack-o'-Lantern
@@ -2606,19 +2904,22 @@ class BlackjackApp:
         self.pumpkin_label.pack(side="left", padx=(0, 6), pady=2)
         self.pumpkin_label.pack_forget()
 
-        # Dealer Avatar Portrait
+        # Dealer Avatar Portrait (Retained inside dealer_header_row for legacy tests)
         dealer_img = self.dealer_actor.get_photo_image() or self.haunted_assets.get("dealer_classic")
         self.dealer_avatar_label = tkinter.Label(
             self.dealer_header_row, image=dealer_img, background=PANEL_BACKGROUND_COLOR
         )
         if dealer_img:
             self.dealer_avatar_label.image = dealer_img
+            self.dealer_stage_canvas.set_dealer_image(dealer_img)
         self.dealer_avatar_label.pack(side="left", padx=2, pady=2)
         self.dealer_avatar_label.pack_forget()
 
-        # Dealer Dialogue & Actor Info Column
-        self.dealer_dialogue_frame = tkinter.Frame(self.dealer_header_row, background=PANEL_BACKGROUND_COLOR)
-        self.dealer_dialogue_frame.pack(side="left", padx=(8, 4), pady=2, fill="both")
+        # Dealer Dialogue & Actor Info Column (placed directly on stage canvas)
+        self.dealer_dialogue_frame = tkinter.Frame(self.dealer_stage_canvas, background=PANEL_BACKGROUND_COLOR)
+        bubble_x = 500 - int(105 * self.scale_factor)
+        bubble_y = stage_init_h - int(16 * self.scale_factor)
+        self.dealer_stage_canvas.create_window(bubble_x, bubble_y, window=self.dealer_dialogue_frame, anchor="se", tags="dialogue_win")
 
         self.dealer_nameplate_label = tkinter.Label(
             self.dealer_dialogue_frame, text="The Dealer", font=("Arial", 10, "bold"),
@@ -2641,7 +2942,7 @@ class BlackjackApp:
         self.horizon_rail.grid(row=2, column=0, columnspan=3, sticky="ew")
 
         # Tier 3: Main Card Table Area (Below the Horizon Rail)
-        card_table_frame = tkinter.Frame(
+        card_table_frame = TableFeltCanvas(
             self.root, relief="sunken", borderwidth=2, background=PANEL_BACKGROUND_COLOR, padx=10, pady=6
         )
         card_table_frame.grid(row=3, column=0, sticky="nsew", columnspan=3)
@@ -2687,7 +2988,7 @@ class BlackjackApp:
         self.dealer_score_label.pack(anchor="w", pady=(2, 0))
 
         self.dealer_cards_frame = tkinter.Frame(card_table_frame, background=PANEL_BACKGROUND_COLOR)
-        self.dealer_cards_frame.grid(row=0, column=1, sticky="nsew", padx=10, pady=2)
+        self.dealer_cards_frame.grid(row=0, column=1, padx=10, pady=2)
 
         # In-Table Floating Dialog Overlay (unmapped when empty, floats over center when active)
         self.announcement_hud = TableAnnouncementHUD(
@@ -2713,7 +3014,7 @@ class BlackjackApp:
         self.player_score_label.pack(anchor="w", pady=(2, 0))
 
         self.player_cards_frame = tkinter.Frame(card_table_frame, background=PANEL_BACKGROUND_COLOR)
-        self.player_cards_frame.grid(row=1, column=1, sticky="nsew", padx=10, pady=2)
+        self.player_cards_frame.grid(row=1, column=1, padx=10, pady=2)
 
         # 2.5D Casino Felt Betting Spot Visualizer (visible in Chips Mode)
         self.chip_visualizer = ChipVisualizer(
@@ -2817,46 +3118,72 @@ class BlackjackApp:
         button_frame.grid(row=6, column=0, columnspan=3, sticky="ew", pady=(4, 10))
         self.button_frame = button_frame
 
+        # Ornate Video Poker Gem Action Buttons (Polished glass / gem styling with crisp black text)
         self.hit_button = tkinter.Button(
             button_frame, text="Hit", width=8, font=("Arial", 10, "bold"),
-            takefocus=False, command=self.on_hit
+            background="#00e676", foreground="#000000",
+            activebackground="#69f0ae", activeforeground="#000000",
+            disabledforeground="#42554a",
+            relief="raised", borderwidth=3, cursor="hand2", takefocus=False,
+            command=self.on_hit
         )
         self.hit_button.grid(row=0, column=0, padx=6)
 
         self.stand_button = tkinter.Button(
             button_frame, text="Stand", width=8, font=("Arial", 10, "bold"),
-            takefocus=False, command=self.on_stand
+            background="#ff5252", foreground="#000000",
+            activebackground="#ff8a80", activeforeground="#000000",
+            disabledforeground="#42554a",
+            relief="raised", borderwidth=3, cursor="hand2", takefocus=False,
+            command=self.on_stand
         )
         self.stand_button.grid(row=0, column=1, padx=6)
 
         self.double_button = tkinter.Button(
             button_frame, text="Double", width=8, font=("Arial", 10, "bold"),
-            takefocus=False, command=self.on_double_down, state="disabled"
+            background="#ffd740", foreground="#000000",
+            activebackground="#ffe57f", activeforeground="#000000",
+            disabledforeground="#42554a",
+            relief="raised", borderwidth=3, cursor="hand2", takefocus=False,
+            command=self.on_double_down, state="disabled"
         )
         self.double_button.grid(row=0, column=2, padx=6)
 
         self.split_button = tkinter.Button(
             button_frame, text="Split", width=8, font=("Arial", 10, "bold"),
-            takefocus=False, command=self.on_split, state="disabled"
+            background="#40c4ff", foreground="#000000",
+            activebackground="#80d8ff", activeforeground="#000000",
+            disabledforeground="#42554a",
+            relief="raised", borderwidth=3, cursor="hand2", takefocus=False,
+            command=self.on_split, state="disabled"
         )
         self.split_button.grid(row=0, column=3, padx=6)
 
         self.surrender_button = tkinter.Button(
             button_frame, text="Surrender", width=9, font=("Arial", 10, "bold"),
-            takefocus=False, command=self.on_surrender, state="disabled"
+            background="#cfd8dc", foreground="#000000",
+            activebackground="#eceff1", activeforeground="#000000",
+            disabledforeground="#42554a",
+            relief="raised", borderwidth=3, cursor="hand2", takefocus=False,
+            command=self.on_surrender, state="disabled"
         )
         self.surrender_button.grid(row=0, column=4, padx=6)
 
         self.new_game_button = tkinter.Button(
             button_frame, text="New Game", width=9, font=("Arial", 10, "bold"),
-            takefocus=False, command=self.new_game
+            background="#ffd700", foreground="#000000",
+            activebackground="#ffea00", activeforeground="#000000",
+            disabledforeground="#42554a",
+            relief="raised", borderwidth=4, cursor="hand2", takefocus=False,
+            command=self.new_game
         )
         self.new_game_button.grid(row=0, column=5, padx=6)
 
         self.miracle_button = tkinter.Button(
             button_frame, text="✨ Miracle", width=10, font=("Arial", 10, "bold"),
-            background="#00838f", foreground="#ffffff", activebackground="#00acc1",
-            activeforeground="#ffffff", relief="raised", borderwidth=2, cursor="hand2",
+            background="#18ffff", foreground="#000000",
+            activebackground="#84ffff", activeforeground="#000000",
+            relief="raised", borderwidth=3, cursor="hand2",
             takefocus=False, command=self._on_miracle_draw, state="disabled"
         )
         self.miracle_button.grid(row=0, column=6, padx=6)
@@ -3266,14 +3593,12 @@ class BlackjackApp:
         return raw
 
     def _on_toggle_dealer_view(self):
-        """Toggles dealer portrait visibility on/off for player customization."""
-        if self.haunted.phase == Phase.HELL_TABLE:
-            return "break"  # Locked on in Hell's Table
-        is_on = not self.dealer_view_var.get()
-        self.dealer_view_var.set(is_on)
-        self.dealer_view_status_var.set("👤 Dealer: ON" if is_on else "👤 Dealer: OFF")
+        """Dealer view is permanently enabled."""
+        self.dealer_view_var.set(True)
+        self.dealer_view_status_var.set("👤 Dealer: ON")
         self._update_dealer_avatar()
         return "break"
+
 
     def set_dealer_speech(self, text: str):
         """Sets dealer dialogue callout bubble text, updates visibility, and animates mouth."""
@@ -3378,16 +3703,35 @@ class BlackjackApp:
             self._refresh_dealer_avatar_image()
         self._schedule_dealer_blink()
 
+    def _get_scaled_dealer_photo(self) -> Optional[ImageTk.PhotoImage]:
+        """Returns a high-resolution, scale-proportional PhotoImage for the horizon stage with curtain headroom."""
+        if not hasattr(self, "dealer_actor"):
+            return None
+        pil_img = self.dealer_actor.get_composite_image()
+        stage_h = self.dealer_stage_canvas.winfo_height() if hasattr(self, "dealer_stage_canvas") else 250
+        if stage_h <= 20:
+            stage_h = getattr(self.dealer_stage_canvas, "canvas_height", 250) if hasattr(self, "dealer_stage_canvas") else 250
+        max_h = max(100, int(stage_h * 0.88))
+        target_size = min(int(190 * self.scale_factor), max_h)
+        if pil_img.size != (target_size, target_size):
+            resample_mode = getattr(Image, "Resampling", Image).BILINEAR
+            pil_img = pil_img.resize((target_size, target_size), resample_mode)
+        self._scaled_dealer_photo = ImageTk.PhotoImage(pil_img, master=self.root)
+        return self._scaled_dealer_photo
+
+
     def _refresh_dealer_avatar_image(self):
         """Lightweight composite re-render on dealer_avatar_label without full UI refresh."""
         if hasattr(self, "dealer_avatar_label") and hasattr(self, "dealer_actor"):
-            img = self.dealer_actor.get_photo_image()
+            img = self._get_scaled_dealer_photo() or self.dealer_actor.get_photo_image()
             if img:
                 try:
                     self.dealer_avatar_label.configure(image=img)
                     self.dealer_avatar_label.image = img
                 except Exception:
                     pass
+                if hasattr(self, "dealer_stage_canvas") and getattr(self, "dealer_view_var", None) and self.dealer_view_var.get():
+                    self.dealer_stage_canvas.set_dealer_image(img)
 
     def _step_speech_mouth(self):
         """Toggles mouth state between talk and neutral during active speech."""
@@ -3570,21 +3914,25 @@ class BlackjackApp:
         if self.haunted.phase == Phase.HELL_TABLE:
             if hasattr(self, "dealer_actor"):
                 self.dealer_actor.equip_costume("malphas")
-                demon_img = self.dealer_actor.get_photo_image()
+                demon_img = self._get_scaled_dealer_photo() or self.dealer_actor.get_photo_image()
             else:
                 demon_img = self.haunted_assets.get("dealer_demon_0")
             if demon_img:
                 self.dealer_avatar_label.configure(image=demon_img)
                 self.dealer_avatar_label.image = demon_img
+                if hasattr(self, "dealer_stage_canvas"):
+                    self.dealer_stage_canvas.set_dealer_image(demon_img)
             self.dealer_avatar_label.pack(side="left", padx=2, pady=2)
             self.dealer_view_status_var.set("☠ The Pit Fiend")
             self.dealer_view_button.configure(state="disabled")
             if hasattr(self, "dealer_nameplate_label"):
                 self.dealer_nameplate_label.configure(text="☠ The Pit Fiend", fg="#ff1744")
+            self._sync_dealer_stage_colors("#140508")
             return
 
         self.dealer_view_button.configure(state="normal")
-        self.dealer_view_status_var.set("👤 Dealer: ON" if self.dealer_view_var.get() else "👤 Dealer: OFF")
+        self.dealer_view_status_var.set("👤 Dealer: ON")
+
         if hasattr(self, "dealer_actor"):
             if self.haunted.phase == Phase.VICTORY:
                 self.dealer_actor.equip_costume("uriel")
@@ -3592,37 +3940,36 @@ class BlackjackApp:
                 equipped = getattr(getattr(self, "save_manager", None), "data", None).equipped_costume if hasattr(self, "save_manager") else "julian"
                 self.dealer_actor.equip_costume(equipped)
 
-        if not self.dealer_view_var.get():
-            self.dealer_avatar_label.pack_forget()
-            if hasattr(self, "dealer_nameplate_label"):
-                self.dealer_nameplate_label.configure(text="The Dealer", fg="#ffd700")
-            return
+        bg_col = PANEL_BACKGROUND_COLOR
 
         if self.haunted.phase == Phase.CREEP:
             if hasattr(self, "dealer_actor"):
                 equipped = getattr(getattr(self, "save_manager", None), "data", None).equipped_costume if hasattr(self, "save_manager") else "julian"
                 self.dealer_actor.equip_costume(equipped)
-                img = self.dealer_actor.get_photo_image()
+                img = self._get_scaled_dealer_photo() or self.dealer_actor.get_photo_image()
             else:
                 img = self.haunted_assets.get("dealer_creep")
             name_text = "The Dealer (Hollow)"
             name_col = "#ce93d8"
+            bg_col = "#0f0d1a"
         elif self.haunted.phase == Phase.VICTORY:
             if hasattr(self, "dealer_actor"):
                 self.dealer_actor.equip_costume("uriel")
-                img = self.dealer_actor.get_photo_image()
+                img = self._get_scaled_dealer_photo() or self.dealer_actor.get_photo_image()
             else:
                 img = self.haunted_assets.get("angel_avatar")
             name_text = "✨ Celestial Messenger"
             name_col = "#00e5ff"
+            bg_col = "#0d2b26"
         else:
             if hasattr(self, "dealer_actor"):
                 equipped = getattr(getattr(self, "save_manager", None), "data", None).equipped_costume if hasattr(self, "save_manager") else "julian"
                 self.dealer_actor.equip_costume(equipped)
-                img = self.dealer_actor.get_photo_image()
+                img = self._get_scaled_dealer_photo() or self.dealer_actor.get_photo_image()
                 profile = self.dealer_actor.get_profile()
                 name_text = profile.name if profile.id == "julian" else profile.title
                 name_col = profile.nameplate_fg
+                bg_col = profile.speech_bg
             else:
                 img = self.haunted_assets.get("dealer_classic")
                 name_text = "The Dealer"
@@ -3631,9 +3978,23 @@ class BlackjackApp:
         if img:
             self.dealer_avatar_label.configure(image=img)
             self.dealer_avatar_label.image = img
+            if hasattr(self, "dealer_stage_canvas"):
+                self.dealer_stage_canvas.set_dealer_image(img)
         self.dealer_avatar_label.pack(side="left", padx=2, pady=2)
         if hasattr(self, "dealer_nameplate_label"):
             self.dealer_nameplate_label.configure(text=name_text, fg=name_col)
+        self._sync_dealer_stage_colors(bg_col)
+
+    def _sync_dealer_stage_colors(self, bg_col: str):
+        """Synchronizes dealer stage frames with active character/phase atmosphere."""
+        if hasattr(self, "dealer_header_row"):
+            self.dealer_header_row.configure(background=bg_col)
+        if hasattr(self, "dealer_avatar_label"):
+            self.dealer_avatar_label.configure(background=bg_col)
+        if hasattr(self, "dealer_dialogue_frame"):
+            self.dealer_dialogue_frame.configure(background=bg_col)
+        if hasattr(self, "dealer_nameplate_label"):
+            self.dealer_nameplate_label.configure(background=bg_col)
 
     def _update_candles_display(self):
         """Synchronizes 5-candle indicator bar and 2.5D Altar with remaining candles."""
@@ -3770,6 +4131,15 @@ class BlackjackApp:
         if hasattr(self, "dealer_view_button"):
             self.dealer_view_button.configure(background=bg_pnl, activebackground=bg_tbl)
         if hasattr(self, "card_table_frame"):
+            if isinstance(self.card_table_frame, TableFeltCanvas):
+                if phase == Phase.NORMAL:
+                    self.card_table_frame.set_theme("casino")
+                elif phase in (Phase.CREEP, Phase.OMEN, Phase.SNUFFING):
+                    self.card_table_frame.set_theme("creep")
+                elif phase == Phase.HELL_TABLE:
+                    self.card_table_frame.set_theme("hell")
+                elif phase == Phase.VICTORY:
+                    self.card_table_frame.set_theme("celestial")
             self.card_table_frame.configure(background=bg_pnl)
         if hasattr(self, "dealer_header_frame"):
             self.dealer_header_frame.configure(background=bg_pnl)
@@ -4227,11 +4597,14 @@ class BlackjackApp:
         self.dealer_hole_widget = None
         self.is_hole_card_hidden = False
 
-        # 2. Clear card visuals from frames
+        # 2. Clear card visuals from frames and unmap them to keep table felt clean during betting
         for child in self.dealer_cards_frame.winfo_children():
             child.destroy()
         for child in self.player_cards_frame.winfo_children():
             child.destroy()
+        self.dealer_cards_frame.grid_remove()
+        self.player_cards_frame.grid_remove()
+
 
         # 3. Reset scores and status
         self.dealer_score_var.set("0")
@@ -4341,6 +4714,8 @@ class BlackjackApp:
             if hasattr(self, "chip_visualizer"):
                 self.chip_visualizer.grid()
                 self.chip_visualizer.set_bet(0, animate=False)
+                if hasattr(self, "card_table_frame"):
+                    self.card_table_frame.sync_children_felt()
             self._update_bankroll_display()
             self.new_game()
         else:
@@ -4617,6 +4992,14 @@ class BlackjackApp:
         if hasattr(self, "sound_manager"):
             self.sound_manager.play_card_deal()
 
+    def _get_or_create_dealer_cards_container(self, bg_pnl: str) -> tkinter.Frame:
+        """Returns or creates the centered container for dealer cards."""
+        self.dealer_cards_frame.grid()
+        if not hasattr(self, "_dealer_cards_container") or not self._dealer_cards_container.winfo_exists():
+            self._dealer_cards_container = tkinter.Frame(self.dealer_cards_frame, background=bg_pnl)
+            self._dealer_cards_container.pack(anchor="center")
+        return self._dealer_cards_container
+
     def _deal_card_to_dealer(self, is_hole_card=False):
         """
         Deals one card to the dealer.
@@ -4630,6 +5013,7 @@ class BlackjackApp:
             self.sound_manager.play_card_deal()
 
         bg_pnl = self.card_table_frame["background"] if hasattr(self, "card_table_frame") else PANEL_BACKGROUND_COLOR
+        container = self._get_or_create_dealer_cards_container(bg_pnl)
         padx = int(2 * self.scale_factor)
 
         if is_hole_card:
@@ -4639,7 +5023,7 @@ class BlackjackApp:
             if getattr(self, "haunted", None) and Blessing.EYE in self.haunted.equipped_blessings:
                 # Eye of Providence Blessing reveals hole card immediately in halo!
                 self.dealer_hole_widget = tkinter.Label(
-                    self.dealer_cards_frame, image=card[1],
+                    container, image=card[1],
                     relief="solid", borderwidth=1, highlightthickness=1,
                     highlightbackground="#00e5ff", background=bg_pnl
                 )
@@ -4648,7 +5032,7 @@ class BlackjackApp:
             else:
                 back_img = self.haunted_assets.get("back_haunted") if (getattr(self, "haunted", None) and self.haunted.phase == Phase.HELL_TABLE) else self.back_image
                 self.dealer_hole_widget = tkinter.Label(
-                    self.dealer_cards_frame, image=back_img or self.back_image,
+                    container, image=back_img or self.back_image,
                     relief="flat", borderwidth=0, highlightthickness=0,
                     background=bg_pnl
                 )
@@ -4658,60 +5042,117 @@ class BlackjackApp:
         else:
             # Face-up card
             tkinter.Label(
-                self.dealer_cards_frame, image=card[1],
+                container, image=card[1],
                 relief="flat", borderwidth=0, highlightthickness=0,
                 background=bg_pnl
             ).pack(side="left", padx=padx)
             self.dealer_score_var.set(str(score_hand(self.dealer_hand)))
 
     def _render_dealer_cards(self):
-        """Renders visual card labels for dealer hand according to current scale factor."""
+        """Renders visual card labels for dealer hand centered according to current scale factor."""
         for child in self.dealer_cards_frame.winfo_children():
             child.destroy()
+        if hasattr(self, "_dealer_cards_container"):
+            delattr(self, "_dealer_cards_container")
 
         bg_pnl = self.card_table_frame["background"] if hasattr(self, "card_table_frame") else PANEL_BACKGROUND_COLOR
         padx = int(2 * self.scale_factor)
 
-        for i, card in enumerate(self.dealer_hand):
-            if i == 1 and getattr(self, "is_hole_card_hidden", False):
-                # Hole card face down (or revealed with halo by Eye of Providence)
-                if getattr(self, "haunted", None) and Blessing.EYE in self.haunted.equipped_blessings:
-                    self.dealer_hole_widget = tkinter.Label(
-                        self.dealer_cards_frame, image=card[1],
-                        relief="solid", borderwidth=1, highlightthickness=1,
-                        highlightbackground="#00e5ff", background=bg_pnl
-                    )
-                    self.dealer_hole_widget.pack(side="left", padx=padx)
-                else:
+        num_cards = len(self.dealer_hand)
+        if num_cards == 0:
+            self.dealer_cards_frame.grid_remove()
+            return
+        self.dealer_cards_frame.grid()
+        container = self._get_or_create_dealer_cards_container(bg_pnl)
+
+        if num_cards > 4:
+            # Overlapping layout for 5+ cards to prevent table felt overflow
+            card_w = getattr(self, "card_width", CARD_WIDTH)
+            card_h = getattr(self, "card_height", CARD_HEIGHT)
+            overlap = self._calculate_hand_overlap(num_cards, is_split=False)
+            frame_width = card_w + (num_cards - 1) * overlap
+            container.configure(width=frame_width, height=card_h)
+            container.pack_propagate(False)
+            for i, card in enumerate(self.dealer_hand):
+                if i == 1 and getattr(self, "is_hole_card_hidden", False):
                     back_img = self.haunted_assets.get("back_haunted") if (getattr(self, "haunted", None) and self.haunted.phase == Phase.HELL_TABLE) else self.back_image
                     self.dealer_hole_widget = tkinter.Label(
-                        self.dealer_cards_frame, image=back_img or self.back_image,
+                        container, image=back_img or self.back_image,
                         relief="flat", borderwidth=0, highlightthickness=0,
                         background=bg_pnl
                     )
-                    self.dealer_hole_widget.pack(side="left", padx=padx)
-            else:
-                lbl = tkinter.Label(
-                    self.dealer_cards_frame, image=card[1],
-                    relief="flat", borderwidth=0, highlightthickness=0,
-                    background=bg_pnl
-                )
-                lbl.pack(side="left", padx=padx)
-                if i == 1 and not getattr(self, "is_hole_card_hidden", False):
-                    self.dealer_hole_widget = lbl
+                    self.dealer_hole_widget.place(x=i * overlap, y=0, width=card_w, height=card_h)
+                else:
+                    lbl = tkinter.Label(
+                        container, image=card[1],
+                        relief="flat", borderwidth=0, highlightthickness=0,
+                        background=bg_pnl
+                    )
+                    lbl.place(x=i * overlap, y=0, width=card_w, height=card_h)
+                    if i == 1 and not getattr(self, "is_hole_card_hidden", False):
+                        self.dealer_hole_widget = lbl
+        else:
+            container.pack_propagate(True)
+            for i, card in enumerate(self.dealer_hand):
+                if i == 1 and getattr(self, "is_hole_card_hidden", False):
+                    # Hole card face down (or revealed with halo by Eye of Providence)
+                    if getattr(self, "haunted", None) and Blessing.EYE in self.haunted.equipped_blessings:
+                        self.dealer_hole_widget = tkinter.Label(
+                            container, image=card[1],
+                            relief="solid", borderwidth=1, highlightthickness=1,
+                            highlightbackground="#00e5ff", background=bg_pnl
+                        )
+                        self.dealer_hole_widget.pack(side="left", padx=padx)
+                    else:
+                        back_img = self.haunted_assets.get("back_haunted") if (getattr(self, "haunted", None) and self.haunted.phase == Phase.HELL_TABLE) else self.back_image
+                        self.dealer_hole_widget = tkinter.Label(
+                            container, image=back_img or self.back_image,
+                            relief="flat", borderwidth=0, highlightthickness=0,
+                            background=bg_pnl
+                        )
+                        self.dealer_hole_widget.pack(side="left", padx=padx)
+                else:
+                    lbl = tkinter.Label(
+                        container, image=card[1],
+                        relief="flat", borderwidth=0, highlightthickness=0,
+                        background=bg_pnl
+                    )
+                    lbl.pack(side="left", padx=padx)
+                    if i == 1 and not getattr(self, "is_hole_card_hidden", False):
+                        self.dealer_hole_widget = lbl
+
+    def _calculate_hand_overlap(self, num_cards: int, is_split: bool) -> int:
+        """Dynamically compresses card overlap offset when hand has many cards to prevent right-edge overflow."""
+        base_overlap = getattr(self, "card_overlap_offset", PLAYER_CARD_OVERLAP_OFFSET)
+        if num_cards <= 4:
+            return base_overlap
+        # For hands with 5+ cards, compress overlap dynamically to prevent table overflow
+        factor = 0.7 if is_split else 0.85
+        compressed = int(base_overlap * (factor ** (num_cards - 4)))
+        min_overlap = int(12 * self.scale_factor)
+        return max(min_overlap, compressed)
 
     def _render_player_cards(self):
-        """Renders visual card labels and hand frames for player hand(s)."""
+        """Renders visual card labels and hand frames for player hand(s) centered on table felt."""
         for child in self.player_cards_frame.winfo_children():
             child.destroy()
 
+        if not any(len(h) > 0 for h in self.player_hands):
+            self.player_cards_frame.grid_remove()
+            return
+
+        self.player_cards_frame.grid()
         is_split = len(self.player_hands) > 1
         bg_pnl = self.card_table_frame["background"] if hasattr(self, "card_table_frame") else PANEL_BACKGROUND_COLOR
+
+        player_container = tkinter.Frame(self.player_cards_frame, background=bg_pnl)
+
+        player_container.pack(anchor="center")
 
         for idx, hand in enumerate(self.player_hands):
             is_active = (idx == self.active_hand_index)
             container = tkinter.Frame(
-                self.player_cards_frame,
+                player_container,
                 background=bg_pnl,
                 padx=6,
                 pady=4,
@@ -4732,7 +5173,7 @@ class BlackjackApp:
             num_cards = len(hand)
             card_w = getattr(self, "card_width", CARD_WIDTH)
             card_h = getattr(self, "card_height", CARD_HEIGHT)
-            overlap = getattr(self, "card_overlap_offset", PLAYER_CARD_OVERLAP_OFFSET)
+            overlap = self._calculate_hand_overlap(num_cards, is_split)
 
             if num_cards == 0:
                 frame_width = card_w
@@ -5003,12 +5444,7 @@ class BlackjackApp:
             # Dealer must draw
             card = self._draw_card()
             self.dealer_hand.append(card)
-            bg_pnl = self.card_table_frame["background"] if hasattr(self, "card_table_frame") else PANEL_BACKGROUND_COLOR
-            tkinter.Label(
-                self.dealer_cards_frame, image=card[1],
-                relief="flat", borderwidth=0, highlightthickness=0,
-                background=bg_pnl
-            ).pack(side="left", padx=2)
+            self._render_dealer_cards()
             self.dealer_score_var.set(str(score_hand(self.dealer_hand)))
             if hasattr(self, "sound_manager"):
                 self.sound_manager.play_card_deal()
@@ -5323,6 +5759,8 @@ class BlackjackApp:
             self.dealer_actor.set_scale(self.scale_factor)
         if hasattr(self, "horizon_rail"):
             self.horizon_rail.configure(height=int(4 * s))
+        if hasattr(self, "card_table_frame") and isinstance(self.card_table_frame, TableFeltCanvas):
+            self.card_table_frame.set_scale(self.scale_factor)
 
     def toggle_scale_mode(self, event=None):
         """Toggles between 1.0x and 2.0x in-memory interface scaling."""
@@ -5339,6 +5777,8 @@ class BlackjackApp:
 
         # Update table frames and widgets
         if hasattr(self, "card_table_frame"):
+            if isinstance(self.card_table_frame, TableFeltCanvas):
+                self.card_table_frame.set_scale(self.scale_factor)
             self.card_table_frame.rowconfigure(0, weight=1, minsize=int(118 * self.scale_factor))
             self.card_table_frame.rowconfigure(1, weight=1, minsize=int(118 * self.scale_factor))
 

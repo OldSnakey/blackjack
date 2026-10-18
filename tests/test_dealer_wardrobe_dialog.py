@@ -68,16 +68,41 @@ class TestDealerWardrobeDialog(unittest.TestCase):
         dialog = self.app._wardrobe_dialog
         self.assertIsNotNone(dialog)
         self.assertTrue(hasattr(dialog, "cards"))
-        for char_id in ("julian", "malphas", "uriel", "mortimer"):
+        for char_id in ("julian", "tiffany", "malphas", "uriel", "mortimer"):
             self.assertIn(char_id, dialog.cards, f"Character card missing: {char_id}")
 
-    def test_julian_is_unlocked_by_default_and_equipped(self):
-        """Julian is always unlocked and equipped initially."""
+    def test_julian_and_tiffany_are_unlocked_by_default(self):
+        """Julian and Tiffany are both unlocked by default as casino croupiers."""
         self.app._on_click_stage_hanger()
         dialog = self.app._wardrobe_dialog
-        julian_card = dialog.cards["julian"]
-        self.assertTrue(julian_card["unlocked"])
-        self.assertTrue(julian_card["is_equipped"])
+        self.assertTrue(dialog.cards["julian"]["unlocked"])
+        self.assertTrue(dialog.cards["julian"]["is_equipped"])
+        self.assertTrue(dialog.cards["tiffany"]["unlocked"])
+
+    def test_wardrobe_pagination(self):
+        """Next and Prev page navigation switches pages and updates navigation controls."""
+        self.app._on_click_stage_hanger()
+        dialog = self.app._wardrobe_dialog
+        self.assertEqual(dialog.current_page, 0)
+        self.assertIn("Page 1 of 2", dialog.page_lbl.cget("text"))
+
+        # Switch to Page 2
+        dialog._next_page()
+        self.assertEqual(dialog.current_page, 1)
+        self.assertIn("Page 2 of 2", dialog.page_lbl.cget("text"))
+
+        # Switch back to Page 1
+        dialog._prev_page()
+        self.assertEqual(dialog.current_page, 0)
+        self.assertIn("Page 1 of 2", dialog.page_lbl.cget("text"))
+
+    def test_equipping_tiffany_updates_actor_and_save(self):
+        """Equipping Tiffany switches dealer persona, table avatar, and save data."""
+        self.app._on_click_stage_hanger()
+        dialog = self.app._wardrobe_dialog
+        dialog._equip_costume("tiffany")
+        self.assertEqual(self.app.dealer_actor.current_character, "tiffany")
+        self.assertEqual(self.app.save_manager.data.equipped_costume, "tiffany")
 
     def test_unlock_criteria_evaluation(self):
         """Malphas, Uriel, and Mortimer unlock according to game achievements."""

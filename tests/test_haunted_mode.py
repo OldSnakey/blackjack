@@ -219,17 +219,17 @@ class TestHauntedGui(unittest.TestCase):
             pass
 
     def test_scoreboard_buttons_and_layout(self):
-        """Dealer view button is at scoreboard col 10; cursed stakes button is docked in button_frame left of chips mode."""
+        """Dealer view is always enabled; cursed stakes button is docked in button_frame left of chips mode."""
         self.assertTrue(hasattr(self.app, "dealer_view_button"))
         self.assertTrue(hasattr(self.app, "cursed_stakes_button"))
-
-        info_dealer = self.app.dealer_view_button.grid_info()
-        self.assertEqual(info_dealer["row"], 0)
-        self.assertEqual(info_dealer["column"], 10)
+        self.assertTrue(self.app.dealer_view_var.get())
+        # Dealer toggle button is omitted from visible grid
+        self.assertFalse(bool(self.app.dealer_view_button.grid_info()))
 
         # Cursed stakes button belongs to button_frame and is hidden until unlocked
         self.assertEqual(self.app.cursed_stakes_button.master, self.app.button_frame)
         self.assertFalse(bool(self.app.cursed_stakes_button.grid_info()))
+
 
         # When revealed, it grids at row 0, column 8 to the left of chips mode (col 9)
         self.app.cursed_stakes_button.grid()
@@ -241,18 +241,11 @@ class TestHauntedGui(unittest.TestCase):
         self.assertEqual(info_chips["column"], 9)
 
     def test_dealer_view_toggle(self):
-        """Toggling dealer view changes button text and unpacks/packs avatar."""
-        self.assertFalse(self.app.dealer_view_var.get())
-
-        # Toggle ON
+        """Dealer view is always enabled and cannot be disabled."""
+        self.assertTrue(self.app.dealer_view_var.get())
         self.app._on_toggle_dealer_view()
         self.assertTrue(self.app.dealer_view_var.get())
-        self.assertEqual(self.app.dealer_view_status_var.get(), "👤 Dealer: ON")
 
-        # Toggle OFF
-        self.app._on_toggle_dealer_view()
-        self.assertFalse(self.app.dealer_view_var.get())
-        self.assertEqual(self.app.dealer_view_status_var.get(), "👤 Dealer: OFF")
 
     def test_soul_meter_and_accessories_initialized(self):
         """SoulMeterCanvas, candle bar, and gravestones frame must be initialized."""

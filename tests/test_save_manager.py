@@ -38,7 +38,7 @@ class TestSaveManager(unittest.TestCase):
         self.assertEqual(self.manager.data.highscores.peak_bankroll, 1000)
         self.assertEqual(self.manager.data.highscores.total_hands_played, 0)
         self.assertEqual(self.manager.data.equipped_costume, "classic")
-        self.assertEqual(self.manager.data.unlocked_costumes, ["classic"])
+        self.assertEqual(self.manager.data.unlocked_costumes, ["classic", "tiffany"])
         self.assertFalse(self.manager.data.achievements.exorcist)
         self.assertFalse(self.manager.data.achievements.high_roller)
 
@@ -95,7 +95,7 @@ class TestSaveManager(unittest.TestCase):
         # State must now be back to default
         self.assertEqual(self.manager.data.highscores.peak_bankroll, 1000)
         self.assertEqual(self.manager.data.highscores.longest_win_streak, 0)
-        self.assertEqual(self.manager.data.unlocked_costumes, ["classic"])
+        self.assertEqual(self.manager.data.unlocked_costumes, ["classic", "tiffany"])
         self.assertFalse(self.manager.data.achievements.exorcist)
         self.assertFalse(self.manager.data.achievements.high_roller)
 
@@ -111,7 +111,7 @@ class TestSaveManager(unittest.TestCase):
 
         recovered_mgr = SaveManager(save_path=self.save_file)
         self.assertEqual(recovered_mgr.data.highscores.peak_bankroll, 1000)
-        self.assertEqual(recovered_mgr.data.unlocked_costumes, ["classic"])
+        self.assertEqual(recovered_mgr.data.unlocked_costumes, ["classic", "tiffany"])
 
 
 if __name__ == "__main__":

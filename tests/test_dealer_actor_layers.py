@@ -40,7 +40,7 @@ AUDIO_DIR = BASE_DIR / "audio" / "haunted"
 class TestCharacterAssets(unittest.TestCase):
     """Verifies that all required character layers and audio assets exist on disk."""
 
-    REQUIRED_CHARACTERS = ["julian", "malphas", "uriel", "mortimer"]
+    REQUIRED_CHARACTERS = ["julian", "malphas", "uriel", "mortimer", "tiffany"]
     REQUIRED_LAYERS = [
         "torso.png", "torso_2x.png",
         "head.png", "head_2x.png",
@@ -74,13 +74,14 @@ class TestCharacterAssets(unittest.TestCase):
                         self.assertEqual(img.size, (112, 112), f"1x layer {filename} must be 112x112")
 
     def test_character_audio_accents_exist(self):
-        """Audio accent files for all 4 characters must exist in audio/haunted/."""
+        """Audio accent files for all characters must exist in audio/haunted/."""
         self.assertTrue(AUDIO_DIR.exists())
         expected_audio = [
             "dealer_julian.ogg",
             "dealer_malphas.ogg",
             "dealer_uriel.ogg",
             "dealer_mortimer.ogg",
+            "dealer_tiffany.ogg",
         ]
         for audio_name in expected_audio:
             path = AUDIO_DIR / audio_name
@@ -273,6 +274,34 @@ class TestDealerActorAppIntegration(unittest.TestCase):
         self.assertNotEqual(self.app._active_story_dialog.portrait_img, self.app.haunted_assets.get("dealer_demon_0"))
         if self.app._active_story_dialog.winfo_exists():
             self.app._active_story_dialog.destroy()
+
+    def test_eyes_closed_has_no_facial_aberration(self):
+        """eyes_closed morph layer must modify only localized eye aperture pixels with zero alteration to forehead or cheeks."""
+        from PIL import ImageChops
+        import numpy as np
+
+        for char_id in ("julian", "tiffany", "malphas", "uriel", "mortimer"):
+            head_p = CHARACTERS_DIR / char_id / "head_2x.png"
+            closed_p = CHARACTERS_DIR / char_id / "eyes_closed_2x.png"
+            self.assertTrue(head_p.exists(), f"Missing head_2x.png for {char_id}")
+            self.assertTrue(closed_p.exists(), f"Missing eyes_closed_2x.png for {char_id}")
+
+            head = Image.open(head_p).convert("RGBA")
+            closed = Image.open(closed_p).convert("RGBA")
+
+            comp = head.copy()
+            comp.alpha_composite(closed)
+
+            diff = ImageChops.difference(head, comp)
+            diff_arr = np.array(diff)
+            diff_pts = len(np.where(diff_arr[:, :, :3] > 0)[0])
+
+            # Must be strictly localized eyelid changes (< 1500 channel points, previously was 3200+)
+            self.assertLess(diff_pts, 1500, f"Excessive facial pixel alteration on {char_id}: {diff_pts} points")
+
+            # Zero modifications to outer cheek/temple regions (x < 65 or x > 155)
+            self.assertEqual(diff_arr[:, :65, :3].sum(), 0, f"Left temple/cheek aberration on {char_id}")
+            self.assertEqual(diff_arr[:, 155:, :3].sum(), 0, f"Right temple/cheek aberration on {char_id}")
 
 
 if __name__ == "__main__":

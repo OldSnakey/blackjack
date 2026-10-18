@@ -103,6 +103,26 @@ CHARACTERS_CONFIG = {
         "card_suit": "♠",
         "card_back": (65, 25, 95),
     },
+    "tiffany": {
+        "source": BRAIN_DIR / "tiffany_nobg.png",
+        "crop": (122, 15, 902, 795),
+        "clean_table": False,
+        "collar_y": 108,
+        "eyes_box": (84, 52, 140, 68),
+        "mouth_box": (94, 72, 130, 88),
+        "arms_y": 178,
+        "skin_color": (252, 202, 162),
+        "ink_color": (25, 20, 22),
+        "eye_left_pupil": (93, 60, 100, 64),
+        "eye_left_line": (92, 62, 101, 62),
+        "eye_right_pupil": (122, 60, 129, 64),
+        "eye_right_line": (121, 62, 130, 62),
+        "mouth_center": (112, 80),
+        "mouth_y": 80,
+        "mouth_x_span": (104, 122),
+        "card_suit": "♥",
+        "card_back": (180, 20, 50),
+    },
 }
 
 def create_feathered_mask(size: tuple[int, int], box: tuple[int, int, int, int], radius: float = 2.0) -> Image.Image:
@@ -176,7 +196,7 @@ def generate_character_layers(char_id: str, cfg: dict):
     head_1x.save(out_dir / "head.png")
 
     # 3. Eyes
-    # A) eyes_open: isolate eye area with feathering
+    # A) eyes_open: isolate eye area with feathering (retained for backward compatibility)
     eyes_mask = create_feathered_mask((224, 224), eyes_box, radius=1.8)
     eyes_open_2x = Image.new("RGBA", (224, 224), (0, 0, 0, 0))
     eyes_open_2x.paste(bust_2x, (0, 0), eyes_mask)
@@ -184,34 +204,43 @@ def generate_character_layers(char_id: str, cfg: dict):
     eyes_open_2x.save(out_dir / "eyes_open_2x.png")
     eyes_open_1x.save(out_dir / "eyes_open.png")
 
-    # B) eyes_half: eyelids lowered by 50%
-    eyes_half_2x = eyes_open_2x.copy()
-    draw_half = ImageDraw.Draw(eyes_half_2x)
     el_box = cfg["eye_left_pupil"]
     er_box = cfg["eye_right_pupil"]
     el_line = cfg["eye_left_line"]
     er_line = cfg["eye_right_line"]
 
+    # Sample realistic orbital skin above left and right eyes directly from head_2x
+    yl = max(0, el_box[1] - 1)
+    xl = (el_box[0] + el_box[2]) // 2
+    yr = max(0, er_box[1] - 1)
+    xr = (er_box[0] + er_box[2]) // 2
+    skin_l = tuple(int(c) for c in head_arr[yl, xl, :3])
+    skin_r = tuple(int(c) for c in head_arr[yr, xr, :3])
+
+    # B) eyes_half: surgical half-lidded eyelids confined strictly to eye apertures
+    eyes_half_2x = Image.new("RGBA", (224, 224), (0, 0, 0, 0))
+    draw_half = ImageDraw.Draw(eyes_half_2x)
     if char_id == "mortimer":
         # Dim purple flame down to small central ember
         for (bx1, by1, bx2, by2) in [el_box, er_box]:
             cx, cy = (bx1 + bx2) // 2, (by1 + by2) // 2
-            # Dark hollow socket
             draw_half.ellipse([bx1, by1, bx2, by2], fill=(15, 12, 18, 255))
-            # Tiny dim ember spark
             draw_half.ellipse([cx - 2, cy - 2, cx + 2, cy + 2], fill=(160, 80, 230, 200))
     elif char_id == "malphas":
         # Fiery slit
         for (bx1, by1, bx2, by2) in [el_box, er_box]:
             cx, cy = (bx1 + bx2) // 2, (by1 + by2) // 2
-            draw_half.rectangle([bx1, by1, bx2, by2], fill=(30, 22, 24, 255))
-            draw_half.line([bx1 + 1, cy, bx2 - 1, cy], fill=(255, 180, 40, 255), width=1)
+            draw_half.rectangle([bx1 - 1, by1, bx2 + 1, by2], fill=(30, 22, 24, 255))
+            draw_half.line([bx1 - 1, cy, bx2 + 1, cy], fill=(255, 180, 40, 255), width=1)
     else:
-        # Upper eyelid droop
-        for (bx1, by1, bx2, by2), (lx1, ly1, lx2, ly2) in [(el_box, el_line), (er_box, er_line)]:
+        # Upper eyelid droop matching exact sampled orbital skin
+        for (bx1, by1, bx2, by2), (lx1, ly1, lx2, ly2), sk in [
+            (el_box, el_line, skin_l),
+            (er_box, er_line, skin_r)
+        ]:
             my = (by1 + by2) // 2
-            draw_half.rectangle([bx1, by1, bx2, my], fill=(*skin, 255))
-            draw_half.line([lx1, ly1, lx2, ly2], fill=(*ink, 255), width=1)
+            draw_half.rectangle([bx1 - 1, by1 - 1, bx2 + 1, my], fill=(*sk, 255))
+            draw_half.line([lx1 - 1, ly1, lx2 + 1, ly2], fill=(*ink, 255), width=1)
 
     alpha_half = eyes_half_2x.split()[-1].filter(ImageFilter.GaussianBlur(radius=0.3))
     eyes_half_2x.putalpha(alpha_half)
@@ -219,8 +248,8 @@ def generate_character_layers(char_id: str, cfg: dict):
     eyes_half_2x.save(out_dir / "eyes_half_2x.png")
     eyes_half_1x.save(out_dir / "eyes_half.png")
 
-    # C) eyes_closed: complete realistic blink
-    eyes_closed_2x = eyes_open_2x.copy()
+    # C) eyes_closed: surgical realistic blink confined strictly to eye apertures
+    eyes_closed_2x = Image.new("RGBA", (224, 224), (0, 0, 0, 0))
     draw_closed = ImageDraw.Draw(eyes_closed_2x)
     if char_id == "mortimer":
         # Extinguish spectral eye flames completely into deep hollow black bone socket
@@ -229,13 +258,16 @@ def generate_character_layers(char_id: str, cfg: dict):
     elif char_id == "malphas":
         # Dark charcoal eyelid seam
         for (bx1, by1, bx2, by2), (lx1, ly1, lx2, ly2) in [(el_box, el_line), (er_box, er_line)]:
-            draw_closed.rectangle([bx1, by1, bx2, by2], fill=(30, 22, 24, 255))
-            draw_closed.line([lx1, ly1, lx2, ly2], fill=(*ink, 255), width=1)
+            draw_closed.rectangle([bx1 - 1, by1 - 1, bx2 + 1, by2 + 1], fill=(30, 22, 24, 255))
+            draw_closed.line([lx1 - 1, ly1, lx2 + 1, ly2], fill=(*ink, 255), width=1)
     else:
-        # Realistic closed eyelid
-        for (bx1, by1, bx2, by2), (lx1, ly1, lx2, ly2) in [(el_box, el_line), (er_box, er_line)]:
-            draw_closed.rectangle([bx1, by1, bx2, by2], fill=(*skin, 255))
-            draw_closed.line([lx1, ly1, lx2, ly2], fill=(*ink, 255), width=1)
+        # Realistic closed eyelid matching exact sampled orbital skin
+        for (bx1, by1, bx2, by2), (lx1, ly1, lx2, ly2), sk in [
+            (el_box, el_line, skin_l),
+            (er_box, er_line, skin_r)
+        ]:
+            draw_closed.rectangle([bx1 - 1, by1 - 1, bx2 + 1, by2 + 1], fill=(*sk, 255))
+            draw_closed.line([lx1 - 1, ly1, lx2 + 1, ly2], fill=(*ink, 255), width=1)
 
     alpha_closed = eyes_closed_2x.split()[-1].filter(ImageFilter.GaussianBlur(radius=0.4))
     eyes_closed_2x.putalpha(alpha_closed)
@@ -244,7 +276,7 @@ def generate_character_layers(char_id: str, cfg: dict):
     eyes_closed_1x.save(out_dir / "eyes_closed.png")
 
     # 4. Mouth
-    # A) mouth_neutral
+    # A) mouth_neutral (retained for backward compatibility)
     mouth_mask = create_feathered_mask((224, 224), mouth_box, radius=1.8)
     mouth_neutral_2x = Image.new("RGBA", (224, 224), (0, 0, 0, 0))
     mouth_neutral_2x.paste(bust_2x, (0, 0), mouth_mask)
@@ -255,14 +287,12 @@ def generate_character_layers(char_id: str, cfg: dict):
     mc_x, mc_y = cfg["mouth_center"]
     my = cfg["mouth_y"]
     mx_start, mx_end = cfg["mouth_x_span"]
-
-    # B) mouth_talk: slightly opened mouth with dark cavity and teeth hint
-    mouth_talk_2x = mouth_neutral_2x.copy()
-    draw_talk = ImageDraw.Draw(mouth_talk_2x)
     cavity_color = (25, 10, 15, 255) if char_id != "malphas" else (50, 10, 15, 255)
-    # Open cavity right at mouth slit
+
+    # B) mouth_talk: surgical open cavity confined strictly to mouth aperture
+    mouth_talk_2x = Image.new("RGBA", (224, 224), (0, 0, 0, 0))
+    draw_talk = ImageDraw.Draw(mouth_talk_2x)
     draw_talk.ellipse([mc_x - 5, my - 2, mc_x + 5, my + 2], fill=cavity_color, outline=(*ink, 255), width=1)
-    # Upper teeth highlight
     draw_talk.line([mc_x - 4, my - 1, mc_x + 4, my - 1], fill=(245, 240, 235, 220), width=1)
     alpha_talk = mouth_talk_2x.split()[-1].filter(ImageFilter.GaussianBlur(radius=0.3))
     mouth_talk_2x.putalpha(alpha_talk)
@@ -270,14 +300,12 @@ def generate_character_layers(char_id: str, cfg: dict):
     mouth_talk_2x.save(out_dir / "mouth_talk_2x.png")
     mouth_talk_1x.save(out_dir / "mouth_talk.png")
 
-    # C) mouth_smirk: asymmetrical upward smirk
-    mouth_smirk_2x = mouth_neutral_2x.copy()
+    # C) mouth_smirk: surgical upward smirk
+    mouth_smirk_2x = Image.new("RGBA", (224, 224), (0, 0, 0, 0))
     draw_smirk = ImageDraw.Draw(mouth_smirk_2x)
-    # Cover right half of old flat mouth line with surrounding skin tone
-    draw_smirk.rectangle([mc_x, my - 1, mx_end + 1, my + 1], fill=(*skin, 255))
-    # Draw upward curving smirk
+    skin_mouth = tuple(int(c) for c in head_arr[my - 2, (mc_x + mx_end) // 2, :3])
+    draw_smirk.rectangle([mc_x, my - 1, mx_end + 1, my + 1], fill=(*skin_mouth, 255))
     draw_smirk.line([(mc_x - 1, my), (mc_x + 4, my - 1), (mx_end, my - 3)], fill=(*ink, 255), width=2)
-    # Tiny corner smirk crease
     draw_smirk.line([(mx_end, my - 4), (mx_end + 1, my - 2)], fill=(*ink, 180), width=1)
     alpha_smirk = mouth_smirk_2x.split()[-1].filter(ImageFilter.GaussianBlur(radius=0.3))
     mouth_smirk_2x.putalpha(alpha_smirk)
@@ -285,8 +313,8 @@ def generate_character_layers(char_id: str, cfg: dict):
     mouth_smirk_2x.save(out_dir / "mouth_smirk_2x.png")
     mouth_smirk_1x.save(out_dir / "mouth_smirk.png")
 
-    # D) mouth_gasp: surprised round O-mouth
-    mouth_gasp_2x = mouth_neutral_2x.copy()
+    # D) mouth_gasp: surgical round O-mouth
+    mouth_gasp_2x = Image.new("RGBA", (224, 224), (0, 0, 0, 0))
     draw_gasp = ImageDraw.Draw(mouth_gasp_2x)
     draw_gasp.ellipse([mc_x - 3, my - 2, mc_x + 3, my + 3], fill=cavity_color, outline=(*ink, 255), width=1)
     alpha_gasp = mouth_gasp_2x.split()[-1].filter(ImageFilter.GaussianBlur(radius=0.3))
@@ -320,9 +348,20 @@ def generate_character_layers(char_id: str, cfg: dict):
     draw_deal.rectangle([cx1, cy1, cx2, cy2], fill=(250, 250, 248, 255), outline=(25, 20, 22, 255), width=1)
     # Card inner border
     draw_deal.rectangle([cx1 + 2, cy1 + 2, cx2 - 2, cy2 - 2], outline=(220, 215, 210, 255), width=1)
-    # Authentic pip (Diamond / Skull / Star / Spade)
-    pip_color = (200, 25, 35, 255) if char_id in ("julian", "malphas") else (25, 20, 25, 255)
-    draw_deal.polygon([(133, 192), (137, 198), (133, 204), (129, 198)], fill=pip_color)
+    # Authentic pip (Diamond / Skull / Star / Spade / Heart)
+    if char_id in ("julian", "malphas"):
+        pip_color = (200, 25, 35, 255)
+    elif char_id == "tiffany":
+        pip_color = (210, 20, 45, 255)
+    else:
+        pip_color = (25, 20, 25, 255)
+
+    if char_id == "tiffany":
+        draw_deal.ellipse([130, 192, 135, 197], fill=pip_color)
+        draw_deal.ellipse([135, 192, 140, 197], fill=pip_color)
+        draw_deal.polygon([(130, 195), (140, 195), (135, 203)], fill=pip_color)
+    else:
+        draw_deal.polygon([(133, 192), (137, 198), (133, 204), (129, 198)], fill=pip_color)
     # Mini corner rank 'A'
     draw_deal.line([(123, 188), (125, 184), (127, 188)], fill=pip_color, width=1)
     draw_deal.line([(124, 186), (126, 186)], fill=pip_color, width=1)

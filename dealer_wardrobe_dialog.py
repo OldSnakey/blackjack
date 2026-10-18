@@ -26,10 +26,22 @@ class WardrobeDialog(tkinter.Toplevel):
 
     UNLOCK_CRITERIA: Dict[str, str] = {
         "julian": "Default Croupier (Always Unlocked)",
+        "tiffany": "Default Croupier (Always Unlocked)",
         "malphas": "Trigger or encounter Hell's Table",
         "uriel": "Banish The Pit Fiend at Hell's Table (Exorcist)",
         "mortimer": "Survive Card 13 or attain $5,000 Bankroll",
     }
+
+    PAGE_CONFIG = [
+        {
+            "title": "Casino Floor (Classic & Velvet)",
+            "characters": ["julian", "tiffany"],
+        },
+        {
+            "title": "Supernatural Legends",
+            "characters": ["malphas", "uriel", "mortimer"],
+        },
+    ]
 
     def __init__(self, parent: tkinter.Tk, app: Any):
         super().__init__(parent)
@@ -37,7 +49,7 @@ class WardrobeDialog(tkinter.Toplevel):
         self.title("🎩 Dealer Wardrobe & Dressing Room")
         self.transient(parent)
         self.resizable(False, False)
-        self.configure(background="#0d1f14", padx=16, pady=14)
+        self.configure(background="#0d1f14", padx=16, pady=12)
 
         if getattr(app, "_icon_photo", None):
             try:
@@ -45,7 +57,7 @@ class WardrobeDialog(tkinter.Toplevel):
             except Exception:
                 pass
 
-        dialog_w, dialog_h = 760, 520
+        dialog_w, dialog_h = 760, 540
         try:
             root_x = parent.winfo_rootx()
             root_y = parent.winfo_rooty()
@@ -57,17 +69,21 @@ class WardrobeDialog(tkinter.Toplevel):
         except Exception:
             self.geometry(f"{dialog_w}x{dialog_h}")
 
+        self.current_page = 0
         self.cards: Dict[str, Dict[str, Any]] = {}
         self._photo_cache: Dict[str, ImageTk.PhotoImage] = {}
+        self._page_frames: Dict[int, tkinter.Frame] = {}
 
         self._build_ui()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.bind("<Escape>", lambda e: self._on_close())
+        self.bind("<Left>", lambda e: self._prev_page())
+        self.bind("<Right>", lambda e: self._next_page())
         self.focus_set()
 
     def _is_character_unlocked(self, char_id: str) -> bool:
         """Evaluates whether the given character persona is unlocked."""
-        if char_id == "julian":
+        if char_id in ("julian", "tiffany"):
             return True
 
         # Check save data explicit unlocks
@@ -106,7 +122,7 @@ class WardrobeDialog(tkinter.Toplevel):
     def _build_ui(self):
         # Header banner
         header_frame = tkinter.Frame(self, background="#0d1f14")
-        header_frame.pack(fill="x", pady=(0, 10))
+        header_frame.pack(fill="x", pady=(0, 6))
 
         tkinter.Label(
             header_frame, text="🎩 CASINO WARDROBE & DEALER DRESSING ROOM",
@@ -118,114 +134,143 @@ class WardrobeDialog(tkinter.Toplevel):
             font=("Arial", 9, "italic"), fg="#a5d6a7", background="#0d1f14"
         ).pack(anchor="center", pady=(2, 0))
 
-        # Cards Container Grid (2x2)
+        # Pagination & Navigation Bar
+        nav_frame = tkinter.Frame(self, background="#0d1f14")
+        nav_frame.pack(fill="x", pady=(2, 6))
+
+        self.prev_btn = tkinter.Button(
+            nav_frame, text="◀ Previous", font=("Arial", 9, "bold"),
+            background="#1e382b", fg="#e0e0e0", activebackground="#2e5441",
+            activeforeground="white", relief="raised", borderwidth=1, cursor="hand2",
+            padx=10, command=self._prev_page
+        )
+        self.prev_btn.pack(side="left")
+
+        self.page_lbl = tkinter.Label(
+            nav_frame, text="", font=("Arial", 10, "bold"),
+            fg="#ffd700", background="#0d1f14"
+        )
+        self.page_lbl.pack(side="left", expand=True)
+
+        self.next_btn = tkinter.Button(
+            nav_frame, text="Next ▶", font=("Arial", 9, "bold"),
+            background="#1e382b", fg="#e0e0e0", activebackground="#2e5441",
+            activeforeground="white", relief="raised", borderwidth=1, cursor="hand2",
+            padx=10, command=self._next_page
+        )
+        self.next_btn.pack(side="right")
+
+        # Cards Container Grid
         cards_container = tkinter.Frame(self, background="#0d1f14")
-        cards_container.pack(fill="both", expand=True, pady=(0, 10))
+        cards_container.pack(fill="both", expand=True, pady=(0, 6))
 
-        char_order = ["julian", "malphas", "uriel", "mortimer"]
-        for idx, char_id in enumerate(char_order):
-            row = idx // 2
-            col = idx % 2
-            profile = CHARACTERS.get(char_id, CHARACTERS["julian"])
-            unlocked = self._is_character_unlocked(char_id)
-            is_equipped = (self.app.dealer_actor.current_character == char_id)
+        for p_idx, p_data in enumerate(self.PAGE_CONFIG):
+            p_frame = tkinter.Frame(cards_container, background="#0d1f14")
+            self._page_frames[p_idx] = p_frame
 
-            card_frame = tkinter.LabelFrame(
-                cards_container, text=f" {profile.name} ", font=("Arial", 10, "bold"),
-                fg=profile.nameplate_fg, background="#12271c", padx=8, pady=6, relief="groove"
-            )
-            card_frame.grid(row=row, column=col, padx=8, pady=6, sticky="nsew")
-            cards_container.grid_columnconfigure(col, weight=1)
-            cards_container.grid_rowconfigure(row, weight=1)
+            for c_idx, char_id in enumerate(p_data["characters"]):
+                row = c_idx // 2
+                col = c_idx % 2
+                profile = CHARACTERS.get(char_id, CHARACTERS["julian"])
+                unlocked = self._is_character_unlocked(char_id)
+                is_equipped = (self.app.dealer_actor.current_character == char_id)
 
-            # Left side: Bust portrait
-            left_col = tkinter.Frame(card_frame, background="#12271c")
-            left_col.pack(side="left", padx=(0, 8), fill="y")
-
-            bust_pil = self.app.dealer_actor.get_bust_image(char_id, scale_factor=1.0)
-            if bust_pil:
-                photo = ImageTk.PhotoImage(bust_pil, master=self)
-                self._photo_cache[f"bust_{char_id}"] = photo
-                portrait_lbl = tkinter.Label(left_col, image=photo, background="#0a1a12", relief="ridge", borderwidth=1)
-                portrait_lbl.pack(pady=(2, 4))
-            else:
-                portrait_lbl = tkinter.Label(left_col, text="[No Bust]", width=12, height=6, background="#0a1a12", fg="white")
-                portrait_lbl.pack(pady=(2, 4))
-
-            # Voice preview button under portrait
-            voice_btn = tkinter.Button(
-                left_col, text="🔊 Voice", font=("Arial", 8, "bold"),
-                background="#1e382b", fg="#e0e0e0", activebackground="#2e5441",
-                activeforeground="white", relief="raised", borderwidth=1, cursor="hand2",
-                command=lambda cid=char_id: self._play_voice_preview(cid)
-            )
-            voice_btn.pack(fill="x", pady=(2, 0))
-
-            # Right side: Title, Unlock status, Lore, Equip Button
-            right_col = tkinter.Frame(card_frame, background="#12271c")
-            right_col.pack(side="left", fill="both", expand=True)
-
-            title_lbl = tkinter.Label(
-                right_col, text=profile.title, font=("Arial", 9, "bold"),
-                fg=profile.nameplate_fg, background="#12271c", anchor="w"
-            )
-            title_lbl.pack(fill="x")
-
-            # Status / Criteria badge
-            crit_text = self.UNLOCK_CRITERIA.get(char_id, "")
-            if unlocked:
-                status_text = "✓ Unlocked"
-                status_col = "#69f0ae"
-            else:
-                status_text = f"🔒 {crit_text}"
-                status_col = "#ff8a80"
-
-            crit_lbl = tkinter.Label(
-                right_col, text=status_text, font=("Arial", 8, "bold" if unlocked else "italic"),
-                fg=status_col, background="#12271c", anchor="w"
-            )
-            crit_lbl.pack(fill="x", pady=(1, 3))
-
-            # Lore
-            lore_lbl = tkinter.Label(
-                right_col, text=profile.lore, font=("Arial", 8),
-                fg="#b0bec5", background="#12271c", wraplength=210, justify="left", anchor="w"
-            )
-            lore_lbl.pack(fill="both", expand=True, pady=(0, 4))
-
-            # Action Frame
-            action_frame = tkinter.Frame(right_col, background="#12271c")
-            action_frame.pack(fill="x", side="bottom")
-
-            action_widget: Any
-            if is_equipped:
-                action_widget = tkinter.Label(
-                    action_frame, text="✦ EQUIPPED", font=("Arial", 9, "bold"),
-                    fg="#ffd700", background="#1a3a2a", relief="ridge", borderwidth=1, padx=6, pady=3
+                card_frame = tkinter.LabelFrame(
+                    p_frame, text=f" {profile.name} ", font=("Arial", 10, "bold"),
+                    fg=profile.nameplate_fg, background="#12271c", padx=8, pady=6, relief="groove"
                 )
-                action_widget.pack(fill="x")
-            elif unlocked:
-                action_widget = tkinter.Button(
-                    action_frame, text="Equip Costume", font=("Arial", 9, "bold"),
-                    background="#2e7d32", fg="white", activebackground="#388e3c",
-                    activeforeground="white", relief="raised", borderwidth=2, cursor="hand2",
-                    command=lambda cid=char_id: self._equip_costume(cid)
-                )
-                action_widget.pack(fill="x")
-            else:
-                action_widget = tkinter.Button(
-                    action_frame, text="Locked", font=("Arial", 9, "bold"),
-                    background="#263238", fg="#78909c", state="disabled", relief="flat"
-                )
-                action_widget.pack(fill="x")
+                card_frame.grid(row=row, column=col, padx=8, pady=6, sticky="nsew")
+                p_frame.grid_columnconfigure(col, weight=1)
+                p_frame.grid_rowconfigure(row, weight=1)
 
-            self.cards[char_id] = {
-                "frame": card_frame,
-                "unlocked": unlocked,
-                "is_equipped": is_equipped,
-                "action_widget": action_widget,
-                "action_frame": action_frame,
-            }
+                # Left side: Bust portrait
+                left_col = tkinter.Frame(card_frame, background="#12271c")
+                left_col.pack(side="left", padx=(0, 8), fill="y")
+
+                bust_pil = self.app.dealer_actor.get_bust_image(char_id, scale_factor=1.0)
+                if bust_pil:
+                    photo = ImageTk.PhotoImage(bust_pil, master=self)
+                    self._photo_cache[f"bust_{char_id}"] = photo
+                    portrait_lbl = tkinter.Label(left_col, image=photo, background="#0a1a12", relief="ridge", borderwidth=1)
+                    portrait_lbl.pack(pady=(2, 4))
+                else:
+                    portrait_lbl = tkinter.Label(left_col, text="[No Bust]", width=12, height=6, background="#0a1a12", fg="white")
+                    portrait_lbl.pack(pady=(2, 4))
+
+                # Voice preview button under portrait
+                voice_btn = tkinter.Button(
+                    left_col, text="🔊 Voice", font=("Arial", 8, "bold"),
+                    background="#1e382b", fg="#e0e0e0", activebackground="#2e5441",
+                    activeforeground="white", relief="raised", borderwidth=1, cursor="hand2",
+                    command=lambda cid=char_id: self._play_voice_preview(cid)
+                )
+                voice_btn.pack(fill="x", pady=(2, 0))
+
+                # Right side: Title, Unlock status, Lore, Equip Button
+                right_col = tkinter.Frame(card_frame, background="#12271c")
+                right_col.pack(side="left", fill="both", expand=True)
+
+                title_lbl = tkinter.Label(
+                    right_col, text=profile.title, font=("Arial", 9, "bold"),
+                    fg=profile.nameplate_fg, background="#12271c", anchor="w"
+                )
+                title_lbl.pack(fill="x")
+
+                # Status / Criteria badge
+                crit_text = self.UNLOCK_CRITERIA.get(char_id, "")
+                if unlocked:
+                    status_text = "✓ Unlocked"
+                    status_col = "#69f0ae"
+                else:
+                    status_text = f"🔒 {crit_text}"
+                    status_col = "#ff8a80"
+
+                crit_lbl = tkinter.Label(
+                    right_col, text=status_text, font=("Arial", 8, "bold" if unlocked else "italic"),
+                    fg=status_col, background="#12271c", anchor="w"
+                )
+                crit_lbl.pack(fill="x", pady=(1, 3))
+
+                # Lore
+                lore_lbl = tkinter.Label(
+                    right_col, text=profile.lore, font=("Arial", 8),
+                    fg="#b0bec5", background="#12271c", wraplength=210, justify="left", anchor="w"
+                )
+                lore_lbl.pack(fill="both", expand=True, pady=(0, 4))
+
+                # Action Frame
+                action_frame = tkinter.Frame(right_col, background="#12271c")
+                action_frame.pack(fill="x", side="bottom")
+
+                action_widget: Any
+                if is_equipped:
+                    action_widget = tkinter.Label(
+                        action_frame, text="✦ EQUIPPED", font=("Arial", 9, "bold"),
+                        fg="#ffd700", background="#1a3a2a", relief="ridge", borderwidth=1, padx=6, pady=3
+                    )
+                    action_widget.pack(fill="x")
+                elif unlocked:
+                    action_widget = tkinter.Button(
+                        action_frame, text="Equip Costume", font=("Arial", 9, "bold"),
+                        background="#2e7d32", fg="white", activebackground="#388e3c",
+                        activeforeground="white", relief="raised", borderwidth=2, cursor="hand2",
+                        command=lambda cid=char_id: self._equip_costume(cid)
+                    )
+                    action_widget.pack(fill="x")
+                else:
+                    action_widget = tkinter.Button(
+                        action_frame, text="Locked", font=("Arial", 9, "bold"),
+                        background="#263238", fg="#78909c", state="disabled", relief="flat"
+                    )
+                    action_widget.pack(fill="x")
+
+                self.cards[char_id] = {
+                    "frame": card_frame,
+                    "unlocked": unlocked,
+                    "is_equipped": is_equipped,
+                    "action_widget": action_widget,
+                    "action_frame": action_frame,
+                }
 
         # Footer with Close button
         footer_frame = tkinter.Frame(self, background="#0d1f14")
@@ -238,6 +283,40 @@ class WardrobeDialog(tkinter.Toplevel):
             command=self._on_close
         )
         close_btn.pack(anchor="center")
+
+        # Open page for active character
+        initial_page = 0
+        current_char = getattr(getattr(self.app, "dealer_actor", None), "current_character", "julian")
+        for p_idx, p_data in enumerate(self.PAGE_CONFIG):
+            if current_char in p_data["characters"]:
+                initial_page = p_idx
+                break
+        self._switch_page(initial_page)
+
+    def _switch_page(self, page_idx: int):
+        """Displays the specified page of character cards."""
+        total = len(self.PAGE_CONFIG)
+        self.current_page = max(0, min(total - 1, page_idx))
+        for p_idx, frame in self._page_frames.items():
+            if p_idx == self.current_page:
+                frame.pack(fill="both", expand=True)
+            else:
+                frame.pack_forget()
+
+        cfg = self.PAGE_CONFIG[self.current_page]
+        self.page_lbl.config(text=f"Page {self.current_page + 1} of {total} : {cfg['title']}")
+        self.prev_btn.config(state="normal" if self.current_page > 0 else "disabled")
+        self.next_btn.config(state="normal" if self.current_page < total - 1 else "disabled")
+
+    def _prev_page(self):
+        """Navigates to previous page."""
+        if self.current_page > 0:
+            self._switch_page(self.current_page - 1)
+
+    def _next_page(self):
+        """Navigates to next page."""
+        if self.current_page < len(self.PAGE_CONFIG) - 1:
+            self._switch_page(self.current_page + 1)
 
     def _play_voice_preview(self, char_id: str):
         """Plays the selected character's vocal accent audio cue."""

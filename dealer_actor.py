@@ -84,11 +84,24 @@ CHARACTERS: Dict[str, CharacterProfile] = {
         unlock_key="grim_bones",
         lore="Dapper skeleton croupier sporting a purple silk top hat who dryly chuckles at the roll of the bones.",
     ),
+    "tiffany": CharacterProfile(
+        id="tiffany",
+        name="Tiffany",
+        title="♥ The Velvet Croupier",
+        theme="casino",
+        nameplate_fg="#ff4081",
+        speech_bg="#240a1b",
+        audio_cue="dealer_tiffany.ogg",
+        unlock_key="tiffany",
+        lore="Glamorous and quick-witted croupier whose velvet touch and radiant smile charm even the sharpest card counters.",
+    ),
 }
 
 COSTUME_ALIASES: Dict[str, str] = {
     "classic": "julian",
     "dealer": "julian",
+    "tiffany": "tiffany",
+    "velvet": "tiffany",
     "pit_fiend": "malphas",
     "demon": "malphas",
     "hell": "malphas",
@@ -216,14 +229,15 @@ class DealerActor:
         target_size = (224, 224) if self.scale_factor > 1.5 else (112, 112)
         composite = Image.new("RGBA", target_size, (0, 0, 0, 0))
 
-        # Ordered strata
-        layer_names = [
-            "torso",
-            "head",
-            f"eyes_{self.eye_state}",
-            f"mouth_{self.mouth_state}",
-            f"arm_{self.arm_state}",
-        ]
+        # Ordered strata: Head already contains open eyes and neutral mouth.
+        # Only overlay expressive morph targets (e.g. blink or talk) to prevent
+        # double-blended feathered edge artifacts/banding on the face.
+        layer_names = ["torso", "head"]
+        if self.eye_state != "open":
+            layer_names.append(f"eyes_{self.eye_state}")
+        if self.mouth_state != "neutral":
+            layer_names.append(f"mouth_{self.mouth_state}")
+        layer_names.append(f"arm_{self.arm_state}")
 
         for lname in layer_names:
             l_img = self._get_layer_image(lname)

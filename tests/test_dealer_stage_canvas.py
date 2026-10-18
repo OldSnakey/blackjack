@@ -137,6 +137,26 @@ class TestDealerStageCanvasIntegration(unittest.TestCase):
         scaled_h = self.app.dealer_stage_canvas.cget("height")
         self.assertGreater(int(scaled_h), int(initial_h))
 
+    def test_dealer_sprite_rendered_directly_on_stage_canvas(self):
+        """Dealer sprite is drawn directly on DealerStageCanvas with transparent cutout grounded at anchor s."""
+        self.app.dealer_view_var.set(True)
+        self.app._update_dealer_avatar()
+        canvas = self.app.dealer_stage_canvas
+        self.root.update_idletasks()
+
+        # Canvas must contain the dealer_sprite item
+        items = canvas.find_withtag("dealer_sprite")
+        self.assertGreater(len(items), 0, "dealer_sprite tag not found on DealerStageCanvas")
+        item_id = items[0]
+
+        # Must be anchored at 's' (south/bottom)
+        self.assertEqual(canvas.itemcget(item_id, "anchor"), "s")
+
+        # Dealer view is permanently enabled
+        self.assertTrue(self.app.dealer_view_var.get())
+        self.assertGreater(len(canvas.find_withtag("dealer_sprite")), 0)
+
+
 
 if __name__ == "__main__":
     unittest.main()
