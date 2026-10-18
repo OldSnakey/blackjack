@@ -1,11 +1,16 @@
 """
-Dealer Wardrobe & Dressing Room Dialog for Blackjack.
+Dealer Wardrobe & Casino Hall of Fame Dialog for Blackjack.
 
 Provides:
-- 4 interactive character cards for Julian, Malphas, Uriel, and Mortimer.
-- High-resolution bust preview, title, lore, and audio voice preview.
-- Dynamic unlock criteria checking against persistent save achievements and table milestones.
-- Instant costume equipping with table avatar and stage synchronization.
+- Tab 1: 🎩 Wardrobe Closet
+  - 5 interactive character cards for Julian, Tiffany, Malphas, Uriel, and Mortimer.
+  - High-resolution bust preview, title, lore, and audio voice preview.
+  - Dynamic unlock criteria checking against persistent save achievements and table milestones.
+  - Instant costume equipping with table avatar and stage synchronization.
+- Tab 2: 🏆 Hall of Fame & Trophy Shelf
+  - All-time casino records banner (peak bankroll, longest streak, hands won/played, blackjacks).
+  - 6 visual achievement plaques (The Exorcist, High Roller, Natural Born Winner,
+    Cursed Survivor, Split Maestro, Big Spender) with unlock badges and criteria.
 - Disk persistence via SaveManager.
 """
 
@@ -20,8 +25,8 @@ from dealer_actor import CHARACTERS, CharacterProfile
 
 class WardrobeDialog(tkinter.Toplevel):
     """
-    Dealer Wardrobe & Dressing Room Modal.
-    Displays character roster cards with unlocks, lore, audio preview, and equipping controls.
+    Dealer Wardrobe & Casino Hall of Fame Modal.
+    Two-tab interface providing character dressing room and trophy achievements shelf.
     """
 
     UNLOCK_CRITERIA: Dict[str, str] = {
@@ -43,6 +48,51 @@ class WardrobeDialog(tkinter.Toplevel):
         },
     ]
 
+    ACHIEVEMENT_SPECS = [
+        {
+            "id": "exorcist",
+            "title": "✦ The Exorcist",
+            "desc": "Banish The Pit Fiend at Hell's Table and restore sanctified balance.",
+            "reward": "Seraph (Uriel) Persona",
+            "criteria": "Defeat Hell's Table",
+        },
+        {
+            "id": "high_roller",
+            "title": "👑 High Roller",
+            "desc": "Amass an all-time peak casino bankroll of $10,000 or greater.",
+            "reward": "High Roller Title",
+            "criteria": "Reach $10,000 Bankroll",
+        },
+        {
+            "id": "natural_streak",
+            "title": "⚡ Natural Born Winner",
+            "desc": "Deal 3 Natural 21s (Blackjacks) within a single session.",
+            "reward": "Master of Naturals",
+            "criteria": "3 Natural Blackjacks in Session",
+        },
+        {
+            "id": "cursed_survivor",
+            "title": "💀 Cursed Survivor",
+            "desc": "Overcome the eerie clock strike and win or push round with Card 13.",
+            "reward": "Grim Bones (Mortimer) Persona",
+            "criteria": "Survive Card 13 Round",
+        },
+        {
+            "id": "split_maestro",
+            "title": "⚔ Split Maestro",
+            "desc": "Split matching cards and emerge victorious on both independent hands.",
+            "reward": "Maestro Status",
+            "criteria": "Win Both Split Hands",
+        },
+        {
+            "id": "big_spender",
+            "title": "💰 Big Spender",
+            "desc": "Stake your entire fortune in an all-in bet of $1,000+ and conquer the house.",
+            "reward": "Diamond Bettor",
+            "criteria": "Win $1,000+ All-In Bet",
+        },
+    ]
+
     def __init__(self, parent: tkinter.Tk, app: Any):
         super().__init__(parent)
         self.app = app
@@ -57,7 +107,7 @@ class WardrobeDialog(tkinter.Toplevel):
             except Exception:
                 pass
 
-        dialog_w, dialog_h = 760, 540
+        dialog_w, dialog_h = 780, 560
         try:
             root_x = parent.winfo_rootx()
             root_y = parent.winfo_rooty()
@@ -69,16 +119,18 @@ class WardrobeDialog(tkinter.Toplevel):
         except Exception:
             self.geometry(f"{dialog_w}x{dialog_h}")
 
+        self.current_tab = 0
         self.current_page = 0
         self.cards: Dict[str, Dict[str, Any]] = {}
+        self.plaque_widgets: Dict[str, Dict[str, Any]] = {}
         self._photo_cache: Dict[str, ImageTk.PhotoImage] = {}
         self._page_frames: Dict[int, tkinter.Frame] = {}
 
         self._build_ui()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.bind("<Escape>", lambda e: self._on_close())
-        self.bind("<Left>", lambda e: self._prev_page())
-        self.bind("<Right>", lambda e: self._next_page())
+        self.bind("<Left>", lambda e: self._prev_page() if self.current_tab == 0 else None)
+        self.bind("<Right>", lambda e: self._next_page() if self.current_tab == 0 else None)
         self.focus_set()
 
     def _is_character_unlocked(self, char_id: str) -> bool:
@@ -86,7 +138,6 @@ class WardrobeDialog(tkinter.Toplevel):
         if char_id in ("julian", "tiffany"):
             return True
 
-        # Check save data explicit unlocks
         save_data = getattr(getattr(self.app, "save_manager", None), "data", None)
         if save_data and hasattr(save_data, "unlocked_costumes") and char_id in save_data.unlocked_costumes:
             return True
@@ -122,21 +173,83 @@ class WardrobeDialog(tkinter.Toplevel):
     def _build_ui(self):
         # Header banner
         header_frame = tkinter.Frame(self, background="#0d1f14")
-        header_frame.pack(fill="x", pady=(0, 6))
+        header_frame.pack(fill="x", pady=(0, 4))
 
         tkinter.Label(
-            header_frame, text="🎩 CASINO WARDROBE & DEALER DRESSING ROOM",
+            header_frame, text="🎩 CASINO WARDROBE & HALL OF FAME",
             font=("Arial", 12, "bold"), fg="#ffd700", background="#0d1f14"
         ).pack(anchor="center")
 
-        tkinter.Label(
-            header_frame, text="Select your active table dealer persona. Unlock legendary croupiers through casino milestones.",
-            font=("Arial", 9, "italic"), fg="#a5d6a7", background="#0d1f14"
-        ).pack(anchor="center", pady=(2, 0))
+        # Tab Navigation Bar
+        tab_nav_frame = tkinter.Frame(self, background="#0d1f14")
+        tab_nav_frame.pack(fill="x", pady=(2, 6))
 
-        # Pagination & Navigation Bar
-        nav_frame = tkinter.Frame(self, background="#0d1f14")
-        nav_frame.pack(fill="x", pady=(2, 6))
+        self.btn_tab_wardrobe = tkinter.Button(
+            tab_nav_frame, text="🎩 Wardrobe Closet", font=("Arial", 9, "bold"),
+            background="#2e7d32", fg="white", activebackground="#388e3c",
+            activeforeground="white", relief="raised", borderwidth=2, cursor="hand2",
+            padx=16, pady=3, command=lambda: self._switch_tab(0)
+        )
+        self.btn_tab_wardrobe.pack(side="left", padx=(0, 8))
+
+        self.btn_tab_hof = tkinter.Button(
+            tab_nav_frame, text="🏆 Hall of Fame & Trophy Shelf", font=("Arial", 9, "bold"),
+            background="#1e382b", fg="#cfd8dc", activebackground="#2e5441",
+            activeforeground="white", relief="raised", borderwidth=1, cursor="hand2",
+            padx=16, pady=3, command=lambda: self._switch_tab(1)
+        )
+        self.btn_tab_hof.pack(side="left")
+
+        # Container Frames for Tabs
+        self.content_container = tkinter.Frame(self, background="#0d1f14")
+        self.content_container.pack(fill="both", expand=True)
+
+        self.tab_wardrobe_frame = tkinter.Frame(self.content_container, background="#0d1f14")
+        self.tab_hof_frame = tkinter.Frame(self.content_container, background="#0d1f14")
+
+        # Build Tab 1: Wardrobe
+        self._build_wardrobe_tab()
+
+        # Build Tab 2: Hall of Fame
+        self._build_hof_tab()
+
+        # Footer with Close button
+        footer_frame = tkinter.Frame(self, background="#0d1f14")
+        footer_frame.pack(fill="x", pady=(6, 0))
+
+        close_btn = tkinter.Button(
+            footer_frame, text="Close Dialog", font=("Arial", 10, "bold"),
+            background="#37474f", fg="white", activebackground="#455a64",
+            activeforeground="white", relief="ridge", borderwidth=1, cursor="hand2",
+            command=self._on_close
+        )
+        close_btn.pack(anchor="center")
+
+        # Show initial tab
+        self._switch_tab(0)
+
+    def _switch_tab(self, tab_idx: int):
+        """Switches between Wardrobe Closet (0) and Trophy Shelf (1)."""
+        self.current_tab = tab_idx
+        if tab_idx == 0:
+            self.tab_hof_frame.pack_forget()
+            self.tab_wardrobe_frame.pack(fill="both", expand=True)
+            self.btn_tab_wardrobe.configure(background="#2e7d32", fg="white", borderwidth=2)
+            self.btn_tab_hof.configure(background="#1e382b", fg="#cfd8dc", borderwidth=1)
+        else:
+            self.tab_wardrobe_frame.pack_forget()
+            self.tab_hof_frame.pack(fill="both", expand=True)
+            self.btn_tab_hof.configure(background="#2e7d32", fg="white", borderwidth=2)
+            self.btn_tab_wardrobe.configure(background="#1e382b", fg="#cfd8dc", borderwidth=1)
+            self._refresh_hof_display()
+
+    # ------------------------------------------------------------------------
+    # Tab 1: Wardrobe Closet Implementation
+    # ------------------------------------------------------------------------
+
+    def _build_wardrobe_tab(self):
+        nav_frame = tkinter.Frame(self.tab_wardrobe_frame, background="#0d1f14")
+        nav_frame.pack(fill="x", pady=(0, 4))
 
         self.prev_btn = tkinter.Button(
             nav_frame, text="◀ Previous", font=("Arial", 9, "bold"),
@@ -160,9 +273,8 @@ class WardrobeDialog(tkinter.Toplevel):
         )
         self.next_btn.pack(side="right")
 
-        # Cards Container Grid
-        cards_container = tkinter.Frame(self, background="#0d1f14")
-        cards_container.pack(fill="both", expand=True, pady=(0, 6))
+        cards_container = tkinter.Frame(self.tab_wardrobe_frame, background="#0d1f14")
+        cards_container.pack(fill="both", expand=True, pady=(0, 2))
 
         for p_idx, p_data in enumerate(self.PAGE_CONFIG):
             p_frame = tkinter.Frame(cards_container, background="#0d1f14")
@@ -197,7 +309,6 @@ class WardrobeDialog(tkinter.Toplevel):
                     portrait_lbl = tkinter.Label(left_col, text="[No Bust]", width=12, height=6, background="#0a1a12", fg="white")
                     portrait_lbl.pack(pady=(2, 4))
 
-                # Voice preview button under portrait
                 voice_btn = tkinter.Button(
                     left_col, text="🔊 Voice", font=("Arial", 8, "bold"),
                     background="#1e382b", fg="#e0e0e0", activebackground="#2e5441",
@@ -216,7 +327,6 @@ class WardrobeDialog(tkinter.Toplevel):
                 )
                 title_lbl.pack(fill="x")
 
-                # Status / Criteria badge
                 crit_text = self.UNLOCK_CRITERIA.get(char_id, "")
                 if unlocked:
                     status_text = "✓ Unlocked"
@@ -231,14 +341,12 @@ class WardrobeDialog(tkinter.Toplevel):
                 )
                 crit_lbl.pack(fill="x", pady=(1, 3))
 
-                # Lore
                 lore_lbl = tkinter.Label(
                     right_col, text=profile.lore, font=("Arial", 8),
                     fg="#b0bec5", background="#12271c", wraplength=210, justify="left", anchor="w"
                 )
                 lore_lbl.pack(fill="both", expand=True, pady=(0, 4))
 
-                # Action Frame
                 action_frame = tkinter.Frame(right_col, background="#12271c")
                 action_frame.pack(fill="x", side="bottom")
 
@@ -272,19 +380,6 @@ class WardrobeDialog(tkinter.Toplevel):
                     "action_frame": action_frame,
                 }
 
-        # Footer with Close button
-        footer_frame = tkinter.Frame(self, background="#0d1f14")
-        footer_frame.pack(fill="x", pady=(4, 0))
-
-        close_btn = tkinter.Button(
-            footer_frame, text="Close Dressing Room", font=("Arial", 10, "bold"),
-            background="#37474f", fg="white", activebackground="#455a64",
-            activeforeground="white", relief="ridge", borderwidth=1, cursor="hand2",
-            command=self._on_close
-        )
-        close_btn.pack(anchor="center")
-
-        # Open page for active character
         initial_page = 0
         current_char = getattr(getattr(self.app, "dealer_actor", None), "current_character", "julian")
         for p_idx, p_data in enumerate(self.PAGE_CONFIG):
@@ -294,7 +389,6 @@ class WardrobeDialog(tkinter.Toplevel):
         self._switch_page(initial_page)
 
     def _switch_page(self, page_idx: int):
-        """Displays the specified page of character cards."""
         total = len(self.PAGE_CONFIG)
         self.current_page = max(0, min(total - 1, page_idx))
         for p_idx, frame in self._page_frames.items():
@@ -309,40 +403,31 @@ class WardrobeDialog(tkinter.Toplevel):
         self.next_btn.config(state="normal" if self.current_page < total - 1 else "disabled")
 
     def _prev_page(self):
-        """Navigates to previous page."""
         if self.current_page > 0:
             self._switch_page(self.current_page - 1)
 
     def _next_page(self):
-        """Navigates to next page."""
         if self.current_page < len(self.PAGE_CONFIG) - 1:
             self._switch_page(self.current_page + 1)
 
     def _play_voice_preview(self, char_id: str):
-        """Plays the selected character's vocal accent audio cue."""
         profile = CHARACTERS.get(char_id)
         if profile and hasattr(self.app, "sound_manager"):
             self.app.sound_manager.play_haunted_sound(profile.audio_cue)
 
     def _equip_costume(self, char_id: str):
-        """Equips the chosen character costume, updates the live stage, and persists to save."""
         self.app.dealer_actor.equip_costume(char_id)
-
-        # Update persistent save
         if hasattr(self.app, "save_manager") and hasattr(self.app.save_manager, "data"):
             self.app.save_manager.data.equipped_costume = char_id
             self.app.save_manager.save()
 
-        # Update live game avatar & nameplate
         self.app._update_dealer_avatar()
         if hasattr(self.app, "sound_manager") and hasattr(self.app.sound_manager, "play_chip_add"):
             self.app.sound_manager.play_chip_add()
 
-        # Refresh cards UI
         self._refresh_card_actions()
 
     def _refresh_card_actions(self):
-        """Updates equip button states across all character cards."""
         for char_id, card_data in self.cards.items():
             is_equipped = (self.app.dealer_actor.current_character == char_id)
             card_data["is_equipped"] = is_equipped
@@ -373,6 +458,140 @@ class WardrobeDialog(tkinter.Toplevel):
                 w.pack(fill="x")
 
             card_data["action_widget"] = w
+
+    # ------------------------------------------------------------------------
+    # Tab 2: Hall of Fame & Trophy Shelf Implementation
+    # ------------------------------------------------------------------------
+
+    def _build_hof_tab(self):
+        # 1. Statistics Summary Card
+        records_frame = tkinter.LabelFrame(
+            self.tab_hof_frame, text=" 📊 All-Time Casino Records ",
+            font=("Arial", 10, "bold"), fg="#ffd700", background="#12271c",
+            padx=10, pady=6, relief="groove"
+        )
+        records_frame.pack(fill="x", pady=(0, 8))
+
+        self.lbl_peak_record = tkinter.Label(
+            records_frame, text="• Peak Bankroll: $1,000", font=("Arial", 9, "bold"),
+            fg="#69f0ae", background="#12271c"
+        )
+        self.lbl_peak_record.grid(row=0, column=0, sticky="w", padx=(0, 16), pady=2)
+
+        self.lbl_streak_record = tkinter.Label(
+            records_frame, text="• Longest Win Streak: 0 hands", font=("Arial", 9, "bold"),
+            fg="#ffd54f", background="#12271c"
+        )
+        self.lbl_streak_record.grid(row=0, column=1, sticky="w", padx=(0, 16), pady=2)
+
+        self.lbl_clears_record = tkinter.Label(
+            records_frame, text="• Hell's Table Clears: 0", font=("Arial", 9, "bold"),
+            fg="#ff8a80", background="#12271c"
+        )
+        self.lbl_clears_record.grid(row=0, column=2, sticky="w", pady=2)
+
+        self.lbl_hands_record = tkinter.Label(
+            records_frame, text="• Hands Won / Played: 0 / 0 (0.0% Win Rate)", font=("Arial", 9),
+            fg="#e0e0e0", background="#12271c"
+        )
+        self.lbl_hands_record.grid(row=1, column=0, columnspan=2, sticky="w", pady=2)
+
+        self.lbl_bjs_record = tkinter.Label(
+            records_frame, text="• Total Blackjacks: 0", font=("Arial", 9),
+            fg="#80d8ff", background="#12271c"
+        )
+        self.lbl_bjs_record.grid(row=1, column=2, sticky="w", pady=2)
+
+        # 2. 6 Core Achievement Plaques Grid (2 cols x 3 rows)
+        plaques_container = tkinter.LabelFrame(
+            self.tab_hof_frame, text=" 🏆 Core Casino Achievements ",
+            font=("Arial", 10, "bold"), fg="#ffd700", background="#12271c",
+            padx=8, pady=6, relief="groove"
+        )
+        plaques_container.pack(fill="both", expand=True)
+
+        for idx, spec in enumerate(self.ACHIEVEMENT_SPECS):
+            row = idx // 2
+            col = idx % 2
+
+            p_frame = tkinter.Frame(
+                plaques_container, background="#0f2218", relief="ridge", borderwidth=1,
+                padx=8, pady=4
+            )
+            p_frame.grid(row=row, column=col, padx=6, pady=4, sticky="nsew")
+            plaques_container.grid_columnconfigure(col, weight=1)
+            plaques_container.grid_rowconfigure(row, weight=1)
+
+            # Plaque title and reward
+            header_sub = tkinter.Frame(p_frame, background="#0f2218")
+            header_sub.pack(fill="x")
+
+            title_lbl = tkinter.Label(
+                header_sub, text=spec["title"], font=("Arial", 9, "bold"),
+                fg="#ffd700", background="#0f2218"
+            )
+            title_lbl.pack(side="left")
+
+            reward_lbl = tkinter.Label(
+                header_sub, text=f"[{spec['reward']}]", font=("Arial", 8, "italic"),
+                fg="#80cbc4", background="#0f2218"
+            )
+            reward_lbl.pack(side="right")
+
+            # Description
+            desc_lbl = tkinter.Label(
+                p_frame, text=spec["desc"], font=("Arial", 8),
+                fg="#b0bec5", background="#0f2218", wraplength=290, justify="left"
+            )
+            desc_lbl.pack(fill="x", pady=(2, 3), anchor="w")
+
+            # Status badge
+            status_lbl = tkinter.Label(
+                p_frame, text="🔒 LOCKED", font=("Arial", 8, "bold"),
+                fg="#ff8a80", background="#0f2218", anchor="w"
+            )
+            status_lbl.pack(fill="x")
+
+            self.plaque_widgets[spec["id"]] = {
+                "frame": p_frame,
+                "status_lbl": status_lbl,
+                "spec": spec,
+            }
+
+    def _refresh_hof_display(self):
+        """Refreshes all-time statistics and achievement plaques in Tab 2."""
+        save_data = getattr(getattr(self.app, "save_manager", None), "data", None)
+        if not save_data:
+            return
+
+        hs = save_data.highscores
+        self.lbl_peak_record.configure(text=f"• Peak Bankroll: ${hs.peak_bankroll:,}")
+        self.lbl_streak_record.configure(text=f"• Longest Win Streak: {hs.longest_win_streak:,} hands")
+        self.lbl_clears_record.configure(text=f"• Hell's Table Clears: {hs.hell_table_clears:,}")
+
+        pct = (hs.total_hands_won / hs.total_hands_played * 100.0) if hs.total_hands_played > 0 else 0.0
+        self.lbl_hands_record.configure(
+            text=f"• Hands Won / Played: {hs.total_hands_won:,} / {hs.total_hands_played:,} ({pct:.1f}% Win Rate)"
+        )
+        self.lbl_bjs_record.configure(text=f"• Total Blackjacks: {hs.total_blackjacks:,}")
+
+        achs = save_data.achievements
+        for ach_id, p_info in self.plaque_widgets.items():
+            unlocked = getattr(achs, ach_id, False)
+            spec = p_info["spec"]
+            frame = p_info["frame"]
+            lbl = p_info["status_lbl"]
+
+            if unlocked:
+                frame.configure(background="#132f20", highlightthickness=1, highlightbackground="#ffd700")
+                lbl.configure(
+                    text="✓ UNLOCKED", fg="#69f0ae", background="#132f20"
+                )
+            else:
+                frame.configure(background="#0f2218", highlightthickness=0)
+                lbl.configure(
+                    text=f"🔒 LOCKED: {spec['criteria']}", fg="#ff8a80", background="#0f2218"
+                )
 
     def _on_close(self):
         """Dismisses the wardrobe dialog gracefully."""

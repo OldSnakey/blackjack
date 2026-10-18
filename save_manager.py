@@ -49,6 +49,7 @@ class SaveData:
     unlocked_costumes: List[str] = field(default_factory=lambda: ["classic", "tiffany"])
     highscores: HighScores = field(default_factory=HighScores)
     achievements: Achievements = field(default_factory=Achievements)
+    chips_mode: bool = True
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -57,6 +58,7 @@ class SaveData:
             "unlocked_costumes": list(self.unlocked_costumes),
             "highscores": asdict(self.highscores),
             "achievements": asdict(self.achievements),
+            "chips_mode": self.chips_mode,
         }
 
     @classmethod
@@ -88,6 +90,7 @@ class SaveData:
                 split_maestro=ach_data.get("split_maestro", False),
                 big_spender=ach_data.get("big_spender", False),
             ),
+            chips_mode=bool(data.get("chips_mode", True)),
         )
 
 
@@ -137,11 +140,15 @@ class SaveManager:
     # --- High Score & Statistics Tracking ---
 
     def record_bankroll(self, current_bankroll: int):
-        """Updates peak bankroll if current exceeds it."""
+        """Updates peak bankroll if current exceeds it and checks bankroll unlock milestones."""
+        if current_bankroll >= 5000:
+            self.unlock_costume("grim")
         if current_bankroll > self.data.highscores.peak_bankroll:
             self.data.highscores.peak_bankroll = current_bankroll
             if current_bankroll >= 10000:
                 self.unlock_achievement("high_roller")
+            self.save()
+        elif current_bankroll >= 5000:
             self.save()
 
     def record_hand_played(self, won: bool, is_blackjack: bool = False):
@@ -192,3 +199,8 @@ class SaveManager:
             self.save()
             return True
         return False
+
+    def set_chips_mode(self, enabled: bool):
+        """Persists player preference for Chips Mode vs Casual Mode."""
+        self.data.chips_mode = enabled
+        self.save()

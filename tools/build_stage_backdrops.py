@@ -3,12 +3,13 @@ Procedural Generator for Dealer Horizon Stage Backdrops and Wardrobe Hanger Icon
 Generates:
 - backdrop_casino.png (Classic casino mahogany, brass trim, warm sconces, emerald drapery)
 - backdrop_creep.png (Twilight reality warp, dimmed sconces, eerie stone shadows)
-- backdrop_hell.png (Infernal volcanic brimstone, molten magma fissures, glowing embers)
+- backdrop_hell.png (Infernal volcanic volcanic brimstone, molten magma fissures, glowing embers)
 - backdrop_celestial.png (Divine cathedral, golden light rays, celestial stained glass)
 - backdrop_crypt.png (Gothic crypt, moonlit arches, stone bricks, misty cobwebs)
 - hanger_icon.png (Polished brass wardrobe coat-hanger icon with alpha transparency)
 
 Outputs to assets/haunted/backdrops/ and assets/haunted/
+All backdrops are guaranteed to be 100% opaque RGB images to eliminate alpha keying artifacts in Tkinter.
 """
 
 from __future__ import annotations
@@ -25,8 +26,8 @@ BACKDROPS_DIR.mkdir(parents=True, exist_ok=True)
 
 def create_casino_backdrop(w: int = 1000, h: int = 140) -> Image.Image:
     """Renders authentic luxury casino mahogany wall with sconces and velvet drape."""
-    img = Image.new("RGBA", (w, h), (35, 18, 10, 255))
-    draw = ImageDraw.Draw(img)
+    base = Image.new("RGBA", (w, h), (35, 18, 10, 255))
+    draw = ImageDraw.Draw(base)
 
     # 1. Mahogany vertical panels
     panel_w = 40
@@ -36,16 +37,21 @@ def create_casino_backdrop(w: int = 1000, h: int = 140) -> Image.Image:
         # Deep groove between wood slats
         draw.line([x + panel_w - 1, 0, x + panel_w - 1, h], fill=(12, 6, 3, 255), width=2)
         # Subtle wood grain highlight
-        draw.line([x + 2, 0, x + 2, h], fill=(shade + 22, shade // 2 + 5, 12, 100), width=1)
+        draw.line([x + 2, 0, x + 2, h], fill=(shade + 22, shade // 2 + 5, 12, 255), width=1)
 
-    # 2. Warm ambient sconce glows (at x=160 and x=w-160)
+    # 2. Warm ambient sconce glows composited on overlay layer
+    overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    ov_draw = ImageDraw.Draw(overlay)
     for sconce_x in (180, w - 180):
         for r in range(110, 0, -5):
             alpha = int(45 * (1.0 - r / 110.0))
-            draw.ellipse([sconce_x - r, 30 - r // 2, sconce_x + r, 30 + r // 2], fill=(255, 220, 130, alpha))
+            ov_draw.ellipse([sconce_x - r, 30 - r // 2, sconce_x + r, 30 + r // 2], fill=(255, 220, 130, alpha))
         # Sconce brass fixture
-        draw.polygon([(sconce_x - 6, 22), (sconce_x + 6, 22), (sconce_x + 3, 38), (sconce_x - 3, 38)], fill=(212, 175, 55, 255))
-        draw.ellipse([sconce_x - 4, 16, sconce_x + 4, 24], fill=(255, 245, 180, 255))
+        ov_draw.polygon([(sconce_x - 6, 22), (sconce_x + 6, 22), (sconce_x + 3, 38), (sconce_x - 3, 38)], fill=(212, 175, 55, 255))
+        ov_draw.ellipse([sconce_x - 4, 16, sconce_x + 4, 24], fill=(255, 245, 180, 255))
+
+    img = Image.alpha_composite(base, overlay)
+    draw = ImageDraw.Draw(img)
 
     # 3. Top emerald velvet drape valance
     drape_h = 24
@@ -63,13 +69,13 @@ def create_casino_backdrop(w: int = 1000, h: int = 140) -> Image.Image:
     draw.rectangle([0, h - 4, w, h], fill=(15, 8, 4, 255))
     draw.line([0, h - 4, w, h - 4], fill=(212, 175, 55, 180), width=1)
 
-    return img
+    return img.convert("RGB")
 
 
 def create_creep_backdrop(w: int = 1000, h: int = 140) -> Image.Image:
     """Renders twilight reality warp backdrop with dimmed flickering sconces and stone creep."""
-    img = Image.new("RGBA", (w, h), (20, 14, 18, 255))
-    draw = ImageDraw.Draw(img)
+    base = Image.new("RGBA", (w, h), (20, 14, 18, 255))
+    draw = ImageDraw.Draw(base)
 
     # 1. Darkened, weathered masonry and rotting wood
     for x in range(0, w, 50):
@@ -77,38 +83,47 @@ def create_creep_backdrop(w: int = 1000, h: int = 140) -> Image.Image:
         draw.rectangle([x, 0, x + 48, h], fill=(shade, shade - 2, shade + 4, 255))
         draw.line([x + 49, 0, x + 49, h], fill=(8, 6, 10, 255), width=2)
 
-    # 2. Dim flickering sickly amber sconce
+    # 2. Dim flickering sickly amber sconce & dark vignette on overlay
+    overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    ov_draw = ImageDraw.Draw(overlay)
+
     for sconce_x in (180, w - 180):
         for r in range(60, 0, -4):
-            alpha = int(25 * (1.0 - r / 60.0))
-            draw.ellipse([sconce_x - r, 30 - r // 2, sconce_x + r, 30 + r // 2], fill=(255, 160, 60, alpha))
-        draw.polygon([(sconce_x - 5, 24), (sconce_x + 5, 24), (sconce_x + 2, 38), (sconce_x - 2, 38)], fill=(120, 95, 40, 255))
-        draw.ellipse([sconce_x - 3, 20, sconce_x + 3, 26], fill=(255, 180, 80, 200))
+            alpha = int(35 * (1.0 - r / 60.0))
+            ov_draw.ellipse([sconce_x - r, 30 - r // 2, sconce_x + r, 30 + r // 2], fill=(255, 160, 60, alpha))
+        ov_draw.polygon([(sconce_x - 5, 24), (sconce_x + 5, 24), (sconce_x + 2, 38), (sconce_x - 2, 38)], fill=(120, 95, 40, 255))
+        ov_draw.ellipse([sconce_x - 3, 20, sconce_x + 3, 26], fill=(255, 180, 80, 255))
+
+    # Heavy dark vignette on outer 140px smoothly fading into pitch-black
+    for x in range(140):
+        alpha = int(240 * (1.0 - x / 140.0))
+        ov_draw.line([x, 0, x, h], fill=(2, 2, 3, alpha))
+        ov_draw.line([w - 1 - x, 0, w - 1 - x, h], fill=(2, 2, 3, alpha))
+
+    img = Image.alpha_composite(base, overlay)
+    draw = ImageDraw.Draw(img)
 
     # 3. Tattered drape valance
     draw.rectangle([0, 0, w, 18], fill=(12, 28, 16, 255))
-    draw.line([0, 18, w, 18], fill=(80, 70, 30, 160), width=1)
-
-    # Heavy dark vignette on edges
-    for x in range(120):
-        alpha = int(180 * (1.0 - x / 120.0))
-        draw.line([x, 0, x, h], fill=(0, 0, 0, alpha))
-        draw.line([w - 1 - x, 0, w - 1 - x, h], fill=(0, 0, 0, alpha))
+    draw.line([0, 18, w, 18], fill=(80, 70, 30, 255), width=1)
 
     # Bottom edge shadow
     draw.rectangle([0, h - 3, w, h], fill=(5, 5, 5, 255))
-    return img
+    return img.convert("RGB")
 
 
 def create_hell_backdrop(w: int = 1000, h: int = 140) -> Image.Image:
     """Renders fiery volcanic hellscape with molten fissures and rising brimstone glow."""
-    img = Image.new("RGBA", (w, h), (18, 4, 6, 255))
-    draw = ImageDraw.Draw(img)
+    base = Image.new("RGBA", (w, h), (18, 4, 6, 255))
+    draw = ImageDraw.Draw(base)
 
     # 1. Jagged obsidian rock formations
     for x in range(0, w, 40):
         shade = 12 + (x * 13) % 12
         draw.polygon([(x, 0), (x + 35, 0), (x + 38, h), (x - 4, h)], fill=(shade + 6, shade // 3, shade // 2, 255))
+
+    overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    ov_draw = ImageDraw.Draw(overlay)
 
     # 2. Molten lava glow from below
     for y in range(h - 45, h):
@@ -116,7 +131,7 @@ def create_hell_backdrop(w: int = 1000, h: int = 140) -> Image.Image:
         r_val = int(180 * factor + 40)
         g_val = int(50 * factor)
         alpha = int(220 * factor)
-        draw.line([0, y, w, y], fill=(r_val, g_val, 0, alpha))
+        ov_draw.line([0, y, w, y], fill=(r_val, g_val, 0, alpha))
 
     # 3. Magma fissure cracks
     fissures = [
@@ -125,10 +140,8 @@ def create_hell_backdrop(w: int = 1000, h: int = 140) -> Image.Image:
         [(w // 2 - 120, h), (w // 2 - 80, h - 22), (w // 2, h - 15), (w // 2 + 70, h - 28), (w // 2 + 110, h)]
     ]
     for pts in fissures:
-        # Outer orange heat glow
-        draw.line(pts, fill=(255, 100, 0, 180), width=5)
-        # Inner white-hot core
-        draw.line(pts, fill=(255, 240, 180, 240), width=2)
+        ov_draw.line(pts, fill=(255, 100, 0, 180), width=5)
+        ov_draw.line(pts, fill=(255, 240, 180, 240), width=2)
 
     # 4. Floating burning embers
     ember_pts = [
@@ -136,58 +149,63 @@ def create_hell_backdrop(w: int = 1000, h: int = 140) -> Image.Image:
         (w - 200, 50, 2), (w - 260, 20, 3), (w // 2 - 50, 40, 3), (w // 2 + 90, 30, 2)
     ]
     for ex, ey, sz in ember_pts:
-        draw.ellipse([ex - sz, ey - sz, ex + sz, ey + sz], fill=(255, 180, 50, 230))
-        draw.ellipse([ex - 1, ey - 1, ex + 1, ey + 1], fill=(255, 255, 200, 255))
+        ov_draw.ellipse([ex - sz, ey - sz, ex + sz, ey + sz], fill=(255, 180, 50, 230))
+        ov_draw.ellipse([ex - 1, ey - 1, ex + 1, ey + 1], fill=(255, 255, 200, 255))
+
+    img = Image.alpha_composite(base, overlay)
+    draw = ImageDraw.Draw(img)
 
     # Infernal bottom rail glow
     draw.line([0, h - 2, w, h - 2], fill=(255, 60, 0, 255), width=2)
-    return img
+    return img.convert("RGB")
 
 
 def create_celestial_backdrop(w: int = 1000, h: int = 140) -> Image.Image:
     """Renders radiant golden cathedral with celestial rays and luminous stained glass."""
-    img = Image.new("RGBA", (w, h), (10, 24, 42, 255))
-    draw = ImageDraw.Draw(img)
+    base = Image.new("RGBA", (w, h), (10, 24, 42, 255))
+    draw = ImageDraw.Draw(base)
 
     # 1. Stained glass lancet windows in the background
     window_xs = [140, 260, w - 260, w - 140]
     for wx in window_xs:
         win_w, win_h = 56, 95
-        # Outer arch
         draw.pieslice([wx - win_w // 2, 10, wx + win_w // 2, 10 + win_h], 180, 360, fill=(30, 70, 110, 255))
         draw.rectangle([wx - win_w // 2, 10 + win_h // 2, wx + win_w // 2, 10 + win_h], fill=(25, 60, 95, 255))
-        # Inner golden pane glow
-        draw.pieslice([wx - win_w // 2 + 4, 14, wx + win_w // 2 - 4, 10 + win_h - 4], 180, 360, fill=(255, 215, 0, 140))
-        draw.rectangle([wx - win_w // 2 + 4, 14 + win_h // 2, wx + win_w // 2 - 4, 10 + win_h - 4], fill=(255, 230, 100, 120))
-        # Stone mullion cross
         draw.line([wx, 10, wx, 10 + win_h], fill=(15, 30, 50, 255), width=2)
         draw.line([wx - win_w // 2, 10 + win_h // 2, wx + win_w // 2, 10 + win_h // 2], fill=(15, 30, 50, 255), width=2)
 
-    # 2. Golden divine light rays streaming down
-    ray_surface = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    ray_draw = ImageDraw.Draw(ray_surface)
+    # 2. Golden divine light rays streaming down on overlay
+    overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    ov_draw = ImageDraw.Draw(overlay)
+
+    for wx in window_xs:
+        win_w, win_h = 56, 95
+        ov_draw.pieslice([wx - win_w // 2 + 4, 14, wx + win_w // 2 - 4, 10 + win_h - 4], 180, 360, fill=(255, 215, 0, 140))
+        ov_draw.rectangle([wx - win_w // 2 + 4, 14 + win_h // 2, wx + win_w // 2 - 4, 10 + win_h - 4], fill=(255, 230, 100, 120))
+
     center_x = w // 2
     for angle_deg in range(-55, 60, 18):
         rad = math.radians(angle_deg)
         x_bottom = center_x + int(math.tan(rad) * h * 1.8)
         ray_pts = [(center_x - 10, 0), (center_x + 10, 0), (x_bottom + 45, h), (x_bottom - 45, h)]
-        ray_draw.polygon(ray_pts, fill=(255, 235, 140, 28))
-    img = Image.alpha_composite(img, ray_surface)
-    draw = ImageDraw.Draw(img)
+        ov_draw.polygon(ray_pts, fill=(255, 235, 140, 28))
 
     # 3. Soft golden clouds at bottom
     for cx in range(0, w + 40, 70):
-        draw.ellipse([cx - 45, h - 25, cx + 45, h + 15], fill=(255, 240, 190, 45))
+        ov_draw.ellipse([cx - 45, h - 25, cx + 45, h + 15], fill=(255, 240, 190, 45))
+
+    img = Image.alpha_composite(base, overlay)
+    draw = ImageDraw.Draw(img)
 
     # Golden holy bottom rail
-    draw.line([0, h - 2, w, h - 2], fill=(255, 215, 0, 240), width=2)
-    return img
+    draw.line([0, h - 2, w, h - 2], fill=(255, 215, 0, 255), width=2)
+    return img.convert("RGB")
 
 
 def create_crypt_backdrop(w: int = 1000, h: int = 140) -> Image.Image:
     """Renders gothic stone crypt with moonlit arched window, cobwebs, and bricks."""
-    img = Image.new("RGBA", (w, h), (18, 20, 24, 255))
-    draw = ImageDraw.Draw(img)
+    base = Image.new("RGBA", (w, h), (18, 20, 24, 255))
+    draw = ImageDraw.Draw(base)
 
     # 1. Ashlar masonry stone blocks
     brick_h = 24
@@ -197,32 +215,33 @@ def create_crypt_backdrop(w: int = 1000, h: int = 140) -> Image.Image:
         for x in range(-offset, w, brick_w):
             shade = 22 + (x * 7 + y * 13) % 12
             draw.rectangle([x, y, x + brick_w - 2, y + brick_h - 2], fill=(shade, shade + 2, shade + 5, 255))
-            # Mortar joints
             draw.line([x, y + brick_h - 1, x + brick_w, y + brick_h - 1], fill=(8, 10, 12, 255), width=2)
             draw.line([x + brick_w - 1, y, x + brick_w - 1, y + brick_h], fill=(8, 10, 12, 255), width=2)
 
     # 2. Arched moonlit crypt window (left and right)
     for wx in (160, w - 160):
-        # Arched opening
         draw.pieslice([wx - 32, 12, wx + 32, 85], 180, 360, fill=(45, 65, 80, 255))
         draw.rectangle([wx - 32, 48, wx + 32, 95], fill=(45, 65, 80, 255))
-        # Pale moonlight disc
         draw.ellipse([wx - 10, 26, wx + 14, 50], fill=(230, 240, 250, 220))
-        # Stone iron bars
         draw.line([wx - 12, 20, wx - 12, 95], fill=(15, 18, 20, 255), width=2)
         draw.line([wx + 12, 20, wx + 12, 95], fill=(15, 18, 20, 255), width=2)
         draw.line([wx - 32, 55, wx + 32, 55], fill=(15, 18, 20, 255), width=2)
 
-    # 3. Cobwebs in upper corners
+    # 3. Cobwebs on overlay layer
+    overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    ov_draw = ImageDraw.Draw(overlay)
     for start_x, start_y, step_dir in [(0, 0, 1), (w, 0, -1)]:
         for i in range(1, 5):
             r = i * 16
-            draw.arc([start_x - r, start_y - r, start_x + r, start_y + r], 0, 90 if step_dir == 1 else 90, fill=(180, 190, 200, 60), width=1)
-            draw.line([start_x, start_y, start_x + step_dir * 50, start_y + 35], fill=(180, 190, 200, 50), width=1)
+            ov_draw.arc([start_x - r, start_y - r, start_x + r, start_y + r], 0, 90 if step_dir == 1 else 90, fill=(180, 190, 200, 60), width=1)
+            ov_draw.line([start_x, start_y, start_x + step_dir * 50, start_y + 35], fill=(180, 190, 200, 50), width=1)
+
+    img = Image.alpha_composite(base, overlay)
+    draw = ImageDraw.Draw(img)
 
     # Weathered stone rail
     draw.line([0, h - 3, w, h - 3], fill=(70, 75, 85, 255), width=2)
-    return img
+    return img.convert("RGB")
 
 
 def create_hanger_icon(size: int = 28) -> Image.Image:
@@ -242,7 +261,6 @@ def create_hanger_icon(size: int = 28) -> Image.Image:
     draw.line([int(14 * scale), int(10 * scale), int(14 * scale), int(13 * scale)], fill=gold_main, width=int(max(2, 2 * scale)))
 
     # 2. Triangular hanger body
-    # Peak at (14, 13), Left at (4, 21), Right at (24, 21)
     pts = [
         (int(14 * scale), int(13 * scale)),
         (int(24 * scale), int(21 * scale)),

@@ -114,30 +114,35 @@ class TestBettingGuiAndState(unittest.TestCase):
         except tkinter.TclError:
             pass
 
-    def test_default_casual_mode(self):
-        """By default, Chips Mode is OFF (Casual Mode) and betting controls are hidden."""
-        self.assertFalse(self.app.chips_mode_var.get())
-        # Check that betting frame and bankroll label are hidden via grid_info()
-        self.assertFalse(bool(self.app.betting_frame.grid_info()))
-        self.assertFalse(bool(self.app.bankroll_label.grid_info()))
-
-    def test_toggle_chips_mode_on_and_off(self):
-        """Toggling Chips Mode ON displays betting controls; toggling OFF hides them."""
-        # Toggle ON
-        self.app.chips_mode_var.set(True)
-        self.app._on_toggle_chips_mode()
-
+    def test_default_chips_mode(self):
+        """By default, Chips Mode is ON and betting controls are visible."""
+        self.assertTrue(self.app.chips_mode_var.get())
+        # Check that betting frame and bankroll label are visible via grid_info()
         self.assertTrue(bool(self.app.betting_frame.grid_info()))
         self.assertTrue(bool(self.app.bankroll_label.grid_info()))
         self.assertTrue(self.app.is_betting_phase)
 
-        # Toggle OFF
+    def test_toggle_chips_mode_off_and_on(self):
+        """Toggling Chips Mode OFF hides betting controls; toggling ON restores them."""
+        # Starts ON by default
+        self.assertTrue(self.app.chips_mode_var.get())
+        self.assertTrue(bool(self.app.betting_frame.grid_info()))
+
+        # Toggle OFF (Casual Mode)
         self.app.chips_mode_var.set(False)
         self.app._on_toggle_chips_mode()
 
         self.assertFalse(bool(self.app.betting_frame.grid_info()))
         self.assertFalse(bool(self.app.bankroll_label.grid_info()))
         self.assertFalse(self.app.is_betting_phase)
+
+        # Toggle back ON (Chips Mode)
+        self.app.chips_mode_var.set(True)
+        self.app._on_toggle_chips_mode()
+
+        self.assertTrue(bool(self.app.betting_frame.grid_info()))
+        self.assertTrue(bool(self.app.bankroll_label.grid_info()))
+        self.assertTrue(self.app.is_betting_phase)
 
     def test_staging_bet_and_clear(self):
         """Adding chips updates the staged bet; Clear Bet resets it back to 0."""
@@ -617,10 +622,15 @@ class TestBettingGuiAndState(unittest.TestCase):
 
     def test_chip_visualizer_state_sync_and_toggle(self):
         """Chip visualizer toggles visibility with Chips Mode and syncs with staged bets."""
-        # By default in Casual Mode, visualizer is hidden
+        # By default in Chips Mode, visualizer is visible
+        self.assertTrue(bool(self.app.chip_visualizer.grid_info()))
+
+        # Toggle Chips Mode OFF -> visualizer is hidden
+        self.app.chips_mode_var.set(False)
+        self.app._on_toggle_chips_mode()
         self.assertFalse(bool(self.app.chip_visualizer.grid_info()))
 
-        # Toggle Chips Mode ON -> visualizer becomes visible
+        # Toggle Chips Mode back ON -> visualizer becomes visible
         self.app.chips_mode_var.set(True)
         self.app._on_toggle_chips_mode()
         self.assertTrue(bool(self.app.chip_visualizer.grid_info()))

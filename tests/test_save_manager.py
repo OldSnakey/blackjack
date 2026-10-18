@@ -41,6 +41,21 @@ class TestSaveManager(unittest.TestCase):
         self.assertEqual(self.manager.data.unlocked_costumes, ["classic", "tiffany"])
         self.assertFalse(self.manager.data.achievements.exorcist)
         self.assertFalse(self.manager.data.achievements.high_roller)
+        self.assertTrue(self.manager.data.chips_mode)
+
+    def test_set_chips_mode(self):
+        """set_chips_mode persists the user's preference to disk."""
+        self.manager.set_chips_mode(False)
+        self.assertFalse(self.manager.data.chips_mode)
+
+        # Check disk
+        with open(self.save_file, "r", encoding="utf-8") as f:
+            disk_data = json.load(f)
+        self.assertFalse(disk_data["chips_mode"])
+
+        # Reload in fresh instance
+        reloaded = SaveManager(save_path=self.save_file)
+        self.assertFalse(reloaded.data.chips_mode)
 
     def test_record_bankroll_and_high_roller(self):
         """Bankroll record updates peak and awards high roller achievement at $10,000."""
@@ -85,8 +100,10 @@ class TestSaveManager(unittest.TestCase):
         self.manager.record_bankroll(25000)
         self.manager.unlock_achievement("exorcist")
         self.manager.record_win_streak(10)
+        self.manager.set_chips_mode(False)
         self.assertTrue(self.manager.data.achievements.exorcist)
         self.assertIn("seraph", self.manager.data.unlocked_costumes)
+        self.assertFalse(self.manager.data.chips_mode)
 
         # Execute clear save
         success = self.manager.clear_save()
@@ -98,11 +115,13 @@ class TestSaveManager(unittest.TestCase):
         self.assertEqual(self.manager.data.unlocked_costumes, ["classic", "tiffany"])
         self.assertFalse(self.manager.data.achievements.exorcist)
         self.assertFalse(self.manager.data.achievements.high_roller)
+        self.assertTrue(self.manager.data.chips_mode)
 
         # Reload from disk into fresh manager instance to ensure persistence was overwritten
         fresh_mgr = SaveManager(save_path=self.save_file)
         self.assertEqual(fresh_mgr.data.highscores.peak_bankroll, 1000)
         self.assertFalse(fresh_mgr.data.achievements.exorcist)
+        self.assertTrue(fresh_mgr.data.chips_mode)
 
     def test_corrupt_file_recovery(self):
         """Corrupted JSON file resets gracefully to blank slate on load."""
@@ -112,6 +131,7 @@ class TestSaveManager(unittest.TestCase):
         recovered_mgr = SaveManager(save_path=self.save_file)
         self.assertEqual(recovered_mgr.data.highscores.peak_bankroll, 1000)
         self.assertEqual(recovered_mgr.data.unlocked_costumes, ["classic", "tiffany"])
+        self.assertTrue(recovered_mgr.data.chips_mode)
 
 
 if __name__ == "__main__":

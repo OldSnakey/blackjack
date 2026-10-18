@@ -71,6 +71,27 @@ class TestDealerStageAssets(unittest.TestCase):
                 self.assertEqual(img.mode, "RGBA")
                 self.assertGreater(img.width, 20)
 
+    def test_backdrops_are_opaque_rgb(self):
+        """Panoramic backdrops must be 100% opaque RGB images with zero alpha leakage."""
+        for filename in self.REQUIRED_BACKDROPS:
+            path = BACKDROPS_DIR / filename
+            self.assertTrue(path.exists(), f"Backdrop file missing: {filename}")
+            with Image.open(path) as img:
+                self.assertIn(
+                    img.mode,
+                    ("RGB", "RGBA"),
+                    f"Backdrop {filename} must have RGB or RGBA mode",
+                )
+                if img.mode == "RGBA":
+                    # Every single pixel must be 100% opaque
+                    alphas = [img.getpixel((x, y))[3] for x in range(0, img.width, 20) for y in range(0, img.height, 10)]
+                    min_alpha = min(alphas)
+                    self.assertEqual(
+                        min_alpha,
+                        255,
+                        f"Backdrop {filename} has low alpha pixels ({min_alpha} < 255) causing transparency leakage",
+                    )
+
 
 class TestDealerStageCanvasIntegration(unittest.TestCase):
     """Verifies DealerStageCanvas layout, backdrop switching, and hanger button integration."""
@@ -119,6 +140,14 @@ class TestDealerStageCanvasIntegration(unittest.TestCase):
         self.app._apply_phase_theme(Phase.VICTORY)
         self.root.update_idletasks()
         self.assertEqual(canvas.current_theme, "celestial")
+
+    def test_stage_canvas_dark_background(self):
+        """DealerStageCanvas background must be dark/theatrical, never green."""
+        for phase in (Phase.NORMAL, Phase.CREEP, Phase.HELL_TABLE, Phase.VICTORY):
+            self.app._apply_phase_theme(phase)
+            self.root.update_idletasks()
+            bg = str(self.app.dealer_stage_canvas["background"]).lower()
+            self.assertNotIn(bg, ("#074c1a", "#0b6623"), f"Stage canvas background must not be casino felt green in {phase.name}")
 
     def test_wardrobe_hanger_button_click(self):
         """Clicking the wardrobe hanger button in the top-right triggers the handler."""

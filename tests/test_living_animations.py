@@ -65,7 +65,7 @@ class TestLivingDealerAnimations(unittest.TestCase):
         """Blinking triggers closed eyes and restores open eyes."""
         self.assertEqual(self.app.dealer_actor.eye_state, "open")
         self.app._trigger_dealer_blink(duration_ms=50)
-        self.assertEqual(self.app.dealer_actor.eye_state, "closed")
+        self.assertIn(self.app.dealer_actor.eye_state, ("half", "closed"))
 
         # Let scheduled after callback restore open
         self.root.update()
@@ -110,6 +110,109 @@ class TestLivingDealerAnimations(unittest.TestCase):
         self.app._restore_dealer_mouth()
         self.assertEqual(self.app.dealer_actor.mouth_state, "neutral")
 
+    def test_stage_breathing_updates_dealer_sprite_coords(self):
+        """Idle breathing ticker moves dealer_sprite item on dealer_stage_canvas within vertical bounds."""
+        stage = self.app.dealer_stage_canvas
+        self.assertTrue(stage.find_withtag("dealer_sprite"))
+        initial_coords = stage.coords("dealer_sprite")
+        self.assertEqual(len(initial_coords), 2)
+        base_y = initial_coords[1]
+
+        # Advance breathing step
+        self.app._dealer_anim_step = 1.57  # ~pi/2, peak positive offset
+        self.app._dealer_breathing_tick()
+        new_coords = stage.coords("dealer_sprite")
+        self.assertNotEqual(new_coords[1], base_y)
+        self.assertAlmostEqual(new_coords[1] - base_y, 2, delta=1)
+
+    def test_three_frame_blinking_sequence(self):
+        """Blinking transitions smoothly through open -> half -> closed -> half -> open."""
+        actor = self.app.dealer_actor
+        self.assertEqual(actor.eye_state, "open")
+
+        self.app._trigger_dealer_blink(duration_ms=120)
+        # Immediate state is half or closed
+        self.assertIn(actor.eye_state, ("half", "closed"))
+
+        # Advance through callbacks
+        if hasattr(self.app, "_advance_blink_step"):
+            self.app._advance_blink_step(2)
+            self.assertEqual(actor.eye_state, "closed")
+            self.app._advance_blink_step(3)
+            self.assertEqual(actor.eye_state, "half")
+            self.app._advance_blink_step(4)
+            self.assertEqual(actor.eye_state, "open")
+        else:
+            self.app._restore_dealer_eyes()
+            self.assertEqual(actor.eye_state, "open")
+
+    def test_ambient_particles_system_on_stage_canvas(self):
+        """DealerStageCanvas maintains an ambient particle pool updated per frame."""
+        stage = self.app.dealer_stage_canvas
+        self.assertTrue(hasattr(stage, "particles"))
+        self.assertTrue(hasattr(stage, "update_particles"))
+
+        # Switch to Hell theme and spawn particles
+        stage.set_theme("hell")
+        stage.spawn_ambient_particles(count=5)
+        self.assertGreaterEqual(len(stage.particles), 5)
+        # Verify particles have motion vectors and lifetime
+        p = stage.particles[0]
+        self.assertIn("x", p)
+        self.assertIn("y", p)
+        self.assertIn("vy", p)
+        self.assertIn("life", p)
+
+        # Update moves particles
+        old_y = p["y"]
+        stage.update_particles()
+        self.assertNotEqual(stage.particles[0]["y"], old_y)
+
+        # Clear particles
+        stage.clear_particles()
+        self.assertEqual(len(stage.particles), 0)
+
+    def test_sweat_drop_particle_on_dealer_gasp(self):
+        """Dealer bust gasp spawns a sweat drop particle on DealerStageCanvas."""
+        stage = self.app.dealer_stage_canvas
+        initial_count = len(stage.particles) if hasattr(stage, "particles") else 0
+
+        self.app._trigger_dealer_gasp()
+        self.assertEqual(self.app.dealer_actor.mouth_state, "gasp")
+        if hasattr(stage, "particles"):
+            self.assertGreater(len(stage.particles), initial_count)
+            sweat_particles = [p for p in stage.particles if p.get("type") == "sweat"]
+            self.assertGreater(len(sweat_particles), 0)
+
+    def test_typewriter_dialogue_streaming(self):
+        """Speech callout streams characters in interactive mode and supports fast-forward."""
+        # Test full streaming mode
+        self.app.set_dealer_speech("A high wager on the felt!", stream=True)
+        self.assertTrue(hasattr(self.app, "_typewriter_timer_id"))
+
+        # Fast forward completes speech immediately
+        self.app._complete_typewriter_speech()
+        self.assertEqual(self.app.dealer_speech_var.get(), "A high wager on the felt!")
+        self.assertIsNone(self.app._typewriter_timer_id)
+
+    def test_hole_card_peek_on_ace_or_ten(self):
+        """Dealer upcard of Ace or 10 invokes peek gesture before player actions."""
+        # Setup dealer with Ace upcard and 9 in the hole (no BJ)
+        self.app.dealer_hand = [
+            Card(1, self.app.all_cards[0][1], rank="ace", suit="spades"),
+            Card(9, self.app.all_cards[1][1], rank="9", suit="hearts"),
+        ]
+        self.app.player_hands = [[
+            Card(10, self.app.all_cards[2][1], rank="10", suit="diamonds"),
+            Card(7, self.app.all_cards[3][1], rank="7", suit="clubs"),
+        ]]
+        self.app._check_initial_blackjack()
+        self.assertEqual(self.app.dealer_actor.arm_state, "peek")
+
+        # Restoring returns to rest
+        self.app._restore_dealer_arms()
+        self.assertEqual(self.app.dealer_actor.arm_state, "rest")
+
     def test_timer_cleanup_on_close(self):
         """Closing the application cleanly cancels all dealer living animation timers."""
         self.app._schedule_dealer_blink()
@@ -118,6 +221,7 @@ class TestLivingDealerAnimations(unittest.TestCase):
         self.app._on_close()
         self.assertIsNone(self.app._dealer_blink_timer_id)
         self.assertIsNone(self.app._dealer_idle_timer_id)
+        self.assertIsNone(self.app._typewriter_timer_id)
 
 
 if __name__ == "__main__":

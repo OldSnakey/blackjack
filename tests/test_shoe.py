@@ -15,7 +15,7 @@ class TestMultiDeckShoe(unittest.TestCase):
     def setUp(self):
         self.root = tkinter.Tk()
         self.root.withdraw()
-        self.app = BlackjackApp(self.root)
+        self.app = BlackjackApp(self.root, chips_mode=False)
 
     def tearDown(self):
         try:

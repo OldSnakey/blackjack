@@ -209,7 +209,7 @@ class TestHauntedGui(unittest.TestCase):
     def setUp(self):
         self.root = tkinter.Tk()
         self.root.withdraw()
-        self.app = BlackjackApp(self.root, sound_enabled=False)
+        self.app = BlackjackApp(self.root, sound_enabled=False, chips_mode=False)
 
     def tearDown(self):
         try:
