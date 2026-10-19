@@ -37,6 +37,7 @@ class CharacterProfile:
     audio_cue: str
     unlock_key: str
     lore: str
+    is_puppet: bool = False
 
 
 CHARACTERS: Dict[str, CharacterProfile] = {
@@ -50,6 +51,7 @@ CHARACTERS: Dict[str, CharacterProfile] = {
         audio_cue="dealer_julian.ogg",
         unlock_key="classic",
         lore="Consummate casino gentleman who deals cards with effortless elegance and calm composure.",
+        is_puppet=False,
     ),
     "malphas": CharacterProfile(
         id="malphas",
@@ -61,6 +63,7 @@ CHARACTERS: Dict[str, CharacterProfile] = {
         audio_cue="dealer_malphas.ogg",
         unlock_key="pit_fiend",
         lore="Menacing archfiend whose molten ram horns and smoldering embers crave mortal soul fragments.",
+        is_puppet=False,
     ),
     "uriel": CharacterProfile(
         id="uriel",
@@ -72,6 +75,7 @@ CHARACTERS: Dict[str, CharacterProfile] = {
         audio_cue="dealer_uriel.ogg",
         unlock_key="seraph",
         lore="Radiant heavenly messenger whose luminous halo and divine vestments banish ancient infernal curses.",
+        is_puppet=False,
     ),
     "mortimer": CharacterProfile(
         id="mortimer",
@@ -83,6 +87,7 @@ CHARACTERS: Dict[str, CharacterProfile] = {
         audio_cue="dealer_mortimer.ogg",
         unlock_key="grim_bones",
         lore="Dapper skeleton croupier sporting a purple silk top hat who dryly chuckles at the roll of the bones.",
+        is_puppet=False,
     ),
     "tiffany": CharacterProfile(
         id="tiffany",
@@ -94,6 +99,19 @@ CHARACTERS: Dict[str, CharacterProfile] = {
         audio_cue="dealer_tiffany.ogg",
         unlock_key="tiffany",
         lore="Glamorous and quick-witted croupier whose velvet touch and radiant smile charm even the sharpest card counters.",
+        is_puppet=False,
+    ),
+    "dummy": CharacterProfile(
+        id="dummy",
+        name="Puppet Dummy",
+        title="🧪 Test Puppet Dummy",
+        theme="casino",
+        nameplate_fg="#00e5ff",
+        speech_bg="#0a1520",
+        audio_cue="dealer_julian.ogg",
+        unlock_key="dummy_test",
+        lore="High-contrast multi-layer dummy puppet rigged to verify layer stacking, Z-order, and articulation.",
+        is_puppet=True,
     ),
 }
 
@@ -112,7 +130,38 @@ COSTUME_ALIASES: Dict[str, str] = {
     "skeleton": "mortimer",
     "bones": "mortimer",
     "crypt": "mortimer",
+    "dummy": "dummy",
+    "puppet": "dummy",
+    "test": "dummy",
 }
+
+VISEME_STATES = ("neutral", "talk", "a", "o", "e", "f", "smirk", "gasp")
+
+
+def map_char_to_viseme(char: str) -> str:
+    """
+    Maps an individual character to its corresponding mouth viseme shape:
+    - Rounded vowels ('o', 'u', 'w', 'q') -> 'o'
+    - Open vowels ('a', 'i', 'y', 'h') -> 'a'
+    - Wide dental / palatal consonants & vowels ('e', 'c', 'd', 'g', 'j', 'k', 'l', 'n', 'r', 's', 't', 'z') -> 'e'
+    - Labiodental fricatives ('f', 'v') -> 'f'
+    - Bilabials ('m', 'b', 'p'), whitespace, and punctuation -> 'neutral'
+    - Fallback -> 'talk'
+    """
+    if not char:
+        return "neutral"
+    c = char.lower()
+    if c in (" ", "\t", "\n", ".", ",", "!", "?", "-", "—", ";", ":", "'", '"', "(", ")", "m", "b", "p"):
+        return "neutral"
+    if c in ("o", "u", "w", "q"):
+        return "o"
+    if c in ("a", "i", "y", "h"):
+        return "a"
+    if c in ("e", "c", "d", "g", "j", "k", "l", "n", "r", "s", "t", "z"):
+        return "e"
+    if c in ("f", "v"):
+        return "f"
+    return "talk"
 
 
 class DealerActor:
@@ -166,12 +215,23 @@ class DealerActor:
             self._invalidate_composite()
 
     def set_mouth_state(self, state: str) -> None:
-        """Sets mouth layer: 'neutral', 'talk', 'smirk', or 'gasp'."""
-        if state not in ("neutral", "talk", "smirk", "gasp"):
+        """Sets mouth layer: 'neutral', 'talk', 'a', 'o', 'e', 'f', 'smirk', or 'gasp'."""
+        if state not in VISEME_STATES:
             state = "neutral"
         if self.mouth_state != state:
             self.mouth_state = state
             self._invalidate_composite()
+
+    def set_mouth_for_char(self, char: str) -> str:
+        """Derives phonetic viseme mouth shape from typed character and updates mouth state."""
+        viseme = map_char_to_viseme(char)
+        profile = self.get_profile()
+        if not profile.is_puppet:
+            state = "neutral" if viseme == "neutral" else "talk"
+        else:
+            state = viseme
+        self.set_mouth_state(state)
+        return state
 
     def set_arm_state(self, state: str) -> None:
         """Sets arm layer: 'rest', 'deal', or 'peek'."""
@@ -199,6 +259,10 @@ class DealerActor:
         cid = self._resolve_character_id(character_id) if character_id else self.current_character
         return CHARACTERS.get(cid, CHARACTERS["julian"])
 
+    def get_layer_image(self, layer_name: str) -> Optional[Image.Image]:
+        """Public accessor for discrete layer images."""
+        return self._get_layer_image(layer_name)
+
     def _get_layer_image(self, layer_name: str) -> Optional[Image.Image]:
         suffix = "_2x" if self.scale_factor > 1.5 else ""
         cache_key = f"{self.current_character}_{layer_name}{suffix}"
@@ -211,6 +275,20 @@ class DealerActor:
             # Fallback to 1x file if 2x not found
             file_path = char_dir / f"{layer_name}.png"
 
+        # Viseme graceful degradation fallback for characters without phonetic visemes
+        if not file_path.exists() and layer_name.startswith("mouth_") and layer_name not in ("mouth_talk", "mouth_neutral"):
+            fallback_path = char_dir / f"mouth_talk{suffix}.png"
+            if not fallback_path.exists():
+                fallback_path = char_dir / "mouth_talk.png"
+            if fallback_path.exists():
+                file_path = fallback_path
+            else:
+                fallback_neutral = char_dir / f"mouth_neutral{suffix}.png"
+                if not fallback_neutral.exists():
+                    fallback_neutral = char_dir / "mouth_neutral.png"
+                if fallback_neutral.exists():
+                    file_path = fallback_neutral
+
         if file_path.exists():
             try:
                 img = Image.open(file_path).convert("RGBA")
@@ -221,7 +299,7 @@ class DealerActor:
         return None
 
     def get_composite_image(self) -> Image.Image:
-        """Assembles active layers: Torso -> Head -> Eyes -> Mouth -> Arms."""
+        """Assembles active sprite strata according to character profile (puppet vs legacy)."""
         if self._cached_composite_pil is not None:
             return self._cached_composite_pil
 
@@ -229,15 +307,29 @@ class DealerActor:
         target_size = (224, 224) if self.scale_factor > 1.5 else (112, 112)
         composite = Image.new("RGBA", target_size, (0, 0, 0, 0))
 
-        # Ordered strata: Head already contains open eyes and neutral mouth.
-        # Only overlay expressive morph targets (e.g. blink or talk) to prevent
-        # double-blended feathered edge artifacts/banding on the face.
-        layer_names = ["torso", "head"]
-        if self.eye_state != "open":
-            layer_names.append(f"eyes_{self.eye_state}")
-        if self.mouth_state != "neutral":
-            layer_names.append(f"mouth_{self.mouth_state}")
-        layer_names.append(f"arm_{self.arm_state}")
+        profile = self.get_profile()
+        if profile.is_puppet:
+            # Full discrete 7-layer puppet strata:
+            # Shadow -> Torso -> Neck -> Head -> Eyes -> Mouth -> Arms
+            layer_names = [
+                "shadow",
+                "torso",
+                "neck",
+                "head",
+                f"eyes_{self.eye_state}",
+                f"mouth_{self.mouth_state}",
+                f"arm_{self.arm_state}",
+            ]
+        else:
+            # Ordered legacy strata: Head already contains open eyes and neutral mouth.
+            # Only overlay expressive morph targets (e.g. blink or talk) to prevent
+            # double-blended feathered edge artifacts/banding on the face.
+            layer_names = ["torso", "head"]
+            if self.eye_state != "open":
+                layer_names.append(f"eyes_{self.eye_state}")
+            if self.mouth_state != "neutral":
+                layer_names.append(f"mouth_{self.mouth_state}")
+            layer_names.append(f"arm_{self.arm_state}")
 
         for lname in layer_names:
             l_img = self._get_layer_image(lname)

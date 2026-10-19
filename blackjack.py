@@ -1180,8 +1180,7 @@ class BlackjackApp:
             char = self._current_speech_full[self._typewriter_index]
             self._typewriter_index += 1
             self.dealer_speech_var.set(self._current_speech_full[:self._typewriter_index])
-            if self._typewriter_index % 2 == 0:
-                self._step_speech_mouth()
+            self._step_speech_mouth(char)
 
             # Dynamic 25-35 ms cadence with natural punctuation pauses
             delay = 28
@@ -1189,6 +1188,13 @@ class BlackjackApp:
                 delay = 55
             elif char in (",", ";", ":", "—"):
                 delay = 40
+
+            if hasattr(self, "_typewriter_timer_id") and self._typewriter_timer_id:
+                try:
+                    self.root.after_cancel(self._typewriter_timer_id)
+                except Exception:
+                    pass
+                self._typewriter_timer_id = None
 
             try:
                 if self.root.winfo_exists():
@@ -1388,13 +1394,16 @@ class BlackjackApp:
                 if hasattr(self, "dealer_stage_canvas") and getattr(self, "dealer_view_var", None) and self.dealer_view_var.get():
                     self.dealer_stage_canvas.set_dealer_image(img)
 
-    def _step_speech_mouth(self):
-        """Toggles mouth state between talk and neutral during active speech."""
+    def _step_speech_mouth(self, char: Optional[str] = None):
+        """Advances mouth state during speech; drives phonetic visemes if char provided, else alternates."""
         if not hasattr(self, "dealer_actor"):
             return
-        curr = self.dealer_actor.mouth_state
-        next_state = "talk" if curr == "neutral" else "neutral"
-        self.dealer_actor.set_mouth_state(next_state)
+        if char is not None:
+            self.dealer_actor.set_mouth_for_char(char)
+        else:
+            curr = self.dealer_actor.mouth_state
+            next_state = "talk" if curr == "neutral" else "neutral"
+            self.dealer_actor.set_mouth_state(next_state)
         self._refresh_dealer_avatar_image()
 
     def _animate_speech_mouth(self, remaining_flaps: int = 4):

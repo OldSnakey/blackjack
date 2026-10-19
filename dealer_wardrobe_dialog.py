@@ -32,6 +32,7 @@ class WardrobeDialog(tkinter.Toplevel):
     UNLOCK_CRITERIA: Dict[str, str] = {
         "julian": "Default Croupier (Always Unlocked)",
         "tiffany": "Default Croupier (Always Unlocked)",
+        "dummy": "Puppet Rig & Testing Lab (Always Unlocked)",
         "malphas": "Trigger or encounter Hell's Table",
         "uriel": "Banish The Pit Fiend at Hell's Table (Exorcist)",
         "mortimer": "Survive Card 13 or attain $5,000 Bankroll",
@@ -39,8 +40,8 @@ class WardrobeDialog(tkinter.Toplevel):
 
     PAGE_CONFIG = [
         {
-            "title": "Casino Floor (Classic & Velvet)",
-            "characters": ["julian", "tiffany"],
+            "title": "Casino Floor & Workshop",
+            "characters": ["julian", "tiffany", "dummy"],
         },
         {
             "title": "Supernatural Legends",
@@ -135,7 +136,7 @@ class WardrobeDialog(tkinter.Toplevel):
 
     def _is_character_unlocked(self, char_id: str) -> bool:
         """Evaluates whether the given character persona is unlocked."""
-        if char_id in ("julian", "tiffany"):
+        if char_id in ("julian", "tiffany", "dummy"):
             return True
 
         save_data = getattr(getattr(self.app, "save_manager", None), "data", None)

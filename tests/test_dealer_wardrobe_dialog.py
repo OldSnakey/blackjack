@@ -63,12 +63,12 @@ class TestDealerWardrobeDialog(unittest.TestCase):
         self.assertEqual(self.app._wardrobe_dialog.title(), "🎩 Dealer Wardrobe & Dressing Room")
 
     def test_wardrobe_cards_render_all_four_characters(self):
-        """Wardrobe dialog renders character cards for Julian, Malphas, Uriel, and Mortimer."""
+        """Wardrobe dialog renders character cards for Julian, Malphas, Uriel, Mortimer, and Dummy."""
         self.app._on_click_stage_hanger()
         dialog = self.app._wardrobe_dialog
         self.assertIsNotNone(dialog)
         self.assertTrue(hasattr(dialog, "cards"))
-        for char_id in ("julian", "tiffany", "malphas", "uriel", "mortimer"):
+        for char_id in ("julian", "tiffany", "malphas", "uriel", "mortimer", "dummy"):
             self.assertIn(char_id, dialog.cards, f"Character card missing: {char_id}")
 
     def test_julian_and_tiffany_are_unlocked_by_default(self):
@@ -78,6 +78,7 @@ class TestDealerWardrobeDialog(unittest.TestCase):
         self.assertTrue(dialog.cards["julian"]["unlocked"])
         self.assertTrue(dialog.cards["julian"]["is_equipped"])
         self.assertTrue(dialog.cards["tiffany"]["unlocked"])
+        self.assertTrue(dialog.cards["dummy"]["unlocked"])
 
     def test_wardrobe_pagination(self):
         """Next and Prev page navigation switches pages and updates navigation controls."""
@@ -103,6 +104,15 @@ class TestDealerWardrobeDialog(unittest.TestCase):
         dialog._equip_costume("tiffany")
         self.assertEqual(self.app.dealer_actor.current_character, "tiffany")
         self.assertEqual(self.app.save_manager.data.equipped_costume, "tiffany")
+
+    def test_equipping_dummy_updates_actor_and_save(self):
+        """Equipping Dummy switches dealer persona to dummy, table avatar, and save data."""
+        self.app._on_click_stage_hanger()
+        dialog = self.app._wardrobe_dialog
+        self.assertTrue(dialog.cards["dummy"]["unlocked"])
+        dialog._equip_costume("dummy")
+        self.assertEqual(self.app.dealer_actor.current_character, "dummy")
+        self.assertEqual(self.app.save_manager.data.equipped_costume, "dummy")
 
     def test_unlock_criteria_evaluation(self):
         """Malphas, Uriel, and Mortimer unlock according to game achievements."""
