@@ -204,3 +204,86 @@ class SaveManager:
         """Persists player preference for Chips Mode vs Casual Mode."""
         self.data.chips_mode = enabled
         self.save()
+
+    def evaluate_round_achievements(
+        self,
+        outcomes: list[str],
+        player_hands: list,
+        dealer_hand: list,
+        current_streak: int,
+        chips_mode: bool,
+        current_bankroll: int,
+        hand_bets: list[int],
+        is_all_in: bool,
+        haunted_phase: Any,
+        session_blackjacks: int,
+    ) -> tuple[int, int]:
+        """
+        Evaluates round outcomes, records statistics, updates streaks, and unlocks achievements.
+        Returns (new_win_streak, new_session_blackjacks).
+        """
+        win_outcomes = ('PLAYER_WINS', 'DEALER_BUST', 'NATURAL_BLACKJACK')
+        loss_outcomes = ('DEALER_WINS', 'PLAYER_BUST', 'SURRENDER')
+
+        # 1. Update hands played / won / blackjacks & win streak
+        any_won = False
+        all_lost = True
+        for outcome in outcomes:
+            p_won = outcome in win_outcomes
+            p_bj = outcome == 'NATURAL_BLACKJACK'
+            if p_won:
+                any_won = True
+                all_lost = False
+            elif outcome not in loss_outcomes:
+                all_lost = False
+            self.record_hand_played(won=p_won, is_blackjack=p_bj)
+
+        if any_won:
+            current_streak += 1
+            self.record_win_streak(current_streak)
+        elif all_lost:
+            current_streak = 0
+
+        # 2. Record bankroll in Chips Mode
+        if chips_mode:
+            self.record_bankroll(current_bankroll)
+
+        # 3. Natural Born Winner (3 natural blackjacks in session)
+        bjs_in_round = sum(1 for o in outcomes if o == 'NATURAL_BLACKJACK')
+        if bjs_in_round > 0:
+            session_blackjacks += bjs_in_round
+            if session_blackjacks >= 3:
+                self.unlock_achievement("natural_streak")
+
+        # 4. Cursed Survivor (Survive Card 13 round with win or push)
+        card_13_present = any(
+            getattr(c, "rank", "") == "thirteen" or (isinstance(c, (tuple, list)) and c[0] == 13)
+            for h in player_hands for c in h
+        ) or any(
+            getattr(c, "rank", "") == "thirteen" or (isinstance(c, (tuple, list)) and c[0] == 13)
+            for c in dealer_hand
+        )
+        if card_13_present:
+            survived = any(o in (*win_outcomes, 'PUSH') for o in outcomes)
+            if survived:
+                self.unlock_achievement("cursed_survivor")
+
+        # 5. Split Maestro (Win both split hands)
+        if len(player_hands) > 1 and len(outcomes) >= 2:
+            if all(o in win_outcomes for o in outcomes):
+                self.unlock_achievement("split_maestro")
+
+        # 6. Big Spender (Win an all-in bet of $1,000+)
+        if chips_mode and hand_bets:
+            total_bet = sum(hand_bets)
+            if total_bet >= 1000 and any_won and is_all_in:
+                self.unlock_achievement("big_spender")
+
+        # 7. Exorcist / Malphas costume
+        phase_str = getattr(haunted_phase, "value", str(haunted_phase)).lower()
+        if phase_str == "victory":
+            self.unlock_achievement("exorcist")
+        elif phase_str == "hell_table":
+            self.unlock_costume("malphas")
+
+        return current_streak, session_blackjacks

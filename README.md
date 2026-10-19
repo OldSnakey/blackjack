@@ -5,7 +5,7 @@
 
 An interactive, graphical desktop implementation of the classic casino card game **Blackjack**, built with standard Python and Tkinter, featuring an **animated living dealer**, a supernatural **Haunted Halloween & Hell's Table expansion**, **2x HiDPI scaling**, and persistent **Hall of Fame & Achievements**.
 
-Designed as an educational project for Python learners and junior developers, this codebase demonstrates how to transition from basic procedural scripting to clean, production-quality Python: eliminating global variables with Object-Oriented Programming (OOP), managing non-blocking animations without freezing the GUI event loop, decoupling stage canvas rendering from table felt geometry, and authoring exhaustive automated regression tests (234 tests).
+Designed as an educational project for Python learners and junior developers, this codebase demonstrates how to transition from basic procedural scripting to clean, production-quality Python: eliminating global variables with Object-Oriented Programming (OOP), managing non-blocking animations without freezing the GUI event loop, decoupling stage canvas rendering from table felt geometry, separating pure mathematical game rules into zero-GUI modules, and authoring exhaustive automated regression tests (244 tests).
 
 ---
 
@@ -23,6 +23,7 @@ Designed as an educational project for Python learners and junior developers, th
   - [5. Portable Asset Resolution & PyInstaller Bundling](#5-portable-asset-resolution--pyinstaller-bundling)
   - [6. Horizon Stage vs. Card Table Felt Decoupling](#6-horizon-stage-vs-card-table-felt-decoupling)
   - [7. Persistent State & Achievement Tracking](#7-persistent-state--achievement-tracking)
+  - [8. Educational Modular Architecture & Separation of Concerns](#8-educational-modular-architecture--separation-of-concerns)
 - [Automated Testing](#automated-testing)
 - [File Structure](#file-structure)
 
@@ -282,11 +283,21 @@ In version 1.3.0, the user interface was decoupled into a strict two-tier archit
 ### 7. Persistent State & Achievement Tracking
 Career statistics, costume unlocks, and game mode preferences are encapsulated within `SaveManager` (`save_manager.py`). Saved state is serialized to a robust JSON schema (`blackjack_save.json`) with automated corruption recovery, ephemeral directory isolation during headless testing, and atomic disk writes.
 
+### 8. Educational Modular Architecture & Separation of Concerns
+To foster code discoverability and provide junior developers with clean patterns, the core codebase is decoupled into modular layers:
+- **`config.py`**: Centralized configuration, game constants, screen dimension limits, theme color math (`hex_to_rgb`), and frozen `@dataclass` `ThemePalette` definitions with `get_phase_palette()`.
+- **`rules.py`**: Pure, stateless domain logic with zero GUI or Tkinter dependencies. Implements `Card(tuple)` (supporting indexing `card[0]`, `val, img = card`, dot access, and `len(card) == 2`), `score_hand()`, `dealer_should_hit()`, `determine_outcome()`, `calculate_payout()`, and `breakdown_chips()`. Juniors can import and experiment with rules in a CLI REPL or headless test without spinning up a GUI.
+- **`audio_assets.py`**: Low-latency 16-channel polyphonic sound playback (`SoundManager`) with randomized acoustic sample pools and silent fallback, in-memory HiDPI image scaling (`AssetScaler`), and Kenney prompt icon caching (`KeyboardIconLoader`).
+- **`ui_canvases.py`**: Custom 2.5D `tkinter.Canvas` presentation components: `ChipVisualizer`, `SoulMeterCanvas`, `TableAnnouncementHUD`, `HauntedAltarCanvas` (with color synchronization), `DealerStageCanvas`, and `TableFeltCanvas`.
+- **`ui_dialogs.py`**: Modal `tkinter.Toplevel` dialogs: `ShortcutsDialog`, `SettingsDialog`, `StoryDialogueDialog`, and `AngelicDraftDialog`.
+- **`save_manager.py`**: Career statistics, persistent JSON storage, and round achievement evaluation (`evaluate_round_achievements`).
+- **`blackjack.py`**: Main application coordinator (`BlackjackApp`) wiring event loops, user keyboard/mouse bindings, and game phase transitions, while re-exporting key domain symbols for 100% backward compatibility.
+
 ---
 
 ## Automated Testing
 
-The project includes an exhaustive automated test suite with **234 unit tests** written with Python's built-in `unittest` framework, validating domain logic, Tkinter GUI widgets, audio fallbacks, and rendering geometry.
+The project includes an exhaustive automated test suite with **244 unit tests** written with Python's built-in `unittest` framework, validating domain logic, Tkinter GUI widgets, audio fallbacks, and rendering geometry.
 
 ### Running the Tests
 To run all tests with verbose output:
@@ -321,6 +332,7 @@ python -m unittest discover tests -v
 | [`tests/test_surrender.py`](tests/test_surrender.py) | Tests Late Surrender eligibility (initial 2 cards only, un-split), 50% wager refund, hole card reveal, and dealer win recording. |
 | [`tests/test_table_felt.py`](tests/test_table_felt.py) | Validates procedural canvas texture generation, theme switching (casino/creep/hell), and child coordinate slice extraction. |
 | [`tests/test_table_hud.py`](tests/test_table_hud.py) | Tests 2.5D animated announcement HUD popups, banner styling, and auto-dismiss timers on the table felt. |
+| [`tests/test_typewriter_and_audio_accents.py`](tests/test_typewriter_and_audio_accents.py) | Validates typewriter dialogue streaming (25-35 ms cadence), directional speech tail rendering, fast-forward skip on click, character audio accents, and extension safety. |
 | [`tests/test_ui_geometry_and_rendering.py`](tests/test_ui_geometry_and_rendering.py) | Validates zero card clipping, beveled plaque geometry, TableAnnouncementHUD auto-dismiss, and OMEN altar color synchronization. |
 | [`tests/test_version.py`](tests/test_version.py) | Enforces single source of truth for versioning across `blackjack.py`, specifications, and documentation. |
 
@@ -330,7 +342,12 @@ python -m unittest discover tests -v
 
 ```
 Blackjack/
-├── blackjack.py                    # Main application: game engine, SoundManager, KeyboardIconLoader & GUI
+├── blackjack.py                    # Main application coordinator: BlackjackApp event loop & re-exports
+├── config.py                       # Game constants, ThemePalette dataclasses, and path resolution
+├── rules.py                        # Pure stateless Blackjack math and rules (zero GUI imports)
+├── audio_assets.py                 # Polyphonic SoundManager, AssetScaler & KeyboardIconLoader
+├── ui_canvases.py                  # Custom 2.5D Canvas components (Chips, Altar, Stage, Felt)
+├── ui_dialogs.py                   # Modal Toplevel dialogs (Shortcuts, Settings, Story, Draft)
 ├── blackjack.spec                  # PyInstaller build spec for itch.io packaging
 ├── build_itch_release.bat          # Windows 1-click build batch wrapper
 ├── build_itch_release.ps1          # Automated PowerShell build, test, and zip packaging pipeline
@@ -354,10 +371,11 @@ Blackjack/
 │   ├── build_character_layers.py   # Sprite layer slicer and coordinate extractor for dealer actors
 │   ├── build_character_roster_assets.py # Texture generator for dealer costumes and facial assets
 │   ├── build_haunted_assets.py     # Procedural asset generator for altar, candles, and gravestones
-│   └── build_stage_backdrops.py    # Generator script for 1x and 2x panoramic stage backdrops
+│   ├── build_stage_backdrops.py    # Generator script for 1x and 2x panoramic stage backdrops
+│   └── capture_typewriter_demo.py  # Automation tool for capturing dialogue and stage screenshots
 ├── docs/
 │   └── ITCH_IO_GUIDE.md            # itch.io deployment, store copy, and release guide
-└── tests/                          # Automated test suite (234 tests)
+└── tests/                          # Automated test suite (244 tests)
     ├── __init__.py
     ├── test_betting.py
     ├── test_dealer_actor.py
@@ -382,6 +400,7 @@ Blackjack/
     ├── test_surrender.py
     ├── test_table_felt.py
     ├── test_table_hud.py
+    ├── test_typewriter_and_audio_accents.py
     ├── test_ui_geometry_and_rendering.py
     └── test_version.py
 ```
