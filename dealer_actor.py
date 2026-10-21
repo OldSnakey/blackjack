@@ -99,7 +99,7 @@ CHARACTERS: Dict[str, CharacterProfile] = {
         audio_cue="dealer_tiffany.ogg",
         unlock_key="tiffany",
         lore="Glamorous and quick-witted croupier whose velvet touch and radiant smile charm even the sharpest card counters.",
-        is_puppet=False,
+        is_puppet=True,
     ),
     "dummy": CharacterProfile(
         id="dummy",
@@ -310,11 +310,11 @@ class DealerActor:
         profile = self.get_profile()
         if profile.is_puppet:
             # Full discrete 7-layer puppet strata:
-            # Shadow -> Torso -> Neck -> Head -> Eyes -> Mouth -> Arms
+            # Shadow -> Neck -> Torso -> Head -> Eyes -> Mouth -> Arms
             layer_names = [
                 "shadow",
-                "torso",
                 "neck",
+                "torso",
                 "head",
                 f"eyes_{self.eye_state}",
                 f"mouth_{self.mouth_state}",

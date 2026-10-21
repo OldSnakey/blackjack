@@ -297,7 +297,7 @@ To foster code discoverability and provide junior developers with clean patterns
 
 ## Automated Testing
 
-The project includes an exhaustive automated test suite with **253 unit tests** written with Python's built-in `unittest` framework, validating domain logic, Tkinter GUI widgets, audio fallbacks, and rendering geometry.
+The project includes an exhaustive automated test suite with **259 unit tests** written with Python's built-in `unittest` framework, validating domain logic, Tkinter GUI widgets, audio fallbacks, and rendering geometry.
 
 ### Running the Tests
 To run all tests with verbose output:
@@ -321,7 +321,7 @@ python -m unittest discover tests -v
 | [`tests/test_hall_of_fame_and_achievements.py`](tests/test_hall_of_fame_and_achievements.py) | Tests Hall of Fame modal GUI, badge rendering, stats aggregation, and achievement unlock triggers. |
 | [`tests/test_haunted_mode.py`](tests/test_haunted_mode.py) | Validates Haunted Halloween phase transitions, Card 13 manifestation & immediate deal bust handling, candle snuffing, gravestone rising, Pit Fiend composite, Soul Meter animations, and relic mechanics. |
 | [`tests/test_living_animations.py`](tests/test_living_animations.py) | Validates DealerActor autonomous idle breathing, blinking cadence, typewriter speech timers, and gesture transitions. |
-| [`tests/test_puppet_multi_layer_actor.py`](tests/test_puppet_multi_layer_actor.py) | Tests discrete multi-layer puppet rigging (shadow, torso, neck, head, eyes, mouth, arms), high-contrast dummy asset integrity, phonetic viseme mapping ('a', 'o', 'e', 'f', 'talk'), Z-order compositing, and backward-compatible costume fallback. |
+| [`tests/test_puppet_multi_layer_actor.py`](tests/test_puppet_multi_layer_actor.py) | Tests discrete multi-layer puppet rigging (shadow, torso, neck, head, eyes, mouth, arms), high-contrast dummy asset integrity, Tiffany 2.0 puppet integration, phonetic viseme mapping ('a', 'o', 'e', 'f', 'talk'), Z-order compositing, and backward-compatible costume fallback. |
 | [`tests/test_save_manager.py`](tests/test_save_manager.py) | Validates blank-slate defaults, persistent file I/O, career stats, costume unlocks, corruption recovery, and user preference retention (including default Chips Mode). |
 | [`tests/test_scale_and_display_modes.py`](tests/test_scale_and_display_modes.py) | Verifies 1.0x vs 2.0x HiDPI integer scaling, geometry recomputation, and borderless fullscreen toggle. |
 | [`tests/test_scoring.py`](tests/test_scoring.py) | Verifies `score_hand()` across empty hands, multiple Aces, soft-to-hard shifts, and busts. |
@@ -374,12 +374,14 @@ Blackjack/
 │   ├── build_dummy_puppet_assets.py # Generator for multi-layer puppet rig test assets
 │   ├── build_haunted_assets.py     # Procedural asset generator for altar, candles, and gravestones
 │   ├── build_stage_backdrops.py    # Generator script for 1x and 2x panoramic stage backdrops
+│   ├── build_tiffany_puppet_assets.py # Pipeline tool for extracting, de-occluding, and generating Tiffany 2.0 discrete puppet layers
 │   ├── capture_puppet_demo.py      # Automation tool for capturing puppet exploded layers, visemes, and stage verification
+│   ├── capture_tiffany_puppet_demo.py # Automation tool for capturing Tiffany puppet exploded layers, phonetic visemes, arms, and live stage verification
 │   ├── capture_typewriter_demo.py  # Automation tool for capturing dialogue and stage screenshots
 │   └── capture_wardrobe_dummy_demo.py # Automation tool for capturing wardrobe dialog with dummy puppet
 ├── docs/
 │   └── ITCH_IO_GUIDE.md            # itch.io deployment, store copy, and release guide
-└── tests/                          # Automated test suite (253 tests)
+└── tests/                          # Automated test suite (259 tests)
     ├── __init__.py
     ├── test_betting.py
     ├── test_dealer_actor.py

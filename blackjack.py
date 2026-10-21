@@ -953,7 +953,7 @@ class BlackjackApp:
                 self._deal_hand_with_bet()
                 return "break"
 
-        elif phase == RoundPhase.PLAYER_TURN:
+        elif phase == RoundPhase.PLAYER_TURN or (hasattr(self, "hit_button") and str(self.hit_button.cget("state")) == "normal"):
             if hasattr(self, "hit_button") and str(self.hit_button.cget("state")) == "normal":
                 self.on_hit()
                 return "break"

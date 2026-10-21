@@ -38,6 +38,7 @@ class TestPuppetMultiLayerActor(unittest.TestCase):
     def setUpClass(cls):
         cls.project_root = Path(__file__).resolve().parent.parent
         cls.dummy_dir = cls.project_root / "assets" / "haunted" / "characters" / "dummy"
+        cls.tiffany_dir = cls.project_root / "assets" / "haunted" / "characters" / "tiffany"
 
     def setUp(self):
         self.root = tkinter.Tk()
@@ -230,6 +231,126 @@ class TestPuppetMultiLayerActor(unittest.TestCase):
         profile = self.app.dealer_actor.get_profile()
         self.assertEqual(profile.title, "🧪 Test Puppet Dummy")
 
+    def test_tiffany_character_layers_exist_1x_and_2x(self):
+        """All 19 discrete Tiffany puppet layers must exist on disk in 1x and 2x resolutions."""
+        expected_layers = [
+            "shadow",
+            "torso",
+            "neck",
+            "head",
+            "eyes_open",
+            "eyes_half",
+            "eyes_closed",
+            "mouth_neutral",
+            "mouth_a",
+            "mouth_o",
+            "mouth_e",
+            "mouth_f",
+            "mouth_talk",
+            "mouth_smirk",
+            "mouth_gasp",
+            "arm_rest",
+            "arm_deal",
+            "arm_peek",
+            "bust",
+        ]
+
+        for layer in expected_layers:
+            path_1x = self.tiffany_dir / f"{layer}.png"
+            path_2x = self.tiffany_dir / f"{layer}_2x.png"
+            self.assertTrue(path_1x.exists(), f"Missing 1x layer for Tiffany: {path_1x.name}")
+            self.assertTrue(path_2x.exists(), f"Missing 2x layer for Tiffany: {path_2x.name}")
+
+            with Image.open(path_1x) as img1x:
+                self.assertEqual(img1x.size, (112, 112))
+                self.assertEqual(img1x.mode, "RGBA")
+
+            with Image.open(path_2x) as img2x:
+                self.assertEqual(img2x.size, (224, 224))
+                self.assertEqual(img2x.mode, "RGBA")
+
+    def test_tiffany_is_registered_as_puppet_rig(self):
+        """Tiffany profile must have is_puppet=True to enable 7-layer discrete compositor."""
+        profile = CHARACTERS["tiffany"]
+        self.assertTrue(profile.is_puppet, "Tiffany should be configured with is_puppet=True")
+
+    def test_tiffany_typewriter_drives_phonetic_visemes(self):
+        """Typewriter speech streaming articulates phonetic visemes ('a', 'o', 'e', 'f') on Tiffany."""
+        self.app.dealer_actor.equip_costume("tiffany")
+        self.assertEqual(self.app.dealer_actor.current_character, "tiffany")
+        self.assertTrue(self.app.dealer_actor.get_profile().is_puppet)
+
+        text = "Welcome to the velvet table! Five cards or bust."
+        self.app.set_dealer_speech(text, stream=True)
+
+        observed_visemes = set()
+        for _ in range(len(text)):
+            if self.app._typewriter_index < len(text):
+                self.app._stream_typewriter_step()
+                observed_visemes.add(self.app.dealer_actor.mouth_state)
+
+        # Must have articulated multiple phonetic visemes
+        self.assertGreater(len(observed_visemes), 1, "Tiffany should articulate varied phonetic visemes")
+        self.assertTrue(observed_visemes.issubset(set(VISEME_STATES)))
+
+        # On complete, resets to neutral
+        self.app._complete_typewriter_speech()
+        self.assertEqual(self.app.dealer_actor.mouth_state, "neutral")
+
+    def test_tiffany_discrete_7_layer_compositing(self):
+        """Tiffany composites 7 discrete layers without error and produces valid PhotoImage."""
+        actor = DealerActor(master=None, initial_character="tiffany", scale_factor=2.0)
+        self.assertTrue(actor.get_profile().is_puppet)
+
+        actor.set_arm_state("deal")
+        actor.set_eye_state("half")
+        actor.set_mouth_state("smirk")
+
+        comp = actor.get_composite_image()
+        self.assertEqual(comp.size, (224, 224))
+        self.assertEqual(comp.mode, "RGBA")
+
+    def test_tiffany_transparency_quality_and_alpha_purity(self):
+        """Tiffany torso and arm layers have studio-grade alpha purity (semi-transparency ratio < 18%)."""
+        import numpy as np
+
+        checked_layers = ["torso_2x.png", "arm_rest_2x.png", "arm_deal_2x.png", "arm_peek_2x.png"]
+        for layer_file in checked_layers:
+            layer_path = self.tiffany_dir / layer_file
+            with Image.open(layer_path) as img:
+                arr = np.array(img)
+                alpha = arr[:, :, 3]
+                opaque = np.sum(alpha == 255)
+                semi = np.sum((alpha > 0) & (alpha < 255))
+                total_visible = opaque + semi
+                self.assertGreater(total_visible, 0, f"Layer {layer_file} should have visible pixels")
+                semi_ratio = semi / total_visible
+                self.assertLess(
+                    semi_ratio,
+                    0.18,
+                    f"Layer {layer_file} has semi-transparency ratio of {semi_ratio:.2%}, expected < 18% (no lossy threshold holes)"
+                )
+
+    def test_tiffany_arms_dealer_articulation_states(self):
+        """Tiffany arm states (rest, deal, peek) represent distinct, fully-realized dealer poses."""
+        actor = DealerActor(master=None, initial_character="tiffany", scale_factor=2.0)
+
+        # Rest pose
+        actor.set_arm_state("rest")
+        comp_rest = actor.get_composite_image()
+        # Deal pose
+        actor.set_arm_state("deal")
+        comp_deal = actor.get_composite_image()
+        # Peek pose
+        actor.set_arm_state("peek")
+        comp_peek = actor.get_composite_image()
+
+        # Each pose must be unique
+        self.assertNotEqual(list(comp_rest.tobytes()), list(comp_deal.tobytes()), "Deal pose should differ from Rest pose")
+        self.assertNotEqual(list(comp_rest.tobytes()), list(comp_peek.tobytes()), "Peek pose should differ from Rest pose")
+        self.assertNotEqual(list(comp_deal.tobytes()), list(comp_peek.tobytes()), "Deal pose should differ from Peek pose")
+
 
 if __name__ == "__main__":
     unittest.main()
+
