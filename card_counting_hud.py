@@ -79,6 +79,7 @@ class CardCountingHud(tkinter.Frame):
         master: tkinter.Misc,
         counter: HiLoCardCounter,
         on_quiz_request: Optional[Callable[[], None]] = None,
+        on_stage_bet_request: Optional[Callable[[int], None]] = None,
         use_grid: bool = False,
         grid_row: int = 2,
         **kwargs,
@@ -96,9 +97,11 @@ class CardCountingHud(tkinter.Frame):
         )
         self.counter = counter
         self.on_quiz_request = on_quiz_request
+        self.on_stage_bet_request = on_stage_bet_request
         self.use_grid = use_grid
         self.grid_row = grid_row
         self.is_visible = False
+        self._last_rec_bet = 25
 
         self._build_ui()
 
@@ -111,11 +114,11 @@ class CardCountingHud(tkinter.Frame):
             fg="#1de9b6",
             background="#0d231b",
         )
-        self.title_lbl.pack(side="left", padx=(4, 10))
+        self.title_lbl.pack(side="left", padx=(4, 8))
 
         # Running Count (RC)
         self.rc_frame = tkinter.Frame(self, background="#0d231b")
-        self.rc_frame.pack(side="left", padx=6)
+        self.rc_frame.pack(side="left", padx=5)
         tkinter.Label(
             self.rc_frame, text="RC:", font=("Arial", 8, "bold"), fg="#80cbc4", background="#0d231b"
         ).pack(side="left")
@@ -126,7 +129,7 @@ class CardCountingHud(tkinter.Frame):
 
         # Decks Remaining
         self.decks_frame = tkinter.Frame(self, background="#0d231b")
-        self.decks_frame.pack(side="left", padx=6)
+        self.decks_frame.pack(side="left", padx=5)
         tkinter.Label(
             self.decks_frame, text="Decks:", font=("Arial", 8, "bold"), fg="#80cbc4", background="#0d231b"
         ).pack(side="left")
@@ -137,7 +140,7 @@ class CardCountingHud(tkinter.Frame):
 
         # True Count (TC)
         self.tc_frame = tkinter.Frame(self, background="#0d231b")
-        self.tc_frame.pack(side="left", padx=6)
+        self.tc_frame.pack(side="left", padx=5)
         tkinter.Label(
             self.tc_frame, text="TC:", font=("Arial", 8, "bold"), fg="#80cbc4", background="#0d231b"
         ).pack(side="left")
@@ -148,32 +151,45 @@ class CardCountingHud(tkinter.Frame):
 
         # Bet Sizing Guide
         self.bet_guide_frame = tkinter.Frame(self, background="#0d231b")
-        self.bet_guide_frame.pack(side="left", padx=6)
+        self.bet_guide_frame.pack(side="left", padx=5)
         tkinter.Label(
             self.bet_guide_frame, text="Bet Guide:", font=("Arial", 8, "bold"), fg="#ffd54f", background="#0d231b"
         ).pack(side="left")
         self.bet_guide_label = tkinter.Label(
-            self.bet_guide_frame, text="1u ($25)", font=("Arial", 9, "bold"), fg="#fff59d", background="#0d231b"
+            self.bet_guide_frame, text="1u ($25)", font=("Arial", 9, "bold"), fg="#fff59d", background="#0d231b",
+            cursor="hand2"
         )
         self.bet_guide_label.pack(side="left", padx=(2, 0))
+        self.bet_guide_label.bind("<Button-1>", lambda e: self._on_stage_bet_click())
+
+        # Basic Strategy Advisor Hint
+        self.strategy_frame = tkinter.Frame(self, background="#0d231b")
+        self.strategy_frame.pack(side="left", padx=5)
+        tkinter.Label(
+            self.strategy_frame, text="Strategy:", font=("Arial", 8, "bold"), fg="#80cbc4", background="#0d231b"
+        ).pack(side="left")
+        self.strategy_label = tkinter.Label(
+            self.strategy_frame, text="-", font=("Arial", 9, "bold"), fg="#b0bec5", background="#0d231b"
+        )
+        self.strategy_label.pack(side="left", padx=(2, 0))
 
         # Quiz Drill Challenge Button
         self.quiz_btn = tkinter.Button(
             self,
-            text="🎯 Quiz Me",
+            text="🎯 Quiz",
             font=("Arial", 8, "bold"),
             background="#004d40",
             foreground="#ffffff",
             activebackground="#00796b",
             activeforeground="#ffffff",
             relief="flat",
-            padx=6,
+            padx=5,
             pady=1,
             cursor="hand2",
             takefocus=False,
             command=self._on_quiz_click,
         )
-        self.quiz_btn.pack(side="left", padx=(10, 6))
+        self.quiz_btn.pack(side="left", padx=(6, 4))
 
         # Hide toggle button
         self.close_btn = tkinter.Button(
@@ -195,6 +211,17 @@ class CardCountingHud(tkinter.Frame):
         if self.on_quiz_request:
             self.on_quiz_request()
 
+    def _on_stage_bet_click(self):
+        """Dispatches stage bet callback if registered."""
+        if self.on_stage_bet_request:
+            self.on_stage_bet_request(self._last_rec_bet)
+
+    def set_visible(self, visible: bool) -> bool:
+        """Explicitly sets HUD visibility state."""
+        if self.is_visible != visible:
+            self.toggle_visibility()
+        return self.is_visible
+
     def toggle_visibility(self) -> bool:
         """Toggles visibility of the counting HUD pill."""
         if self.is_visible:
@@ -211,12 +238,43 @@ class CardCountingHud(tkinter.Frame):
             self.is_visible = True
         return self.is_visible
 
+    def update_strategy_hint(self, hint: Optional[Any] = None, text: Optional[str] = None):
+        """
+        Updates the Basic Strategy recommendation label with color-coded feedback.
+        Supports BasicStrategyDecision dataclass or raw string text.
+        """
+        if not hasattr(self, "strategy_label") or not self.strategy_label.winfo_exists():
+            return
+        if text:
+            self.strategy_label.configure(text=text, fg="#ffffff")
+            return
+        if hint is None:
+            self.strategy_label.configure(text="-", fg="#78909c")
+            return
+
+        action_name = getattr(hint, "action_name", None)
+        if action_name is None:
+            action_name = str(hint.action.value if hasattr(hint.action, "value") else hint.action)
+
+        color_palette = {
+            "HIT": "#4fc3f7",        # Sky Blue
+            "STAND": "#ffb74d",      # Amber Orange
+            "DOUBLE": "#69f0ae",     # Neon Emerald
+            "SPLIT": "#ea80fc",      # Neon Violet
+            "SURRENDER": "#ff5252",  # Vivid Coral
+        }
+        fg_col = color_palette.get(action_name, "#ffffff")
+        reason = getattr(hint, "reason", "")
+        display_text = f"{action_name} ({reason})" if reason else action_name
+        self.strategy_label.configure(text=display_text, fg=fg_col)
+
     def update_counts(self, cards_remaining: int, base_bet: int = 25):
         """Refreshes HUD count badges from internal counter state."""
         rc = self.counter.running_count
         decks = self.counter.decks_remaining(cards_remaining)
         tc = self.counter.true_count(cards_remaining)
         rec_bet = self.counter.get_recommended_bet(base_bet, tc)
+        self._last_rec_bet = rec_bet
         rec_units = max(1, rec_bet // max(1, base_bet))
 
         # Format RC with explicit +/- sign

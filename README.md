@@ -342,6 +342,7 @@ python -m unittest discover tests -v
 ### Test Coverage Summary
 | Test File | Description |
 | :--- | :--- |
+| [`tests/test_basic_strategy.py`](tests/test_basic_strategy.py) | Unit tests for pure Basic Strategy domain decision math: pair splits (A-A, 8-8, 5-5 double, 4-4, 9-9), late surrender (16 vs 9/10/A, 15 vs 10), soft hands (A-2 through A-9 vs dealer upcards), and hard hand hit/stand/double thresholds. |
 | [`tests/test_betting.py`](tests/test_betting.py) | Tests pure payout calculations (3:2, 1:1, push, loss, surrender), 2:1 insurance payouts with odd-bet breakeven guarantees, chip denomination breakdowns, ChipVisualizer state sync/animations, default Chips Mode, and bankroll tracking. |
 | [`tests/test_card_counter.py`](tests/test_card_counter.py) | Unit tests for pure Hi-Lo card counting logic: tag values (+1, 0, -1), Running Count accumulation, cut-card penetration shoe resets, decks remaining calculation with 0.5 minimum clamp, True Count estimation, bet spread sizing, and quiz verification. |
 | [`tests/test_card_counting_hud.py`](tests/test_card_counting_hud.py) | Verifies CardCountingHud container rendering, dynamic felt theme synchronization, pack/grid integration, floating count badge particle animations (+1, -1, 0), mid-shoe interactive quiz dialogs, and shortcut key bindings (`K`, `Shift+C`). |
@@ -373,6 +374,7 @@ python -m unittest discover tests -v
 | [`tests/test_typewriter_and_audio_accents.py`](tests/test_typewriter_and_audio_accents.py) | Validates typewriter dialogue streaming (25-35 ms cadence), directional speech tail rendering, fast-forward skip on click, character audio accents, and extension safety. |
 | [`tests/test_ui_geometry_and_rendering.py`](tests/test_ui_geometry_and_rendering.py) | Validates zero card clipping, beveled plaque geometry, TableAnnouncementHUD auto-dismiss, and OMEN altar color synchronization. |
 | [`tests/test_version.py`](tests/test_version.py) | Enforces single source of truth for versioning across `blackjack.py`, specifications, and documentation. |
+| [`tests/test_welcome_splash_dialog.py`](tests/test_welcome_splash_dialog.py) | Verifies WelcomeSplashDialog lifecycle, retro pixel art logo, dealer greeting banner, interactive selection across 3 modes (Casual, Betting, Training), dynamic display bounds, persistent save settings, and live basic strategy hint reflection. |
 
 ---
 
@@ -405,6 +407,8 @@ Blackjack/
 ├── assets/                         # Release packaging assets
 │   ├── haunted/                    # Panoramic room backdrops (casino, crypt, creep, hell, celestial) and character puppet strata
 │   ├── overlay_icons/              # 21 curated 64x64 PNG keyboard & mouse prompt icons
+│   ├── pixel_logo_blackjack.png    # Retro pixel art game logo (468x84)
+│   ├── pixel_logo_blackjack_2x.png # HiDPI retro pixel art game logo (936x168)
 │   ├── icon.ico / icon.png         # Window and executable icons
 │   ├── cover_itch.png              # Storefront marketing cover art
 │   └── screenshots/                # High-resolution gameplay captures
@@ -413,18 +417,21 @@ Blackjack/
 │   ├── build_character_roster_assets.py # Texture generator for dealer costumes and facial assets
 │   ├── build_dummy_puppet_assets.py # Generator for multi-layer puppet rig test assets
 │   ├── build_haunted_assets.py     # Procedural asset generator for altar, candles, and gravestones
+│   ├── build_pixel_logo.py         # Procedural generator for 1x and 2x retro pixel art game logo assets
 │   ├── build_roster_puppet_assets.py # Texture synthesis pipeline for full roster puppet conversion & expansion
 │   ├── build_stage_backdrops.py    # Generator script for 1x and 2x panoramic stage backdrops
 │   ├── build_tiffany_puppet_assets.py # Pipeline tool for extracting, de-occluding, and generating Tiffany 2.0 discrete puppet layers
-│   ├── capture_puppet_demo.py      # Automation tool for capturing puppet exploded layers, visemes, and stage verification
 │   ├── capture_dialogs_verification.py # Automation tool for capturing Settings, Shortcuts, and Wardrobe Hall of Fame dialog verifications
+│   ├── capture_puppet_demo.py      # Automation tool for capturing puppet exploded layers, visemes, and stage verification
 │   ├── capture_tiffany_puppet_demo.py # Automation tool for capturing Tiffany puppet exploded layers, phonetic visemes, arms, and live stage verification
 │   ├── capture_typewriter_demo.py  # Automation tool for capturing dialogue and stage screenshots
-│   └── capture_wardrobe_dummy_demo.py # Automation tool for capturing wardrobe dialog with dummy puppet
+│   ├── capture_wardrobe_dummy_demo.py # Automation tool for capturing wardrobe dialog with dummy puppet
+│   └── capture_welcome_splash_verification.py # Automation tool for capturing WelcomeSplashDialog and table mode verifications
 ├── docs/
 │   └── ITCH_IO_GUIDE.md            # itch.io deployment, store copy, and release guide
-└── tests/                          # Automated test suite (295 tests)
+└── tests/                          # Automated test suite (307 tests)
     ├── __init__.py
+    ├── test_basic_strategy.py
     ├── test_betting.py
     ├── test_card_counter.py
     ├── test_card_counting_hud.py
@@ -455,5 +462,6 @@ Blackjack/
     ├── test_table_hud.py
     ├── test_typewriter_and_audio_accents.py
     ├── test_ui_geometry_and_rendering.py
-    └── test_version.py
+    ├── test_version.py
+    └── test_welcome_splash_dialog.py
 ```

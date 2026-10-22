@@ -21,6 +21,7 @@ Provides:
 from __future__ import annotations
 
 import random
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, NamedTuple, Optional
 
@@ -263,3 +264,145 @@ def build_shoe(all_cards, num_decks: int = DEFAULT_DECK_COUNT) -> list:
         shoe.extend(all_cards)
     random.shuffle(shoe)
     return shoe
+
+
+@dataclass
+class BasicStrategyDecision:
+    """
+    Statistically optimal basic strategy decision recommendation.
+    """
+    action: str  # "HIT", "STAND", "DOUBLE", "SPLIT", "SURRENDER"
+    label: str   # "Hit", "Stand", "Double Down", "Split Pair", "Surrender"
+    reason: str  # Contextual reasoning for the recommendation
+
+
+def get_basic_strategy_decision(
+    player_hand: list,
+    dealer_upcard: Any,
+    can_double: bool = True,
+    can_split: bool = False,
+    can_surrender: bool = True,
+) -> BasicStrategyDecision:
+    """
+    Evaluates statistically optimal Blackjack basic strategy (4-8 decks, Dealer stands on 17).
+
+    Returns:
+        BasicStrategyDecision with optimal action ('HIT', 'STAND', 'DOUBLE', 'SPLIT', 'SURRENDER').
+    """
+    if not player_hand or dealer_upcard is None:
+        return BasicStrategyDecision("STAND", "Stand", "No active hand")
+
+    # Normalize dealer upcard value (Ace -> 11, Face cards -> 10, else 2..9)
+    up_val = dealer_upcard[0] if isinstance(dealer_upcard, (tuple, list)) else getattr(dealer_upcard, "value", dealer_upcard)
+    if up_val == 1:
+        up_val = 11
+
+    # Extract card values
+    values = [c[0] if isinstance(c, (tuple, list)) else getattr(c, "value", c) for c in player_hand]
+    score = score_hand(player_hand)
+    num_cards = len(player_hand)
+
+    # 1. Check Pair Splitting (if exactly 2 cards and can_split)
+    if num_cards == 2 and can_split:
+        p_val = values[0]
+        # Aces
+        if p_val == 1:
+            return BasicStrategyDecision("SPLIT", "Split Pair", "Aces always split for maximum winning potential")
+        # 8s
+        if p_val == 8:
+            return BasicStrategyDecision("SPLIT", "Split Pair", "Pair of 8s (16) splits to escape worst starting hand")
+        # 10s
+        if p_val == 10:
+            return BasicStrategyDecision("STAND", "Stand", "Never split 20 against any dealer upcard")
+        # 9s
+        if p_val == 9:
+            if up_val in (7, 10, 11):
+                return BasicStrategyDecision("STAND", "Stand", "Pair of 9s (18) stands against 7, 10, or Ace")
+            return BasicStrategyDecision("SPLIT", "Split Pair", f"Pair of 9s splits against dealer {up_val}")
+        # 7s
+        if p_val == 7:
+            if 2 <= up_val <= 7:
+                return BasicStrategyDecision("SPLIT", "Split Pair", f"Pair of 7s splits against dealer {up_val}")
+            return BasicStrategyDecision("HIT", "Hit", f"Pair of 7s hits against dealer {up_val}")
+        # 6s
+        if p_val == 6:
+            if 2 <= up_val <= 6:
+                return BasicStrategyDecision("SPLIT", "Split Pair", f"Pair of 6s splits against dealer bust card {up_val}")
+            return BasicStrategyDecision("HIT", "Hit", f"Pair of 6s hits against dealer {up_val}")
+        # 5s - Never split 5s!
+        if p_val == 5:
+            if can_double and 2 <= up_val <= 9:
+                return BasicStrategyDecision("DOUBLE", "Double Down", f"Pair of 5s (10) doubles against dealer {up_val}")
+            return BasicStrategyDecision("HIT", "Hit", f"Pair of 5s (10) hits against dealer {up_val}")
+        # 4s
+        if p_val == 4:
+            if 5 <= up_val <= 6 and can_double:
+                return BasicStrategyDecision("SPLIT", "Split Pair", f"Pair of 4s splits against dealer {up_val}")
+            return BasicStrategyDecision("HIT", "Hit", f"Pair of 4s hits against dealer {up_val}")
+        # 2s and 3s
+        if p_val in (2, 3):
+            if 2 <= up_val <= 7:
+                return BasicStrategyDecision("SPLIT", "Split Pair", f"Pair of {p_val}s splits against dealer {up_val}")
+            return BasicStrategyDecision("HIT", "Hit", f"Pair of {p_val}s hits against dealer {up_val}")
+
+    # 2. Check Surrender (if 2 cards, can_surrender)
+    if num_cards == 2 and can_surrender:
+        if score == 16 and up_val in (9, 10, 11):
+            return BasicStrategyDecision("SURRENDER", "Surrender", f"Hard 16 surrenders against high dealer card {up_val}")
+        if score == 15 and up_val == 10:
+            return BasicStrategyDecision("SURRENDER", "Surrender", "Hard 15 surrenders against dealer 10")
+
+    # 3. Check Soft Hands (contains an Ace counted as 11)
+    is_soft = (1 in values and sum(values) + 10 <= 21)
+    if is_soft:
+        if score >= 20:
+            return BasicStrategyDecision("STAND", "Stand", f"Soft {score} always stands")
+        if score == 19:
+            if up_val == 6 and can_double and num_cards == 2:
+                return BasicStrategyDecision("DOUBLE", "Double Down", "Soft 19 doubles against dealer 6")
+            return BasicStrategyDecision("STAND", "Stand", "Soft 19 stands")
+        if score == 18:
+            if 3 <= up_val <= 6 and can_double and num_cards == 2:
+                return BasicStrategyDecision("DOUBLE", "Double Down", f"Soft 18 doubles against dealer {up_val}")
+            if up_val in (2, 7, 8):
+                return BasicStrategyDecision("STAND", "Stand", f"Soft 18 stands against dealer {up_val}")
+            return BasicStrategyDecision("HIT", "Hit", f"Soft 18 hits against dealer {up_val}")
+        if score == 17:
+            if 3 <= up_val <= 6 and can_double and num_cards == 2:
+                return BasicStrategyDecision("DOUBLE", "Double Down", f"Soft 17 doubles against dealer {up_val}")
+            return BasicStrategyDecision("HIT", "Hit", f"Soft 17 hits against dealer {up_val}")
+        if score in (15, 16):
+            if 4 <= up_val <= 6 and can_double and num_cards == 2:
+                return BasicStrategyDecision("DOUBLE", "Double Down", f"Soft {score} doubles against dealer {up_val}")
+            return BasicStrategyDecision("HIT", "Hit", f"Soft {score} hits against dealer {up_val}")
+        if score in (13, 14):
+            if 5 <= up_val <= 6 and can_double and num_cards == 2:
+                return BasicStrategyDecision("DOUBLE", "Double Down", f"Soft {score} doubles against dealer {up_val}")
+            return BasicStrategyDecision("HIT", "Hit", f"Soft {score} hits against dealer {up_val}")
+
+    # 4. Hard Hands
+    if score >= 17:
+        return BasicStrategyDecision("STAND", "Stand", f"Hard {score} always stands")
+    if 13 <= score <= 16:
+        if 2 <= up_val <= 6:
+            return BasicStrategyDecision("STAND", "Stand", f"Hard {score} stands, dealer shows bust card {up_val}")
+        return BasicStrategyDecision("HIT", "Hit", f"Hard {score} hits against dealer {up_val}")
+    if score == 12:
+        if 4 <= up_val <= 6:
+            return BasicStrategyDecision("STAND", "Stand", f"Hard 12 stands against dealer bust card {up_val}")
+        return BasicStrategyDecision("HIT", "Hit", f"Hard 12 hits against dealer {up_val}")
+    if score == 11:
+        if can_double and num_cards == 2:
+            return BasicStrategyDecision("DOUBLE", "Double Down", f"11 doubles down against dealer {up_val}")
+        return BasicStrategyDecision("HIT", "Hit", f"11 hits against dealer {up_val}")
+    if score == 10:
+        if can_double and num_cards == 2 and 2 <= up_val <= 9:
+            return BasicStrategyDecision("DOUBLE", "Double Down", f"10 doubles down against dealer {up_val}")
+        return BasicStrategyDecision("HIT", "Hit", f"10 hits against dealer {up_val}")
+    if score == 9:
+        if can_double and num_cards == 2 and 3 <= up_val <= 6:
+            return BasicStrategyDecision("DOUBLE", "Double Down", f"9 doubles down against dealer {up_val}")
+        return BasicStrategyDecision("HIT", "Hit", f"9 hits against dealer {up_val}")
+
+    return BasicStrategyDecision("HIT", "Hit", f"Hard {score} always hits")
+

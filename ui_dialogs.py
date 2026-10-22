@@ -14,8 +14,14 @@ import tkinter
 from typing import Any, Callable, List, Optional
 
 from audio_assets import KeyboardIconLoader
-from config import PANEL_BACKGROUND_COLOR
+from config import ASSETS_EXTRA_DIR, PANEL_BACKGROUND_COLOR, TABLE_BACKGROUND_COLOR
 from haunted_manager import BLESSING_REGISTRY, Blessing
+
+try:
+    from PIL import Image, ImageTk
+except ImportError:
+    Image = None
+    ImageTk = None
 
 
 # ============================================================================
@@ -376,6 +382,35 @@ class SettingsDialog(tkinter.Toplevel):
         )
         self.wardrobe_btn.grid(row=0, column=2, sticky="ew", padx=(3, 0))
 
+        # Tier 3: Play Mode & Onboarding Controls
+        tier3_lbl = tkinter.Label(
+            ctrl_frame, text="Play Mode & Onboarding:", font=("Arial", 8, "italic"),
+            fg="#b2dfdb", background=PANEL_BACKGROUND_COLOR
+        )
+        tier3_lbl.pack(anchor="w", pady=(4, 2))
+
+        mode_row = tkinter.Frame(ctrl_frame, background=PANEL_BACKGROUND_COLOR)
+        mode_row.pack(fill="x", pady=(0, 2))
+        mode_row.columnconfigure(0, weight=1)
+        mode_row.columnconfigure(1, weight=1)
+
+        mode_name = getattr(self.app, "play_mode", "betting").capitalize()
+        self.mode_btn = tkinter.Button(
+            mode_row, text=f"🎮 Mode: {mode_name}", font=("Arial", 9, "bold"),
+            background="#004d40", fg="white", activebackground="#00695c", activeforeground="white",
+            relief="ridge", borderwidth=1, cursor="hand2", command=self._on_cycle_play_mode,
+            padx=8, pady=4
+        )
+        self.mode_btn.grid(row=0, column=0, sticky="ew", padx=(0, 3))
+
+        self.welcome_btn = tkinter.Button(
+            mode_row, text="🌟 Welcome Screen...", font=("Arial", 9, "bold"),
+            background="#1b5e20", fg="white", activebackground="#2e7d32", activeforeground="white",
+            relief="ridge", borderwidth=1, cursor="hand2", command=self._on_open_welcome_screen,
+            padx=8, pady=4
+        )
+        self.welcome_btn.grid(row=0, column=1, sticky="ew", padx=(3, 0))
+
         # Save Data Management Frame
         save_frame = tkinter.LabelFrame(
             self.scroll_content, text=" Save Data & Hall of Fame Records ", font=("Arial", 10, "bold"),
@@ -489,6 +524,25 @@ class SettingsDialog(tkinter.Toplevel):
         self.app.clear_player_save_data()
         self._refresh_stats_display()
         self.status_msg_var.set("✓ Save file reset to initial blank slate.")
+
+    def _on_cycle_play_mode(self):
+        """Cycles through casual -> betting -> training modes and updates app."""
+        current = getattr(self.app, "play_mode", "betting")
+        modes = ["casual", "betting", "training"]
+        try:
+            next_idx = (modes.index(current) + 1) % len(modes)
+        except ValueError:
+            next_idx = 0
+        next_mode = modes[next_idx]
+        if hasattr(self.app, "apply_play_mode"):
+            self.app.apply_play_mode(next_mode)
+        self.mode_btn.configure(text=f"🎮 Mode: {next_mode.capitalize()}")
+        self.status_msg_var.set(f"Play mode switched to {next_mode.capitalize()}.")
+
+    def _on_open_welcome_screen(self):
+        """Relaunches the Welcome & Play Mode Selection splash dialog."""
+        if hasattr(self.app, "_open_welcome_splash_dialog"):
+            self.app._open_welcome_splash_dialog()
 
     def _on_close(self):
         self.app._close_settings_dialog()
@@ -763,6 +817,7 @@ class ShortcutsDialog(tkinter.Toplevel):
 
         panel_trainer = make_panel(right_col_s, "🧮 TRAINER & SUPERNATURAL")
         add_row(panel_trainer, ["keyboard_k", "keyboard_shift", "keyboard_c"], "Card Counter HUD", "(K or Shift+C)")
+        add_row(panel_trainer, ["keyboard_shift", "keyboard_m"], "Cycle Play Mode", "(Casual / Betting / Training)")
         add_row(panel_trainer, ["keyboard_x"], "Miracle Draw", "(Hell's Table relic redraw)")
 
         panel_help = make_panel(right_col_s, "🖱️ ACCESSIBILITY & HELP")
@@ -811,4 +866,406 @@ class ShortcutsDialog(tkinter.Toplevel):
             pass
         if cb:
             cb()
+        return "break"
+
+
+# ============================================================================
+# 5. WelcomeSplashDialog
+# ============================================================================
+
+class WelcomeSplashDialog(tkinter.Toplevel):
+    """
+    First-run onboarding splash and play mode preference selector.
+    Presents:
+    - Retro pixel-art style game logo.
+    - Default dealer greeting banner & speech dialogue.
+    - 3 distinct selectable play modes:
+      1) Casual Mode: Fun simple blackjack, no betting.
+      2) Casino Betting Mode: Standard bankroll wagering & Hall of Fame records.
+      3) Strategy & Counting Trainer: Live Hi-Lo count HUD, True Count, Ideal Bet Sizing,
+         and Basic Strategy decision hints for every hand.
+    - Persistent preference saving and immediate application.
+    - Display-fit resilience via dynamic configuration derivation and auto-hiding scrollbar.
+    """
+
+    def __init__(
+        self,
+        parent: tkinter.Tk | tkinter.Misc,
+        app: Any,
+        on_confirm: Optional[Callable[[str], None]] = None,
+    ):
+        super().__init__(parent)
+        self.app = app
+        self.on_confirm_cb = on_confirm
+        self.title("Welcome to Blackjack!")
+        self.transient(parent)
+        self.resizable(False, False)
+        self.configure(background=PANEL_BACKGROUND_COLOR)
+
+        if getattr(app, "_icon_photo", None):
+            try:
+                self.iconphoto(False, app._icon_photo)
+            except Exception:
+                pass
+
+        # Dynamic dialog geometry derived from live configuration and screen bounds
+        scale = getattr(app, "scale_factor", 1.0)
+        target_w = int(760 * (1.0 if scale <= 1.0 else 1.15))
+        target_h = int(730 * (1.0 if scale <= 1.0 else 1.15))
+        try:
+            root_x = parent.winfo_rootx()
+            root_y = parent.winfo_rooty()
+            root_w = parent.winfo_width()
+            root_h = parent.winfo_height()
+            screen_w = parent.winfo_screenwidth()
+            screen_h = parent.winfo_screenheight()
+            dialog_w = min(target_w, screen_w - 40)
+            dialog_h = min(target_h, max(420, screen_h - 80))
+            pos_x = max(0, root_x + (root_w - dialog_w) // 2)
+            pos_y = max(0, root_y + (root_h - dialog_h) // 2)
+            self.geometry(f"{dialog_w}x{dialog_h}+{pos_x}+{pos_y}")
+        except Exception:
+            self.geometry(f"{target_w}x{target_h}")
+
+        # Active mode selection (defaults to current preference or 'betting')
+        current_pref = getattr(app.save_manager.data, "play_mode", "betting") if hasattr(app, "save_manager") else "betting"
+        self.selected_mode = current_pref if current_pref in ("casual", "betting", "training") else "betting"
+        self.remember_var = tkinter.BooleanVar(value=True)
+
+        self._mode_cards: dict[str, dict[str, Any]] = {}
+
+        # Scrollable container setup with auto-hiding scrollbar
+        self.canvas = tkinter.Canvas(
+            self, background=PANEL_BACKGROUND_COLOR, highlightthickness=0, borderwidth=0
+        )
+        self.v_scrollbar = tkinter.Scrollbar(
+            self, orient="vertical", command=self.canvas.yview
+        )
+        self.scroll_content = tkinter.Frame(
+            self.canvas, background=PANEL_BACKGROUND_COLOR, padx=14, pady=8
+        )
+
+        self.canvas_window = self.canvas.create_window(
+            (0, 0), window=self.scroll_content, anchor="nw"
+        )
+        self.canvas.configure(yscrollcommand=self._on_scroll_update)
+
+        self.scroll_content.bind("<Configure>", self._on_frame_configure)
+        self.canvas.bind("<Configure>", self._on_canvas_configure)
+
+        self.canvas.pack(side="left", fill="both", expand=True)
+
+        self.bind("<MouseWheel>", self._on_mousewheel)
+        self.bind("<Button-4>", lambda e: self.canvas.yview_scroll(-1, "units"))
+        self.bind("<Button-5>", lambda e: self.canvas.yview_scroll(1, "units"))
+        self.bind("1", lambda e: self._select_mode("casual"))
+        self.bind("2", lambda e: self._select_mode("betting"))
+        self.bind("3", lambda e: self._select_mode("training"))
+        self.bind("<Return>", lambda e: self._on_confirm())
+        self.bind("<Escape>", lambda e: self._on_close())
+
+        self._build_ui()
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+        self.focus_set()
+
+    def _on_scroll_update(self, first, last):
+        self.v_scrollbar.set(first, last)
+        if float(first) <= 0.0 and float(last) >= 1.0:
+            if self.v_scrollbar.winfo_ismapped():
+                self.v_scrollbar.pack_forget()
+        else:
+            if not self.v_scrollbar.winfo_ismapped():
+                self.v_scrollbar.pack(side="right", fill="y")
+
+    def _on_frame_configure(self, event):
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
+    def _on_canvas_configure(self, event):
+        self.canvas.itemconfig(self.canvas_window, width=event.width)
+
+    def _on_mousewheel(self, event):
+        if hasattr(self, "canvas") and self.canvas.winfo_exists():
+            self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    def _build_ui(self):
+        # 1. Retro Pixel Art Logo
+        scale = getattr(self.app, "scale_factor", 1.0)
+        logo_file = "pixel_logo_blackjack_2x.png" if scale > 1.5 else "pixel_logo_blackjack.png"
+        logo_path = ASSETS_EXTRA_DIR / logo_file
+        if not logo_path.exists():
+            logo_path = ASSETS_EXTRA_DIR / "pixel_logo_blackjack.png"
+
+        self._logo_photo = None
+        if logo_path.exists() and Image is not None and ImageTk is not None:
+            try:
+                pil_logo = Image.open(logo_path)
+                self._logo_photo = ImageTk.PhotoImage(pil_logo)
+                logo_lbl = tkinter.Label(
+                    self.scroll_content, image=self._logo_photo, background=PANEL_BACKGROUND_COLOR
+                )
+                logo_lbl.pack(pady=(0, 6))
+            except Exception:
+                self._logo_photo = None
+
+        if self._logo_photo is None:
+            tkinter.Label(
+                self.scroll_content,
+                text="♠  B L A C K J A C K  ♥",
+                font=("Courier", 18, "bold"),
+                fg="#ffd700",
+                background=PANEL_BACKGROUND_COLOR,
+            ).pack(pady=(0, 6))
+
+        # 2. Dealer Greeting Banner
+        dealer_photo = None
+        dealer_name = "Tiffany"
+        dealer_title = "The Velvet Croupier"
+        if hasattr(self.app, "dealer_actor") and self.app.dealer_actor:
+            try:
+                profile = self.app.dealer_actor.get_profile()
+                if profile:
+                    dealer_name = profile.name
+                    dealer_title = profile.title
+                dealer_photo = self.app.dealer_actor.get_bust_photo_image(scale_factor=1.0)
+            except Exception:
+                pass
+        if dealer_photo is None and hasattr(self.app, "haunted_assets"):
+            dealer_photo = self.app.haunted_assets.get("dealer_classic")
+
+        dealer_banner = tkinter.Frame(
+            self.scroll_content, background="#072b17", relief="ridge", borderwidth=1,
+            highlightbackground="#ffd700", highlightthickness=1, padx=10, pady=6
+        )
+        dealer_banner.pack(fill="x", pady=(0, 6))
+
+        if dealer_photo:
+            self._dealer_photo_ref = dealer_photo
+            avatar_lbl = tkinter.Label(dealer_banner, image=dealer_photo, background="#072b17")
+            avatar_lbl.pack(side="left", padx=(2, 10), pady=2)
+
+        text_box = tkinter.Frame(dealer_banner, background="#072b17")
+        text_box.pack(side="left", fill="both", expand=True)
+
+        name_lbl = tkinter.Label(
+            text_box, text=f"♠ {dealer_name} — {dealer_title}",
+            font=("Arial", 10, "bold"), fg="#ffd700", background="#072b17", anchor="w"
+        )
+        name_lbl.pack(anchor="w", pady=(0, 2))
+
+        speech_lbl = tkinter.Label(
+            text_box,
+            text=(
+                "Welcome to the table! How would you like to play today?\n"
+                "Select your preferred table experience below — you can change your mode "
+                "anytime in Settings (F2) or with Shift+M."
+            ),
+            font=("Arial", 9), fg="#e0f2f1", background="#072b17", justify="left",
+            anchor="w", wraplength=520
+        )
+        speech_lbl.pack(anchor="w")
+
+        # 3. Interactive Play Mode Cards (Vertical Stack for display fit resilience)
+        modes_spec = [
+            (
+                "casual",
+                "1",
+                "🃏 Casual Mode (No Betting)",
+                "Pure card play & relaxation",
+                [
+                    "• Deal hands immediately with zero bankroll pressure or wagering",
+                    "• Full standard Blackjack rules: Hit, Stand, Double, Split, Surrender",
+                    "• Perfect for quick, stress-free hands and pure card fun",
+                ],
+                "#10b981",  # Emerald Green
+            ),
+            (
+                "betting",
+                "2",
+                "💰 Casino Betting Mode",
+                "Authentic bankroll stakes & Hall of Fame records",
+                [
+                    "• Start with $1,000 bankroll and 5 authentic casino chip denominations",
+                    "• Interactive 2.5D chip visualizer with animated betting spot & rakes",
+                    "• Full wagering features: Insurance, peak bankroll & Hall of Fame",
+                ],
+                "#f59e0b",  # Vegas Gold
+            ),
+            (
+                "training",
+                "3",
+                "🧠 Strategy & Counting Trainer",
+                "Hi-Lo Running & True Count HUD + Basic Strategy Advisor",
+                [
+                    "• Real-time Hi-Lo Running Count, Decks Remaining & True Count HUD",
+                    "• Dynamic Ideal Bet Sizing advice (1u to 5u) based on player edge",
+                    "• Basic Strategy decision hints for every hand (assuming no hole-card peek)",
+                ],
+                "#00e5ff",  # Cyan
+            ),
+        ]
+
+        for mode_id, key_str, title_text, subtitle_text, bullets, accent_col in modes_spec:
+            card_f = tkinter.Frame(
+                self.scroll_content,
+                background="#081f14",
+                relief="ridge",
+                borderwidth=2,
+                highlightthickness=2,
+                highlightbackground="#1a402d",
+                padx=10,
+                pady=5,
+                cursor="hand2",
+            )
+            card_f.pack(fill="x", pady=2)
+
+            # Header row
+            hdr_row = tkinter.Frame(card_f, background="#081f14", cursor="hand2")
+            hdr_row.pack(fill="x")
+
+            key_lbl = tkinter.Label(
+                hdr_row, text=f"[{key_str}]", font=("Arial", 9, "bold"),
+                fg="#b0bec5", background="#1b382b", padx=6, pady=1, relief="ridge", borderwidth=1
+            )
+            key_lbl.pack(side="left", padx=(0, 6))
+
+            title_lbl = tkinter.Label(
+                hdr_row, text=title_text, font=("Arial", 10, "bold"),
+                fg=accent_col, background="#081f14", cursor="hand2"
+            )
+            title_lbl.pack(side="left")
+
+            badge_lbl = tkinter.Label(
+                hdr_row, text=f"Press [{key_str}] or Click", font=("Arial", 8),
+                fg="#78909c", background="#081f14", cursor="hand2"
+            )
+            badge_lbl.pack(side="right")
+
+            # Subtitle
+            sub_lbl = tkinter.Label(
+                card_f, text=subtitle_text, font=("Arial", 8, "italic"),
+                fg="#b2dfdb", background="#081f14", anchor="w", cursor="hand2"
+            )
+            sub_lbl.pack(fill="x", pady=(1, 2))
+
+            # Bullet points
+            bullet_labels = []
+            for bp in bullets:
+                b_lbl = tkinter.Label(
+                    card_f, text=bp, font=("Arial", 8),
+                    fg="#cfd8dc", background="#081f14", anchor="w", cursor="hand2"
+                )
+                b_lbl.pack(fill="x", pady=0)
+                bullet_labels.append(b_lbl)
+
+            sync_widgets = [hdr_row, title_lbl, badge_lbl, sub_lbl] + bullet_labels
+            self._mode_cards[mode_id] = {
+                "frame": card_f,
+                "badge": badge_lbl,
+                "key_btn": key_lbl,
+                "accent": accent_col,
+                "key": key_str,
+                "sync_widgets": sync_widgets,
+            }
+
+            # Click binding across entire card and children
+            for w in [card_f, hdr_row, key_lbl, title_lbl, badge_lbl, sub_lbl] + bullet_labels:
+                w.bind("<Button-1>", lambda e, m=mode_id: self._select_mode(m))
+
+        # Initial selection visual state
+        self._select_mode(self.selected_mode)
+
+        # 4. Remember Preference Checkbox
+        remember_chk = tkinter.Checkbutton(
+            self.scroll_content,
+            text="Remember my preference (don't show again on startup; can reopen anytime in Settings)",
+            variable=self.remember_var,
+            font=("Arial", 9),
+            fg="#cfd8dc",
+            background=PANEL_BACKGROUND_COLOR,
+            selectcolor="#004d40",
+            activebackground=PANEL_BACKGROUND_COLOR,
+            activeforeground="#ffffff",
+            cursor="hand2",
+        )
+        remember_chk.pack(pady=(4, 6))
+
+        # 5. Action Controls Row
+        action_row = tkinter.Frame(self.scroll_content, background=PANEL_BACKGROUND_COLOR)
+        action_row.pack(fill="x", pady=(2, 2))
+        action_row.columnconfigure(0, weight=1)
+        action_row.columnconfigure(1, weight=1)
+
+        self.confirm_btn = tkinter.Button(
+            action_row,
+            text="Take My Seat & Play (Enter)",
+            font=("Arial", 11, "bold"),
+            background="#2e7d32",
+            fg="#ffffff",
+            activebackground="#388e3c",
+            activeforeground="#ffffff",
+            relief="raised",
+            borderwidth=2,
+            cursor="hand2",
+            command=self._on_confirm,
+            padx=16,
+            pady=5,
+        )
+        self.confirm_btn.grid(row=0, column=0, sticky="ew", padx=(0, 4))
+
+        self.cancel_btn = tkinter.Button(
+            action_row,
+            text="Skip (Current Settings)",
+            font=("Arial", 10, "bold"),
+            background="#37474f",
+            fg="#cfd8dc",
+            activebackground="#455a64",
+            activeforeground="#ffffff",
+            relief="ridge",
+            borderwidth=1,
+            cursor="hand2",
+            command=self._on_close,
+            padx=12,
+            pady=5,
+        )
+        self.cancel_btn.grid(row=0, column=1, sticky="ew", padx=(4, 0))
+
+    def _select_mode(self, mode: str):
+        """Highlights the selected mode card and updates internal choice."""
+        if mode not in self._mode_cards:
+            return
+        self.selected_mode = mode
+        for m_id, card in self._mode_cards.items():
+            is_sel = (m_id == mode)
+            bg_col = "#0f3826" if is_sel else "#081f14"
+            border_col = card["accent"] if is_sel else "#1a402d"
+            card["frame"].configure(background=bg_col, highlightbackground=border_col)
+            for w in card["sync_widgets"]:
+                w.configure(background=bg_col)
+            if is_sel:
+                card["badge"].configure(text="✓ SELECTED", fg="#00e676", font=("Arial", 9, "bold"))
+                card["key_btn"].configure(background=card["accent"], fg="#000000")
+            else:
+                card["badge"].configure(text=f"Press [{card['key']}] or Click", fg="#78909c", font=("Arial", 8))
+                card["key_btn"].configure(background="#1b382b", fg="#b0bec5")
+
+    def _on_confirm(self):
+        """Applies mode choice, optionally saves onboarding completion, and dismisses modal."""
+        mode = self.selected_mode
+        if self.remember_var.get():
+            if hasattr(self.app, "save_manager") and self.app.save_manager:
+                self.app.save_manager.complete_onboarding()
+        if hasattr(self.app, "apply_play_mode"):
+            self.app.apply_play_mode(mode)
+        if self.on_confirm_cb:
+            try:
+                self.on_confirm_cb(mode)
+            except Exception:
+                pass
+        self._on_close()
+
+    def _on_close(self, event=None):
+        try:
+            self.destroy()
+        except Exception:
+            pass
         return "break"

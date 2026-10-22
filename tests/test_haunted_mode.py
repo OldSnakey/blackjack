@@ -231,14 +231,11 @@ class TestHauntedGui(unittest.TestCase):
         self.assertFalse(bool(self.app.cursed_stakes_button.grid_info()))
 
 
-        # When revealed, it grids at row 0, column 8 to the left of chips mode (col 9)
+        # When revealed, it grids at row 0, column 8
         self.app.cursed_stakes_button.grid()
         info_stakes = self.app.cursed_stakes_button.grid_info()
         self.assertEqual(info_stakes["row"], 0)
         self.assertEqual(info_stakes["column"], 8)
-        info_chips = self.app.chips_mode_check.grid_info()
-        self.assertEqual(info_chips["row"], 0)
-        self.assertEqual(info_chips["column"], 9)
 
     def test_dealer_view_toggle(self):
         """Dealer view is always enabled and cannot be disabled."""

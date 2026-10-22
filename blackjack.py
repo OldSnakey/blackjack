@@ -77,6 +77,8 @@ from rules import (
     calculate_insurance_payout,
     breakdown_chips,
     build_shoe,
+    BasicStrategyDecision,
+    get_basic_strategy_decision,
 )
 
 # Re-exported audio and asset subsystems
@@ -117,6 +119,7 @@ from ui_dialogs import (
     AngelicDraftDialog,
     SettingsDialog,
     ShortcutsDialog,
+    WelcomeSplashDialog,
 )
 
 # Re-exported subsystems
@@ -140,7 +143,15 @@ class BlackjackApp:
     Supports hand splitting with independent turn progression and outcome resolution.
     """
 
-    def __init__(self, root: tkinter.Tk, sound_enabled: bool = True, save_path: Optional[Path] = None, chips_mode: Optional[bool] = None):
+    def __init__(
+        self,
+        root: tkinter.Tk,
+        sound_enabled: bool = True,
+        save_path: Optional[Path] = None,
+        chips_mode: Optional[bool] = None,
+        play_mode: Optional[str] = None,
+        skip_splash: bool = False,
+    ):
         self.root = root
         self.root.title(f"Blackjack v{__version__}")
         self.root.geometry(f"{DEFAULT_WINDOW_WIDTH}x{DEFAULT_WINDOW_HEIGHT}")
@@ -218,9 +229,20 @@ class BlackjackApp:
             self.haunted.unlocked_cursed_stakes = True
             self.haunted.unlocked_exorcist = True
 
-        # Chips and Wagering State (Defaults to enabled / saved preference)
-        initial_chips_mode = self.save_manager.data.chips_mode if chips_mode is None else chips_mode
+        # Table Play Mode & Wagering State (casual, betting, training)
+        if play_mode is not None:
+            self.play_mode = play_mode
+        elif chips_mode is False:
+            self.play_mode = "casual"
+        elif chips_mode is True:
+            saved_mode = getattr(self.save_manager.data, "play_mode", "betting")
+            self.play_mode = "betting" if saved_mode == "casual" else saved_mode
+        else:
+            self.play_mode = getattr(self.save_manager.data, "play_mode", "betting")
+
+        initial_chips_mode = (self.play_mode in ("betting", "training"))
         self.chips_mode_var = tkinter.BooleanVar(value=initial_chips_mode)
+        self.play_mode_var = tkinter.StringVar(value=self.play_mode)
         self.bankroll_var = tkinter.IntVar(value=STARTING_BANKROLL)
         self.current_bet_var = tkinter.IntVar(value=0)
         self.hand_bets = [0]
@@ -234,6 +256,13 @@ class BlackjackApp:
         self._ambient_timer_id = None
         self._anim_frame_toggle = False
         self._active_story_dialog = None
+        self._welcome_splash_dialog = None
+        if (
+            not getattr(self.save_manager.data, "onboarding_completed", False)
+            and not skip_splash
+            and "unittest" not in sys.modules
+        ):
+            self.root.after(350, self._open_welcome_splash_dialog)
         self.dealer_view_var = tkinter.BooleanVar(value=True)
         self.dealer_view_status_var = tkinter.StringVar(value="👤 Dealer: ON")
         self.dealer_speech_var = tkinter.StringVar(value="")
@@ -678,9 +707,12 @@ class BlackjackApp:
             master=card_table_frame,
             counter=self.card_counter,
             on_quiz_request=self._open_card_counting_quiz,
+            on_stage_bet_request=self._stage_recommended_bet,
             use_grid=True,
             grid_row=2,
         )
+        if self.play_mode == "training":
+            self.card_counting_hud.set_visible(True)
 
         # Betting Controls Bar (visible in Chips Mode)
         self.betting_frame = tkinter.Frame(self.root, background=TABLE_BACKGROUND_COLOR)
@@ -856,16 +888,6 @@ class BlackjackApp:
         if not self.haunted.unlocked_cursed_stakes:
             self.cursed_stakes_button.grid_remove()  # Hidden until unlocked
 
-        # Chips Mode Toggle Checkbutton placed in bottom-right action area
-        self.chips_mode_check = tkinter.Checkbutton(
-            button_frame, text="Chips Mode", variable=self.chips_mode_var,
-            command=self._on_toggle_chips_mode, font=("Arial", 10, "bold"),
-            background=TABLE_BACKGROUND_COLOR, fg="white",
-            selectcolor=PANEL_BACKGROUND_COLOR, activebackground=TABLE_BACKGROUND_COLOR,
-            activeforeground="white", cursor="hand2"
-        )
-        self.chips_mode_check.grid(row=0, column=9, padx=(8, 12), sticky="e")
-
         # Celestial Blessings Display Tray (shows acquired relics in Hell's Table)
         self.blessings_tray = tkinter.Frame(self.root, background=TABLE_BACKGROUND_COLOR)
         self.blessings_tray.grid(row=7, column=0, columnspan=3, pady=(0, 4))
@@ -918,6 +940,10 @@ class BlackjackApp:
         # Card Counting Trainer HUD toggle shortcuts
         for key in ("<k>", "<K>", "<Shift-C>", "<Shift-c>"):
             self.root.bind(key, lambda e: self._toggle_card_counting_hud())
+
+        # Table Play Mode cycle shortcut (Shift+M)
+        for key in ("<Shift-M>", "<Shift-m>"):
+            self.root.bind(key, lambda e: self._on_cycle_play_mode_shortcut())
 
         # Insurance shortcuts (Y = Take, N = Decline)
         for key in ("<y>", "<Y>"):
@@ -1067,6 +1093,149 @@ class BlackjackApp:
             except Exception:
                 pass
             self._settings_dialog = None
+
+    def _open_welcome_splash_dialog(self):
+        """Displays the initial table preference and welcome modal dialog."""
+        if getattr(self, "_welcome_splash_dialog", None) is not None:
+            try:
+                if self._welcome_splash_dialog.winfo_exists():
+                    self._welcome_splash_dialog.lift()
+                    self._welcome_splash_dialog.focus_set()
+                    return self._welcome_splash_dialog
+            except Exception:
+                pass
+        self._welcome_splash_dialog = WelcomeSplashDialog(
+            parent=self.root,
+            app=self,
+            on_confirm=lambda mode: self.apply_play_mode(mode),
+        )
+        return self._welcome_splash_dialog
+
+    def _close_welcome_splash_dialog(self):
+        """Safely dismisses and destroys the welcome splash dialog."""
+        if getattr(self, "_welcome_splash_dialog", None) is not None:
+            try:
+                if self._welcome_splash_dialog.winfo_exists():
+                    self._welcome_splash_dialog.destroy()
+            except Exception:
+                pass
+            self._welcome_splash_dialog = None
+
+    def _on_cycle_play_mode_shortcut(self):
+        """Cycles play mode between Casual -> Betting -> Training."""
+        modes = ["casual", "betting", "training"]
+        try:
+            curr_idx = modes.index(getattr(self, "play_mode", "betting"))
+        except ValueError:
+            curr_idx = 1
+        next_mode = modes[(curr_idx + 1) % len(modes)]
+        self.apply_play_mode(next_mode)
+        self.set_dealer_speech(f"Table mode changed to {next_mode.capitalize()}.", stream=True)
+        return "break"
+
+    def apply_play_mode(self, mode: str, sync_save: bool = True):
+        """
+        Applies table play mode:
+        - 'casual': Chips OFF, Card counting HUD hidden, Strategy hints hidden.
+        - 'betting': Chips ON, Card counting HUD hidden, Strategy hints hidden.
+        - 'training': Chips ON, Card counting HUD visible, Strategy hints active.
+        """
+        if mode not in ("casual", "betting", "training"):
+            return
+        self.play_mode = mode
+        if hasattr(self, "play_mode_var"):
+            self.play_mode_var.set(mode)
+        if sync_save and hasattr(self, "save_manager"):
+            self.save_manager.set_play_mode(mode)
+
+        if mode == "casual":
+            if self.chips_mode_var.get():
+                self.chips_mode_var.set(False)
+                self._on_toggle_chips_mode(confirm=True)
+            if hasattr(self, "card_counting_hud") and self.card_counting_hud and self.card_counting_hud.is_visible:
+                self.card_counting_hud.toggle_visibility()
+        elif mode == "betting":
+            if not self.chips_mode_var.get():
+                self.chips_mode_var.set(True)
+                self._on_toggle_chips_mode(confirm=True)
+            if hasattr(self, "card_counting_hud") and self.card_counting_hud and self.card_counting_hud.is_visible:
+                self.card_counting_hud.toggle_visibility()
+        elif mode == "training":
+            if not self.chips_mode_var.get():
+                self.chips_mode_var.set(True)
+                self._on_toggle_chips_mode(confirm=True)
+            if hasattr(self, "card_counting_hud") and self.card_counting_hud:
+                if not self.card_counting_hud.is_visible:
+                    self.card_counting_hud.toggle_visibility()
+                cards_rem = len(self.deck) if hasattr(self, "deck") else 0
+                base_bet = self.hand_bets[0] if (hasattr(self, "hand_bets") and self.hand_bets and self.hand_bets[0] > 0) else 25
+                self.card_counting_hud.update_counts(cards_remaining=cards_rem, base_bet=base_bet)
+                self._refresh_strategy_hint()
+
+    def _stage_recommended_bet(self, amount: int):
+        """Sets the current bet to the recommended count amount if in betting phase."""
+        if getattr(self, "is_betting_phase", False) and self.chips_mode_var.get():
+            clamped_amt = max(MINIMUM_BET, min(self.bankroll_var.get(), amount))
+            self.current_bet_var.set(clamped_amt)
+            if hasattr(self, "chip_visualizer"):
+                self.chip_visualizer.set_bet(clamped_amt, animate=True)
+            self._update_bankroll_display()
+            if hasattr(self, "deal_bet_button"):
+                self.deal_bet_button.configure(state="normal")
+            if hasattr(self, "sound_manager"):
+                self.sound_manager.play_chip_add()
+
+    def get_current_strategy_hint(self) -> Optional[BasicStrategyDecision]:
+        """Computes pure Basic Strategy advice for the active player hand against dealer upcard."""
+        if not self.player_hands or not self.dealer_hand:
+            return None
+        if self.active_hand_index >= len(self.player_hands):
+            return None
+        player_hand = self.player_hands[self.active_hand_index]
+        if not player_hand or not self.dealer_hand:
+            return None
+        dealer_upcard = self.dealer_hand[0]
+        can_double = False
+        if hasattr(self, "double_button"):
+            try:
+                can_double = str(self.double_button.cget("state")) == "normal"
+            except Exception:
+                pass
+        can_split_act = False
+        if hasattr(self, "split_button"):
+            try:
+                can_split_act = str(self.split_button.cget("state")) == "normal"
+            except Exception:
+                pass
+        can_surr = False
+        if hasattr(self, "surrender_button"):
+            try:
+                can_surr = str(self.surrender_button.cget("state")) == "normal"
+            except Exception:
+                pass
+        return get_basic_strategy_decision(
+            player_hand=player_hand,
+            dealer_upcard=dealer_upcard,
+            can_double=can_double,
+            can_split=can_split_act,
+            can_surrender=can_surr,
+        )
+
+    def _refresh_strategy_hint(self):
+        """Synchronizes Basic Strategy recommendation with the card counting HUD."""
+        if not hasattr(self, "card_counting_hud") or not self.card_counting_hud:
+            return
+        if getattr(self, "play_mode", "betting") != "training":
+            self.card_counting_hud.update_strategy_hint(hint=None)
+            return
+        if getattr(self, "is_betting_phase", False):
+            cards_rem = len(self.deck) if hasattr(self, "deck") else 0
+            tc = self.card_counter.true_count(cards_rem)
+            rec_bet = self.card_counter.get_recommended_bet(25, tc)
+            self.card_counting_hud.update_strategy_hint(text=f"Place Bet (Ideal: ${rec_bet})")
+            return
+        hint = self.get_current_strategy_hint()
+        self.card_counting_hud.update_strategy_hint(hint=hint)
 
     def _on_click_stage_hanger(self):
         """Callback when the wardrobe hanger button on the stage canvas is clicked."""
@@ -1852,10 +2021,6 @@ class BlackjackApp:
         if hasattr(self, "result_label"):
             self.result_label.configure(background=bg_tbl, fg=fg_res)
 
-        # Chips mode checkbox toggle
-        if hasattr(self, "chips_mode_check"):
-            self.chips_mode_check.configure(background=bg_tbl, activebackground=bg_tbl, selectcolor=bg_pnl)
-
         # Panel-background widgets
         for attr in ("chip_visualizer", "accessories_frame", "candle_bar_frame", "gravestones_frame", "insurance_frame", "insurance_label"):
             widget = getattr(self, attr, None)
@@ -2271,6 +2436,8 @@ class BlackjackApp:
         can_surr = (len(self.player_hands) == 1 and len(self.player_hands[0]) == 2)
         self.surrender_button.configure(state="normal" if can_surr else "disabled")
 
+        self._refresh_strategy_hint()
+
     def new_game(self):
         """Starts a fresh round of Blackjack or enters betting phase depending on Chips Mode."""
         # 0. Cancel any active dealer timer from a prior round
@@ -2372,6 +2539,7 @@ class BlackjackApp:
 
         self._update_bankroll_display()
         self._update_betting_controls()
+        self._refresh_strategy_hint()
 
     def _start_round_deal(self):
         """Authentic initial deal: 2 cards to player, 2 to dealer (1 face-down hole card)."""
@@ -3423,6 +3591,7 @@ class BlackjackApp:
         # Disable Hit/Stand/Double/Split/Surrender, enable New Game
         self._set_action_buttons_state("disabled")
         self.new_game_button.configure(state="normal")
+        self._refresh_strategy_hint()
 
     def _update_ui_scaling(self):
         """Updates typography, button dimensions, and padding across the entire UI for the active scale factor."""
@@ -3499,10 +3668,6 @@ class BlackjackApp:
             self.cursed_stakes_button.configure(font=f_action_btn)
             if bool(self.cursed_stakes_button.grid_info()):
                 self.cursed_stakes_button.grid_configure(padx=(int(6 * s), int(8 * s)), pady=btn_pady)
-
-        if hasattr(self, "chips_mode_check"):
-            self.chips_mode_check.configure(font=f_action_btn)
-            self.chips_mode_check.grid_configure(padx=(int(8 * s), int(12 * s)), pady=btn_pady)
 
         # 4. Betting Buttons (when Chips Mode is on)
         f_bet_btn = ("Arial", int(9 * scale_ratio), "bold")

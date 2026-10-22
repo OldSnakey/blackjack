@@ -79,8 +79,8 @@ class TestScaleAndDisplayModes(unittest.TestCase):
         self.assertTrue("20" in hit_font or "18" in hit_font, f"Expected scaled font, got {hit_font}")
         dealer_title_font = str(self.app.dealer_title_label.cget("font"))
         self.assertTrue("22" in dealer_title_font or "20" in dealer_title_font, f"Expected scaled title font, got {dealer_title_font}")
-        chips_check_font = str(self.app.chips_mode_check.cget("font"))
-        self.assertTrue("20" in chips_check_font or "18" in chips_check_font, f"Expected scaled chips check font, got {chips_check_font}")
+        new_game_font = str(self.app.new_game_button.cget("font"))
+        self.assertTrue("20" in new_game_font or "18" in new_game_font, f"Expected scaled new game font, got {new_game_font}")
 
         # Toggle 2x -> 1x
         self.app.toggle_scale_mode()

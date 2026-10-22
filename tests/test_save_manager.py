@@ -131,8 +131,34 @@ class TestSaveManager(unittest.TestCase):
         recovered_mgr = SaveManager(save_path=self.save_file)
         self.assertEqual(recovered_mgr.data.highscores.peak_bankroll, 1000)
         self.assertEqual(recovered_mgr.data.unlocked_costumes, ["classic", "tiffany"])
-        self.assertTrue(recovered_mgr.data.chips_mode)
+    def test_play_mode_and_onboarding_persistence(self):
+        """Play mode (casual, betting, training) and onboarding completion status persist across sessions."""
+        self.assertEqual(self.manager.data.play_mode, "betting")
+        self.assertFalse(self.manager.data.onboarding_completed)
+
+        # Update play mode to training
+        self.manager.set_play_mode("training")
+        self.manager.complete_onboarding()
+        self.assertEqual(self.manager.data.play_mode, "training")
+        self.assertTrue(self.manager.data.onboarding_completed)
+        self.assertTrue(self.manager.data.chips_mode)
+
+        # Reload from disk
+        fresh_mgr = SaveManager(save_path=self.save_file)
+        self.assertEqual(fresh_mgr.data.play_mode, "training")
+        self.assertTrue(fresh_mgr.data.onboarding_completed)
+
+        # Switch to casual -> chips_mode should sync to False
+        fresh_mgr.set_play_mode("casual")
+        self.assertEqual(fresh_mgr.data.play_mode, "casual")
+        self.assertFalse(fresh_mgr.data.chips_mode)
+
+        # Clear save resets onboarding_completed to False
+        fresh_mgr.clear_save()
+        self.assertFalse(fresh_mgr.data.onboarding_completed)
+        self.assertEqual(fresh_mgr.data.play_mode, "betting")
 
 
 if __name__ == "__main__":
     unittest.main()
+

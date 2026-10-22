@@ -54,6 +54,8 @@ class SaveData:
     highscores: HighScores = field(default_factory=HighScores)
     achievements: Achievements = field(default_factory=Achievements)
     chips_mode: bool = True
+    play_mode: str = "betting"  # "casual" | "betting" | "training"
+    onboarding_completed: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -63,6 +65,8 @@ class SaveData:
             "highscores": asdict(self.highscores),
             "achievements": asdict(self.achievements),
             "chips_mode": self.chips_mode,
+            "play_mode": self.play_mode,
+            "onboarding_completed": self.onboarding_completed,
         }
 
     @classmethod
@@ -99,6 +103,8 @@ class SaveData:
                 master_counter=ach_data.get("master_counter", False),
             ),
             chips_mode=bool(data.get("chips_mode", True)),
+            play_mode=str(data.get("play_mode", "betting")),
+            onboarding_completed=bool(data.get("onboarding_completed", False)),
         )
 
 
@@ -144,6 +150,25 @@ class SaveManager:
         """Resets in-memory save data to an absolute blank slate and writes to disk."""
         self.data = SaveData()
         return self.save()
+
+    def set_play_mode(self, mode: str, save_now: bool = True) -> bool:
+        """
+        Sets the active play mode ('casual', 'betting', 'training') and synchronizes chips_mode.
+        """
+        if mode in ("casual", "betting", "training"):
+            self.data.play_mode = mode
+            self.data.chips_mode = (mode != "casual")
+            if save_now:
+                return self.save()
+            return True
+        return False
+
+    def complete_onboarding(self, save_now: bool = True) -> bool:
+        """Marks initial onboarding splash screen as completed."""
+        self.data.onboarding_completed = True
+        if save_now:
+            return self.save()
+        return True
 
     # --- High Score & Statistics Tracking ---
 
