@@ -226,6 +226,14 @@ class TestTypewriterAndAudioAccents(unittest.TestCase):
         self.app.set_dealer_speech("Demonic greetings.")
         self.assertEqual(self.app.dealer_nameplate_label.cget("text"), "☠ The Pit Fiend")
 
+    def test_typewriter_animalese_voice_blip_dispatched(self):
+        """Typewriter character step dispatches play_dialogue_blip to SoundManager."""
+        self.app.sound_manager.play_dialogue_blip = MagicMock()
+        self.app.set_dealer_speech("Hit me!", stream=True)
+        if hasattr(self.app, "_stream_typewriter_step"):
+            self.app._stream_typewriter_step()
+            self.app.sound_manager.play_dialogue_blip.assert_called()
+
 
 if __name__ == "__main__":
     unittest.main()

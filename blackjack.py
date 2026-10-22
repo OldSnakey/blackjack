@@ -124,6 +124,8 @@ from save_manager import SaveManager, DEFAULT_SAVE_FILE
 from dealer_actor import DealerActor, CharacterProfile, CHARACTERS, COSTUME_ALIASES
 from dealer_wardrobe_dialog import WardrobeDialog
 from haunted_manager import HauntedManager, Phase, Blessing, BLESSING_REGISTRY
+from card_counter import HiLoCardCounter
+from card_counting_hud import CardCountingHud, CardCountingQuizDialog, FloatingCountBadge
 
 
 # ============================================================================
@@ -172,6 +174,9 @@ class BlackjackApp:
         self.sound_status_var = tkinter.StringVar(
             value="🔊 Sound: ON" if self.sound_manager.enabled else "🔇 Sound: OFF"
         )
+        self.voice_status_var = tkinter.StringVar(
+            value="🗣 Voice: ON" if (hasattr(self.sound_manager, "voice_engine") and self.sound_manager.voice_engine and self.sound_manager.voice_engine.enabled) else "🤐 Voice: OFF"
+        )
 
         # Shoe and Multi-Deck Configuration
         self.deck_count = DEFAULT_DECK_COUNT
@@ -184,6 +189,10 @@ class BlackjackApp:
         self.player_hands = [[]]
         self.active_hand_index = 0
         self.dealer_hand = []
+
+        # Hi-Lo Card Counting Trainer Subsystem
+        self.card_counter = HiLoCardCounter(deck_count=self.deck_count)
+        self._hole_card_observed = False
 
         # Dealer Hole Card Tracking (Face-down card mechanics)
         self.dealer_hole_card = None        # Card of the hidden card
@@ -664,6 +673,15 @@ class BlackjackApp:
         self.soul_meter_canvas.grid(row=1, column=2, padx=(10, 5), pady=2, sticky="e")
         self.soul_meter_canvas.grid_remove()  # Hidden until Hell's Table Mode
 
+        # Hi-Lo Card Counting Trainer HUD pill (table felt overlay)
+        self.card_counting_hud = CardCountingHud(
+            master=card_table_frame,
+            counter=self.card_counter,
+            on_quiz_request=self._open_card_counting_quiz,
+            use_grid=True,
+            grid_row=2,
+        )
+
         # Betting Controls Bar (visible in Chips Mode)
         self.betting_frame = tkinter.Frame(self.root, background=TABLE_BACKGROUND_COLOR)
         self.betting_frame.grid(row=4, column=0, columnspan=3, pady=(2, 4))
@@ -897,6 +915,10 @@ class BlackjackApp:
         for key in ("<o>", "<O>", "<F2>"):
             self.root.bind(key, lambda e: self._open_settings_dialog())
 
+        # Card Counting Trainer HUD toggle shortcuts
+        for key in ("<k>", "<K>", "<Shift-C>", "<Shift-c>"):
+            self.root.bind(key, lambda e: self._toggle_card_counting_hud())
+
         # Insurance shortcuts (Y = Take, N = Decline)
         for key in ("<y>", "<Y>"):
             self.root.bind(key, lambda e: self._on_key_action(self._on_take_insurance, getattr(self, "take_insurance_button", None)))
@@ -985,6 +1007,14 @@ class BlackjackApp:
         """Toggles sound playback on or off and updates the UI button text."""
         is_enabled = self.sound_manager.toggle_mute()
         self.sound_status_var.set("🔊 Sound: ON" if is_enabled else "🔇 Sound: OFF")
+        return "break"
+
+    def _on_toggle_voice(self):
+        """Toggles Animalese dialogue voice synthesis on or off."""
+        if hasattr(self, "sound_manager") and hasattr(self.sound_manager, "voice_engine") and self.sound_manager.voice_engine:
+            self.sound_manager.voice_engine.enabled = not self.sound_manager.voice_engine.enabled
+            is_on = self.sound_manager.voice_engine.enabled
+            self.voice_status_var.set("🗣 Voice: ON" if is_on else "🤐 Voice: OFF")
         return "break"
 
     def _toggle_shortcuts_overlay(self):
@@ -1181,6 +1211,22 @@ class BlackjackApp:
             self._typewriter_index += 1
             self.dealer_speech_var.set(self._current_speech_full[:self._typewriter_index])
             self._step_speech_mouth(char)
+
+            # Procedural Animalese dialogue voice synthesis
+            if hasattr(self, "sound_manager") and self.sound_manager:
+                inflection = "normal"
+                if self._current_speech_full:
+                    tail_c = self._current_speech_full.rstrip()[-1:]
+                    if tail_c == "?":
+                        inflection = "question"
+                    elif tail_c == "!":
+                        inflection = "exclamation"
+                    elif tail_c == ".":
+                        inflection = "period"
+                cid = "tiffany"
+                if hasattr(self, "dealer_actor") and self.dealer_actor:
+                    cid = getattr(self.dealer_actor, "character_id", "tiffany")
+                self.sound_manager.play_dialogue_blip(cid, char, self._typewriter_index, inflection=inflection)
 
             # Dynamic 25-35 ms cadence with natural punctuation pauses
             delay = 28
@@ -2243,6 +2289,11 @@ class BlackjackApp:
         if not self.deck or self.shoe_needs_reshuffle or len(self.deck) < 15:
             self.deck = build_shoe(self.all_cards, self.deck_count)
             self.shoe_needs_reshuffle = False
+            if hasattr(self, "card_counter") and self.card_counter:
+                self.card_counter.reset_shoe(deck_count=self.deck_count)
+                self._hole_card_observed = False
+                if hasattr(self, "card_counting_hud") and self.card_counting_hud:
+                    self.card_counting_hud.update_counts(cards_remaining=len(self.deck))
             if hasattr(self, "sound_manager"):
                 self.sound_manager.play_card_shuffle()
 
@@ -2253,6 +2304,7 @@ class BlackjackApp:
         self.dealer_hole_card = None
         self.dealer_hole_widget = None
         self.is_hole_card_hidden = False
+        self._hole_card_observed = False
 
         # 2. Clear card visuals from frames and unmap them to keep table felt clean during betting
         for child in self.dealer_cards_frame.winfo_children():
@@ -2611,6 +2663,11 @@ class BlackjackApp:
         if not self.deck:
             self.deck = build_shoe(self.all_cards, self.deck_count)
             self.shoe_needs_reshuffle = False
+            if hasattr(self, "card_counter") and self.card_counter:
+                self.card_counter.reset_shoe(deck_count=self.deck_count)
+                self._hole_card_observed = False
+                if hasattr(self, "card_counting_hud") and self.card_counting_hud:
+                    self.card_counting_hud.update_counts(cards_remaining=len(self.deck))
 
         card = self.deck.pop()
         total_shoe_cards = len(self.all_cards) * self.deck_count
@@ -2644,6 +2701,7 @@ class BlackjackApp:
             card = self._draw_card()
 
         self.player_hands[hand_index].append(card)
+        self._observe_card_face_up(card)
         self._render_player_cards()
         self._update_player_score_display()
         if hasattr(self, "dealer_actor") and self.root.winfo_exists() and self.root.state() != "withdrawn":
@@ -2666,6 +2724,10 @@ class BlackjackApp:
         """
         card = self._draw_card()
         self.dealer_hand.append(card)
+        if not is_hole_card:
+            self._observe_card_face_up(card)
+        else:
+            self._hole_card_observed = False
         if hasattr(self, "dealer_actor") and self.root.winfo_exists() and self.root.state() != "withdrawn":
             self._trigger_dealer_deal_gesture()
         if hasattr(self, "sound_manager"):
@@ -2899,9 +2961,60 @@ class BlackjackApp:
         else:
             self._update_action_buttons()
 
+    def _observe_card_face_up(self, card):
+        """Observes a face-up card for Hi-Lo card counting and updates HUD & floating badge."""
+        if not hasattr(self, "card_counter") or self.card_counter is None or card is None:
+            return
+        tag = self.card_counter.observe_card(card)
+        if hasattr(self, "card_counting_hud") and self.card_counting_hud:
+            cards_rem = len(self.deck) if hasattr(self, "deck") else 0
+            base_bet = 25
+            if hasattr(self, "hand_bets") and self.hand_bets and self.hand_bets[0] > 0:
+                base_bet = self.hand_bets[0]
+            self.card_counting_hud.update_counts(cards_remaining=cards_rem, base_bet=base_bet)
+            # Spawn floating tag badge if HUD is visible and table felt exists
+            if self.card_counting_hud.is_visible and hasattr(self, "card_table_frame") and self.root.winfo_exists() and self.root.state() != "withdrawn":
+                FloatingCountBadge(master=self.card_table_frame, tag_value=tag).place(
+                    relx=0.5, rely=0.5, anchor="center"
+                )
+
+    def _toggle_card_counting_hud(self):
+        """Toggles the display of the Card Counting Trainer HUD."""
+        if hasattr(self, "card_counting_hud") and self.card_counting_hud:
+            is_vis = self.card_counting_hud.toggle_visibility()
+            if is_vis:
+                cards_rem = len(self.deck) if hasattr(self, "deck") else 0
+                base_bet = self.hand_bets[0] if (hasattr(self, "hand_bets") and self.hand_bets and self.hand_bets[0] > 0) else 25
+                self.card_counting_hud.update_counts(cards_remaining=cards_rem, base_bet=base_bet)
+        return "break"
+
+    def _open_card_counting_quiz(self):
+        """Opens the card counting drill quiz dialog."""
+        if not hasattr(self, "card_counter") or not self.card_counter:
+            return
+        cards_rem = len(self.deck) if hasattr(self, "deck") else 0
+        CardCountingQuizDialog(
+            parent=self.root,
+            counter=self.card_counter,
+            cards_remaining=cards_rem,
+            on_result=self._on_counting_quiz_result,
+        )
+
+    def _on_counting_quiz_result(self, is_correct: bool, actual_rc: int, actual_tc: float):
+        """Handles result of card counting drill quiz and records persistence."""
+        if hasattr(self, "save_manager") and self.save_manager:
+            streak, unl_app, unl_mas = self.save_manager.record_counting_quiz(is_correct)
+            if unl_app:
+                self.set_dealer_speech("Impressive count! You've unlocked the Apprentice Counter achievement!", stream=True)
+            elif unl_mas:
+                self.set_dealer_speech("Masterful precision! You've unlocked the Master Counter achievement!", stream=True)
+
     def _reveal_dealer_hole_card(self):
         """Flips the dealer's hole card face-up and displays the full dealer score."""
         self.is_hole_card_hidden = False
+        if not getattr(self, "_hole_card_observed", False) and len(self.dealer_hand) > 1:
+            self._observe_card_face_up(self.dealer_hand[1])
+            self._hole_card_observed = True
         if self.dealer_hole_widget and self.dealer_hole_card:
             self.dealer_hole_widget.configure(image=self.dealer_hole_card[1], relief="flat", borderwidth=0, highlightthickness=0)
             self.dealer_score_var.set(str(score_hand(self.dealer_hand)))

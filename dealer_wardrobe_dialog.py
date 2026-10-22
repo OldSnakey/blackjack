@@ -36,6 +36,8 @@ class WardrobeDialog(tkinter.Toplevel):
         "malphas": "Trigger or encounter Hell's Table",
         "uriel": "Banish The Pit Fiend at Hell's Table (Exorcist)",
         "mortimer": "Survive Card 13 or attain $5,000 Bankroll",
+        "selene": "Answer 5 Card Counting Quizzes (Apprentice Counter)",
+        "vladimir": "Answer 20 Card Counting Quizzes (Master Counter)",
     }
 
     PAGE_CONFIG = [
@@ -46,6 +48,10 @@ class WardrobeDialog(tkinter.Toplevel):
         {
             "title": "Supernatural Legends",
             "characters": ["malphas", "uriel", "mortimer"],
+        },
+        {
+            "title": "The Masters & High Rollers",
+            "characters": ["selene", "vladimir"],
         },
     ]
 
@@ -91,6 +97,20 @@ class WardrobeDialog(tkinter.Toplevel):
             "desc": "Stake your entire fortune in an all-in bet of $1,000+ and conquer the house.",
             "reward": "Diamond Bettor",
             "criteria": "Win $1,000+ All-In Bet",
+        },
+        {
+            "id": "apprentice_counter",
+            "title": "🧮 Apprentice Counter",
+            "desc": "Answer 5 consecutive card counting drill quizzes correctly.",
+            "reward": "Selene (Cyber Croupier) Persona",
+            "criteria": "5 Counting Quiz Streak",
+        },
+        {
+            "id": "master_counter",
+            "title": "🦇 Master Counter",
+            "desc": "Achieve a flawless streak of 20 consecutive correct card counting drill quizzes.",
+            "reward": "Vladimir (Crimson Nocturne) Persona",
+            "criteria": "20 Counting Quiz Streak",
         },
     ]
 
@@ -169,6 +189,22 @@ class WardrobeDialog(tkinter.Toplevel):
                 return True
             return False
 
+        if char_id == "selene":
+            if save_data and hasattr(save_data, "achievements") and getattr(save_data.achievements, "apprentice_counter", False):
+                return True
+            hs = getattr(save_data, "highscores", None)
+            if hs and getattr(hs, "best_counting_streak", 0) >= 5:
+                return True
+            return False
+
+        if char_id == "vladimir":
+            if save_data and hasattr(save_data, "achievements") and getattr(save_data.achievements, "master_counter", False):
+                return True
+            hs = getattr(save_data, "highscores", None)
+            if hs and getattr(hs, "best_counting_streak", 0) >= 20:
+                return True
+            return False
+
         return False
 
     def _build_ui(self):
@@ -243,6 +279,10 @@ class WardrobeDialog(tkinter.Toplevel):
             self.btn_tab_hof.configure(background="#2e7d32", fg="white", borderwidth=2)
             self.btn_tab_wardrobe.configure(background="#1e382b", fg="#cfd8dc", borderwidth=1)
             self._refresh_hof_display()
+            if hasattr(self, "hof_canvas"):
+                self.hof_canvas.yview_moveto(0.0)
+                self.hof_scroll_frame.update_idletasks()
+                self.hof_canvas.configure(scrollregion=self.hof_canvas.bbox("all"))
 
     # ------------------------------------------------------------------------
     # Tab 1: Wardrobe Closet Implementation
@@ -503,25 +543,47 @@ class WardrobeDialog(tkinter.Toplevel):
         )
         self.lbl_bjs_record.grid(row=1, column=2, sticky="w", pady=2)
 
-        # 2. 6 Core Achievement Plaques Grid (2 cols x 3 rows)
+        # 2. Scrollable Canvas for 8 Achievement Plaques
         plaques_container = tkinter.LabelFrame(
-            self.tab_hof_frame, text=" 🏆 Core Casino Achievements ",
+            self.tab_hof_frame, text=" 🏆 Casino Achievements (8) ",
             font=("Arial", 10, "bold"), fg="#ffd700", background="#12271c",
-            padx=8, pady=6, relief="groove"
+            padx=4, pady=4, relief="groove"
         )
         plaques_container.pack(fill="both", expand=True)
+
+        self.hof_canvas = tkinter.Canvas(
+            plaques_container, background="#12271c", highlightthickness=0, borderwidth=0
+        )
+        self.hof_scrollbar = tkinter.Scrollbar(
+            plaques_container, orient="vertical", command=self.hof_canvas.yview
+        )
+        self.hof_scroll_frame = tkinter.Frame(self.hof_canvas, background="#12271c")
+
+        self.hof_canvas_win = self.hof_canvas.create_window(
+            (0, 0), window=self.hof_scroll_frame, anchor="nw"
+        )
+        self.hof_canvas.configure(yscrollcommand=self._on_hof_scroll_update)
+
+        self.hof_scroll_frame.bind("<Configure>", self._on_hof_frame_configure)
+        self.hof_canvas.bind("<Configure>", self._on_hof_canvas_configure)
+
+        self.hof_canvas.pack(side="left", fill="both", expand=True)
+
+        self.bind("<MouseWheel>", self._on_mousewheel, add="+")
+        self.hof_canvas.bind("<MouseWheel>", self._on_mousewheel)
+        self.hof_scroll_frame.bind("<MouseWheel>", self._on_mousewheel)
 
         for idx, spec in enumerate(self.ACHIEVEMENT_SPECS):
             row = idx // 2
             col = idx % 2
 
             p_frame = tkinter.Frame(
-                plaques_container, background="#0f2218", relief="ridge", borderwidth=1,
+                self.hof_scroll_frame, background="#0f2218", relief="ridge", borderwidth=1,
                 padx=8, pady=4
             )
             p_frame.grid(row=row, column=col, padx=6, pady=4, sticky="nsew")
-            plaques_container.grid_columnconfigure(col, weight=1)
-            plaques_container.grid_rowconfigure(row, weight=1)
+            self.hof_scroll_frame.grid_columnconfigure(col, weight=1)
+            self.hof_scroll_frame.grid_rowconfigure(row, weight=1)
 
             # Plaque title and reward
             header_sub = tkinter.Frame(p_frame, background="#0f2218")
@@ -558,6 +620,27 @@ class WardrobeDialog(tkinter.Toplevel):
                 "status_lbl": status_lbl,
                 "spec": spec,
             }
+
+    def _on_hof_scroll_update(self, first, last):
+        self.hof_scrollbar.set(first, last)
+        if float(first) <= 0.0 and float(last) >= 1.0:
+            if self.hof_scrollbar.winfo_ismapped():
+                self.hof_scrollbar.pack_forget()
+        else:
+            if not self.hof_scrollbar.winfo_ismapped():
+                self.hof_scrollbar.pack(side="right", fill="y")
+
+    def _on_hof_frame_configure(self, event):
+        self.hof_canvas.configure(scrollregion=self.hof_canvas.bbox("all"))
+
+    def _on_hof_canvas_configure(self, event):
+        self.hof_canvas.itemconfig(self.hof_canvas_win, width=event.width)
+
+    def _on_mousewheel(self, event):
+        if self.current_tab == 1 and hasattr(self, "hof_canvas") and self.hof_canvas.winfo_exists():
+            self.hof_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    _on_hof_mousewheel = _on_mousewheel
 
     def _refresh_hof_display(self):
         """Refreshes all-time statistics and achievement plaques in Tab 2."""

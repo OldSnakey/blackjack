@@ -215,6 +215,7 @@ class SettingsDialog(tkinter.Toplevel):
     Casino Settings & Save Data Management Dialog.
     Provides options for sound, scaling, dealer stage, and persistent save data
     management, including an irreversible 'Clear Save File' reset with safety confirmation.
+    Embedded in a scrollable frame for display-fit resilience.
     """
 
     def __init__(self, parent: tkinter.Tk, app: Any):
@@ -223,7 +224,7 @@ class SettingsDialog(tkinter.Toplevel):
         self.title("⚙ Settings & Casino Records")
         self.transient(parent)
         self.resizable(False, False)
-        self.configure(background=PANEL_BACKGROUND_COLOR, padx=16, pady=14)
+        self.configure(background=PANEL_BACKGROUND_COLOR)
 
         if getattr(app, "_icon_photo", None):
             try:
@@ -231,12 +232,14 @@ class SettingsDialog(tkinter.Toplevel):
             except Exception:
                 pass
 
-        dialog_w, dialog_h = 460, 440
+        dialog_w, dialog_h = 500, 470
         try:
             root_x = parent.winfo_rootx()
             root_y = parent.winfo_rooty()
             root_w = parent.winfo_width()
             root_h = parent.winfo_height()
+            screen_h = parent.winfo_screenheight()
+            dialog_h = min(dialog_h, max(380, screen_h - 80))
             x = max(0, root_x + (root_w - dialog_w) // 2)
             y = max(0, root_y + (root_h - dialog_h) // 2)
             self.geometry(f"{dialog_w}x{dialog_h}+{x}+{y}")
@@ -244,68 +247,145 @@ class SettingsDialog(tkinter.Toplevel):
             self.geometry(f"{dialog_w}x{dialog_h}")
 
         self.status_msg_var = tkinter.StringVar(value="All casino records active.")
+
+        # Scrollable container setup
+        self.canvas = tkinter.Canvas(
+            self, background=PANEL_BACKGROUND_COLOR, highlightthickness=0, borderwidth=0
+        )
+        self.v_scrollbar = tkinter.Scrollbar(
+            self, orient="vertical", command=self.canvas.yview
+        )
+        self.scroll_content = tkinter.Frame(self.canvas, background=PANEL_BACKGROUND_COLOR, padx=16, pady=12)
+
+        self.canvas_window = self.canvas.create_window(
+            (0, 0), window=self.scroll_content, anchor="nw"
+        )
+        self.canvas.configure(yscrollcommand=self._on_scroll_update)
+
+        self.scroll_content.bind("<Configure>", self._on_frame_configure)
+        self.canvas.bind("<Configure>", self._on_canvas_configure)
+
+        self.canvas.pack(side="left", fill="both", expand=True)
+
+        self.bind("<MouseWheel>", self._on_mousewheel)
+        self.bind("<Button-4>", lambda e: self.canvas.yview_scroll(-1, "units"))
+        self.bind("<Button-5>", lambda e: self.canvas.yview_scroll(1, "units"))
+
         self._build_ui()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.bind("<Escape>", lambda e: self._on_close())
         self.focus_set()
 
+    def _on_scroll_update(self, first, last):
+        self.v_scrollbar.set(first, last)
+        if float(first) <= 0.0 and float(last) >= 1.0:
+            if self.v_scrollbar.winfo_ismapped():
+                self.v_scrollbar.pack_forget()
+        else:
+            if not self.v_scrollbar.winfo_ismapped():
+                self.v_scrollbar.pack(side="right", fill="y")
+
+    def _on_frame_configure(self, event):
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
+    def _on_canvas_configure(self, event):
+        self.canvas.itemconfig(self.canvas_window, width=event.width)
+
+    def _on_mousewheel(self, event):
+        if hasattr(self, "canvas") and self.canvas.winfo_exists():
+            self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
     def _build_ui(self):
         # Header title
         header = tkinter.Label(
-            self, text="⚙ CASINO SETTINGS & RECORDS",
+            self.scroll_content, text="⚙ CASINO SETTINGS & RECORDS",
             font=("Arial", 12, "bold"), fg="#ffd700", background=PANEL_BACKGROUND_COLOR
         )
-        header.pack(pady=(0, 10))
+        header.pack(pady=(0, 8))
 
-        # Audio & Display Controls Frame
+        # Audio & Display Controls Frame (Two-Tier Layout)
         ctrl_frame = tkinter.LabelFrame(
-            self, text=" Table Preferences ", font=("Arial", 10, "bold"),
-            fg="#80cbc4", background=PANEL_BACKGROUND_COLOR, padx=10, pady=8
+            self.scroll_content, text=" Table Preferences ", font=("Arial", 10, "bold"),
+            fg="#80cbc4", background=PANEL_BACKGROUND_COLOR, padx=12, pady=8
         )
-        ctrl_frame.pack(fill="x", pady=(0, 12))
+        ctrl_frame.pack(fill="x", pady=(0, 10))
 
-        # Sound button
+        # Tier 1: Audio & Dialogue
+        tier1_lbl = tkinter.Label(
+            ctrl_frame, text="Audio & Dialogue:", font=("Arial", 8, "italic"),
+            fg="#b2dfdb", background=PANEL_BACKGROUND_COLOR
+        )
+        tier1_lbl.pack(anchor="w", pady=(0, 2))
+
+        audio_row = tkinter.Frame(ctrl_frame, background=PANEL_BACKGROUND_COLOR)
+        audio_row.pack(fill="x", pady=(0, 6))
+        audio_row.columnconfigure(0, weight=1)
+        audio_row.columnconfigure(1, weight=1)
+
         self.sound_btn = tkinter.Button(
-            ctrl_frame, textvariable=self.app.sound_status_var, font=("Arial", 9, "bold"),
+            audio_row, textvariable=self.app.sound_status_var, font=("Arial", 9, "bold"),
             background="#004d40", fg="white", activebackground="#00695c", activeforeground="white",
-            relief="ridge", borderwidth=1, cursor="hand2", command=self.app._on_toggle_sound
+            relief="ridge", borderwidth=1, cursor="hand2", command=self.app._on_toggle_sound,
+            padx=10, pady=4
         )
-        self.sound_btn.pack(side="left", padx=(0, 6), expand=True, fill="x")
+        self.sound_btn.grid(row=0, column=0, sticky="ew", padx=(0, 4))
 
-        # Scale button
+        if hasattr(self.app, "voice_status_var"):
+            self.voice_btn = tkinter.Button(
+                audio_row, textvariable=self.app.voice_status_var, font=("Arial", 9, "bold"),
+                background="#004d40", fg="white", activebackground="#00695c", activeforeground="white",
+                relief="ridge", borderwidth=1, cursor="hand2", command=self.app._on_toggle_voice,
+                padx=10, pady=4
+            )
+            self.voice_btn.grid(row=0, column=1, sticky="ew", padx=(4, 0))
+
+        # Tier 2: Display & Customization
+        tier2_lbl = tkinter.Label(
+            ctrl_frame, text="Display & Customization:", font=("Arial", 8, "italic"),
+            fg="#b2dfdb", background=PANEL_BACKGROUND_COLOR
+        )
+        tier2_lbl.pack(anchor="w", pady=(2, 2))
+
+        disp_row = tkinter.Frame(ctrl_frame, background=PANEL_BACKGROUND_COLOR)
+        disp_row.pack(fill="x", pady=(0, 2))
+        disp_row.columnconfigure(0, weight=1)
+        disp_row.columnconfigure(1, weight=1)
+        disp_row.columnconfigure(2, weight=1)
+
         self.scale_btn = tkinter.Button(
-            ctrl_frame, textvariable=self.app.scale_status_var, font=("Arial", 9, "bold"),
+            disp_row, textvariable=self.app.scale_status_var, font=("Arial", 9, "bold"),
             background="#004d40", fg="white", activebackground="#00695c", activeforeground="white",
-            relief="ridge", borderwidth=1, cursor="hand2", command=self.app.toggle_scale_mode
+            relief="ridge", borderwidth=1, cursor="hand2", command=self.app.toggle_scale_mode,
+            padx=8, pady=4
         )
-        self.scale_btn.pack(side="left", padx=6, expand=True, fill="x")
+        self.scale_btn.grid(row=0, column=0, sticky="ew", padx=(0, 3))
 
-        # Dealer view button
         self.dealer_btn = tkinter.Button(
-            ctrl_frame, textvariable=self.app.dealer_view_status_var, font=("Arial", 9, "bold"),
+            disp_row, textvariable=self.app.dealer_view_status_var, font=("Arial", 9, "bold"),
             background="#004d40", fg="white", activebackground="#00695c", activeforeground="white",
-            relief="ridge", borderwidth=1, cursor="hand2", command=self.app._on_toggle_dealer_view
+            relief="ridge", borderwidth=1, cursor="hand2", command=self.app._on_toggle_dealer_view,
+            padx=8, pady=4
         )
-        self.dealer_btn.pack(side="left", padx=6, expand=True, fill="x")
+        self.dealer_btn.grid(row=0, column=1, sticky="ew", padx=3)
 
-        # Dealer wardrobe button
         self.wardrobe_btn = tkinter.Button(
-            ctrl_frame, text="🎩 Wardrobe", font=("Arial", 9, "bold"),
+            disp_row, text="🎩 Wardrobe", font=("Arial", 9, "bold"),
             background="#1b5e20", fg="white", activebackground="#2e7d32", activeforeground="white",
-            relief="ridge", borderwidth=1, cursor="hand2", command=self.app._open_wardrobe_dialog
+            relief="ridge", borderwidth=1, cursor="hand2", command=self.app._open_wardrobe_dialog,
+            padx=8, pady=4
         )
-        self.wardrobe_btn.pack(side="left", padx=(6, 0), expand=True, fill="x")
+        self.wardrobe_btn.grid(row=0, column=2, sticky="ew", padx=(3, 0))
 
         # Save Data Management Frame
         save_frame = tkinter.LabelFrame(
-            self, text=" Save Data & Hall of Fame Records ", font=("Arial", 10, "bold"),
-            fg="#ffd700", background=PANEL_BACKGROUND_COLOR, padx=12, pady=10
+            self.scroll_content, text=" Save Data & Hall of Fame Records ", font=("Arial", 10, "bold"),
+            fg="#ffd700", background=PANEL_BACKGROUND_COLOR, padx=12, pady=8
         )
-        save_frame.pack(fill="both", expand=True, pady=(0, 10))
+        save_frame.pack(fill="x", pady=(0, 8))
 
         # Stats labels
         self.stats_frame = tkinter.Frame(save_frame, background=PANEL_BACKGROUND_COLOR)
-        self.stats_frame.pack(fill="x", pady=(0, 8))
+        self.stats_frame.pack(fill="x", pady=(0, 6))
 
         self.lbl_peak = tkinter.Label(
             self.stats_frame, text="", font=("Arial", 9),
@@ -318,6 +398,12 @@ class SettingsDialog(tkinter.Toplevel):
             fg="#e0e0e0", background=PANEL_BACKGROUND_COLOR, anchor="w"
         )
         self.lbl_hands.pack(fill="x", pady=1)
+
+        self.lbl_counting = tkinter.Label(
+            self.stats_frame, text="", font=("Arial", 9),
+            fg="#e0e0e0", background=PANEL_BACKGROUND_COLOR, anchor="w"
+        )
+        self.lbl_counting.pack(fill="x", pady=1)
 
         self.lbl_exorcist = tkinter.Label(
             self.stats_frame, text="", font=("Arial", 9),
@@ -332,7 +418,7 @@ class SettingsDialog(tkinter.Toplevel):
             save_frame, textvariable=self.status_msg_var, font=("Arial", 9, "italic"),
             fg="#ffeb3b", background=PANEL_BACKGROUND_COLOR
         )
-        lbl_status.pack(pady=(4, 8))
+        lbl_status.pack(pady=(2, 6))
 
         # Clear Save File Button
         self.clear_save_btn = tkinter.Button(
@@ -342,11 +428,11 @@ class SettingsDialog(tkinter.Toplevel):
             relief="raised", borderwidth=2, cursor="hand2",
             command=self._on_click_clear_save
         )
-        self.clear_save_btn.pack(fill="x", pady=4)
+        self.clear_save_btn.pack(fill="x", pady=2)
 
         # Close Button
         close_btn = tkinter.Button(
-            self, text="Close", font=("Arial", 10, "bold"),
+            self.scroll_content, text="Close", font=("Arial", 10, "bold"),
             background="#37474f", fg="white", activebackground="#455a64",
             activeforeground="white", relief="ridge", borderwidth=1, cursor="hand2",
             command=self._on_close
@@ -354,13 +440,20 @@ class SettingsDialog(tkinter.Toplevel):
         close_btn.pack(pady=(4, 0))
 
     def _refresh_stats_display(self):
-        """Refreshes the high scores and achievement badges displayed in the dialog."""
+        """Refreshes the high scores, counting records, and achievement badges displayed in the dialog."""
         data = self.app.save_manager.data
+        hs = data.highscores
+        pct = (hs.total_hands_won / hs.total_hands_played * 100.0) if hs.total_hands_played > 0 else 0.0
         self.lbl_peak.configure(
-            text=f"• All-Time Peak Bankroll: ${data.highscores.peak_bankroll:,}"
+            text=f"• All-Time Peak Bankroll: ${hs.peak_bankroll:,}"
         )
         self.lbl_hands.configure(
-            text=f"• Hands Won / Played: {data.highscores.total_hands_won:,} / {data.highscores.total_hands_played:,}  (Blackjacks: {data.highscores.total_blackjacks:,})"
+            text=f"• Hands Won / Played: {hs.total_hands_won:,} / {hs.total_hands_played:,} ({pct:.1f}% Win Rate)  (Blackjacks: {hs.total_blackjacks:,})"
+        )
+        best_cnt = getattr(hs, "best_counting_streak", 0)
+        curr_cnt = getattr(hs, "counting_streak", 0)
+        self.lbl_counting.configure(
+            text=f"• Card Counting Drill Streak: {curr_cnt} (All-Time Best: {best_cnt})"
         )
         exorcist_str = "✦ UNLOCKED (Cursed Stakes Active)" if data.achievements.exorcist else "Locked (Survive Hell's Table)"
         self.lbl_exorcist.configure(
@@ -408,7 +501,8 @@ class SettingsDialog(tkinter.Toplevel):
 class ShortcutsDialog(tkinter.Toplevel):
     """
     Displays a clean modal HUD dialog illustrating all keyboard and mouse controls.
-    Extracted from BlackjackApp for modularity, clean Toplevel lifecycle, and testability.
+    Features a two-tab categorized navigation layout with an embedded scrollable
+    canvas container and arrow-key/mousewheel navigation for zero-clipping guarantee.
     """
 
     def __init__(
@@ -424,7 +518,7 @@ class ShortcutsDialog(tkinter.Toplevel):
         self.title("Blackjack - Keyboard Shortcuts & Controls")
         self.transient(parent)
         self.resizable(False, False)
-        self.configure(background=PANEL_BACKGROUND_COLOR, padx=14, pady=12)
+        self.configure(background=PANEL_BACKGROUND_COLOR)
 
         if icon_photo:
             try:
@@ -432,29 +526,60 @@ class ShortcutsDialog(tkinter.Toplevel):
             except Exception:
                 pass
 
-        # Center dialog relative to main window
-        dialog_w, dialog_h = 740, 530
+        dialog_w, dialog_h = 760, 550
         try:
             root_x = parent.winfo_rootx()
             root_y = parent.winfo_rooty()
             root_w = parent.winfo_width()
             root_h = parent.winfo_height()
+            screen_h = parent.winfo_screenheight()
+            dialog_h = min(dialog_h, max(380, screen_h - 80))
             pos_x = max(root_x + (root_w - dialog_w) // 2, 0)
             pos_y = max(root_y + (root_h - dialog_h) // 2, 0)
             self.geometry(f"{dialog_w}x{dialog_h}+{pos_x}+{pos_y}")
         except Exception:
             self.geometry(f"{dialog_w}x{dialog_h}")
 
+        self.current_tab = 0
+        self._tab_frames: list[tkinter.Frame] = []
+
         self._build_ui()
 
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.bind("<Escape>", self._on_close)
+        self.bind("<Left>", lambda e: self._switch_tab(0))
+        self.bind("<Right>", lambda e: self._switch_tab(1))
+        self.bind("<Tab>", lambda e: self._switch_tab(1 if self.current_tab == 0 else 0))
+        self.bind("1", lambda e: self._switch_tab(0))
+        self.bind("2", lambda e: self._switch_tab(1))
+        self.bind("<MouseWheel>", self._on_mousewheel)
+        self.bind("<Button-4>", lambda e: self.canvas.yview_scroll(-1, "units"))
+        self.bind("<Button-5>", lambda e: self.canvas.yview_scroll(1, "units"))
         self.focus_set()
 
+    def _on_mousewheel(self, event):
+        if hasattr(self, "canvas") and self.canvas.winfo_exists():
+            self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    def _on_scroll_update(self, first, last):
+        self.v_scrollbar.set(first, last)
+        if float(first) <= 0.0 and float(last) >= 1.0:
+            if self.v_scrollbar.winfo_ismapped():
+                self.v_scrollbar.pack_forget()
+        else:
+            if not self.v_scrollbar.winfo_ismapped():
+                self.v_scrollbar.pack(side="right", fill="y")
+
+    def _on_frame_configure(self, event):
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
+    def _on_canvas_configure(self, event):
+        self.canvas.itemconfig(self.canvas_window, width=event.width)
+
     def _build_ui(self):
-        # Top Header Bar
+        # 1. Top Header Bar
         header_frame = tkinter.Frame(self, background=PANEL_BACKGROUND_COLOR)
-        header_frame.pack(fill="x", pady=(0, 10))
+        header_frame.pack(fill="x", padx=14, pady=(5, 2))
 
         q_icon = self.icon_loader.get_icon("keyboard_question", scale_div=2)
         if q_icon:
@@ -467,7 +592,7 @@ class ShortcutsDialog(tkinter.Toplevel):
 
         tkinter.Label(
             title_box, text="KEYBOARD SHORTCUTS & CONTROLS",
-            font=("Arial", 13, "bold"), fg="#ffd700", background=PANEL_BACKGROUND_COLOR
+            font=("Arial", 12, "bold"), fg="#ffd700", background=PANEL_BACKGROUND_COLOR
         ).pack(anchor="w")
 
         tkinter.Label(
@@ -483,29 +608,59 @@ class ShortcutsDialog(tkinter.Toplevel):
         )
         close_btn.pack(side="right")
 
-        # 2x2 Grid of Categorized Panels
-        grid_frame = tkinter.Frame(self, background=PANEL_BACKGROUND_COLOR)
-        grid_frame.pack(fill="both", expand=True)
-        grid_frame.columnconfigure(0, weight=1)
-        grid_frame.columnconfigure(1, weight=1)
-        grid_frame.rowconfigure(0, weight=1)
-        grid_frame.rowconfigure(1, weight=1)
+        # 2. Tab Navigation Bar
+        tab_nav = tkinter.Frame(self, background=PANEL_BACKGROUND_COLOR)
+        tab_nav.pack(fill="x", padx=14, pady=(2, 3))
 
-        def make_panel(parent_f, title_text, row_idx, col_idx):
+        self.btn_tab_gameplay = tkinter.Button(
+            tab_nav, text="🃏 Gameplay & Betting", font=("Arial", 9, "bold"),
+            background="#2e7d32", fg="white", activebackground="#388e3c",
+            activeforeground="white", relief="raised", borderwidth=2, cursor="hand2",
+            padx=14, pady=3, command=lambda: self._switch_tab(0)
+        )
+        self.btn_tab_gameplay.pack(side="left", padx=(0, 8))
+
+        self.btn_tab_system = tkinter.Button(
+            tab_nav, text="⚙️ System & Controls", font=("Arial", 9, "bold"),
+            background="#1e382b", fg="#cfd8dc", activebackground="#2e5441",
+            activeforeground="white", relief="raised", borderwidth=1, cursor="hand2",
+            padx=14, pady=3, command=lambda: self._switch_tab(1)
+        )
+        self.btn_tab_system.pack(side="left")
+
+        # 3. Scrollable Canvas Area
+        self.canvas = tkinter.Canvas(
+            self, background=PANEL_BACKGROUND_COLOR, highlightthickness=0, borderwidth=0
+        )
+        self.v_scrollbar = tkinter.Scrollbar(
+            self, orient="vertical", command=self.canvas.yview
+        )
+        self.scroll_content = tkinter.Frame(self.canvas, background=PANEL_BACKGROUND_COLOR, padx=14, pady=1)
+
+        self.canvas_window = self.canvas.create_window(
+            (0, 0), window=self.scroll_content, anchor="nw"
+        )
+        self.canvas.configure(yscrollcommand=self._on_scroll_update)
+
+        self.scroll_content.bind("<Configure>", self._on_frame_configure)
+        self.canvas.bind("<Configure>", self._on_canvas_configure)
+        self.canvas.pack(side="top", fill="both", expand=True)
+
+        def make_panel(parent_f, title_text):
             panel = tkinter.Frame(
                 parent_f, background="#053612", relief="ridge", borderwidth=2,
-                padx=10, pady=8
+                padx=8, pady=2
             )
-            panel.grid(row=row_idx, column=col_idx, sticky="nsew", padx=5, pady=5)
+            panel.pack(fill="both", expand=True, padx=4, pady=2)
             tkinter.Label(
-                panel, text=title_text, font=("Arial", 10, "bold"),
+                panel, text=title_text, font=("Arial", 9, "bold"),
                 fg="#ffeb3b", background="#053612"
-            ).pack(anchor="w", pady=(0, 4))
+            ).pack(anchor="w", pady=(0, 2))
             return panel
 
         def add_row(parent_panel, icon_names: list[str], action_text: str, hint_text: str = ""):
             r = tkinter.Frame(parent_panel, background="#053612")
-            r.pack(fill="x", pady=2)
+            r.pack(fill="x", pady=1)
 
             badges = tkinter.Frame(r, background="#053612")
             badges.pack(side="left")
@@ -541,8 +696,20 @@ class ShortcutsDialog(tkinter.Toplevel):
                     fg="#a5d6a7", background="#053612"
                 ).pack(side="left")
 
-        # 1. Table Actions
-        panel_actions = make_panel(grid_frame, "🃏 TABLE ACTIONS", 0, 0)
+        # --------------------------------------------------------------------
+        # Tab 0: Gameplay & Betting Content
+        # --------------------------------------------------------------------
+        self.tab_gameplay = tkinter.Frame(self.scroll_content, background=PANEL_BACKGROUND_COLOR)
+        grid_gameplay = tkinter.Frame(self.tab_gameplay, background=PANEL_BACKGROUND_COLOR)
+        grid_gameplay.pack(fill="both", expand=True)
+        grid_gameplay.columnconfigure(0, weight=1)
+        grid_gameplay.columnconfigure(1, weight=1)
+
+        # Left Column: Table Actions & Insurance
+        left_col_g = tkinter.Frame(grid_gameplay, background=PANEL_BACKGROUND_COLOR)
+        left_col_g.grid(row=0, column=0, sticky="nsew", padx=(0, 4))
+
+        panel_actions = make_panel(left_col_g, "🃏 TABLE ACTIONS")
         add_row(panel_actions, ["keyboard_space", "keyboard_enter"], "Deal / Hit / Next", "(Context-sensitive)")
         add_row(panel_actions, ["keyboard_h"], "Hit", "(Draw another card)")
         add_row(panel_actions, ["keyboard_s"], "Stand", "(End turn, dealer plays)")
@@ -550,37 +717,91 @@ class ShortcutsDialog(tkinter.Toplevel):
         add_row(panel_actions, ["keyboard_p"], "Split Pair", "(Split equal rank cards)")
         add_row(panel_actions, ["keyboard_r"], "Surrender", "(Forfeit half bet before hitting)")
 
-        # 2. Chips & Wagering
-        panel_betting = make_panel(grid_frame, "💰 CHIPS & WAGERING", 0, 1)
+        panel_insurance = make_panel(left_col_g, "🛡️ INSURANCE DECISIONS")
+        add_row(panel_insurance, ["keyboard_y"], "Take Insurance", "(Pays 2:1 on Dealer Ace)")
+        add_row(panel_insurance, ["keyboard_n", "keyboard_escape"], "Decline Insurance", "(Skip side bet)")
+
+        # Right Column: Chips & Wagering
+        right_col_g = tkinter.Frame(grid_gameplay, background=PANEL_BACKGROUND_COLOR)
+        right_col_g.grid(row=0, column=1, sticky="nsew", padx=(4, 0))
+
+        panel_betting = make_panel(right_col_g, "💰 CHIPS & WAGERING")
         add_row(panel_betting, ["keyboard_1"], "Bet $5", "(White chip)")
         add_row(panel_betting, ["keyboard_2"], "Bet $25", "(Red chip)")
         add_row(panel_betting, ["keyboard_3"], "Bet $100", "(Green chip)")
         add_row(panel_betting, ["keyboard_4"], "Bet $500", "(Black & Gold chip)")
+        add_row(panel_betting, ["keyboard_5"], "Bet $1,000", "(Platinum chip)")
         add_row(panel_betting, ["keyboard_a"], "All In", "(Wager entire bankroll)")
         add_row(panel_betting, ["keyboard_c"], "Clear Bet", "(Reset bet to $0)")
 
-        # 3. Insurance Phase
-        panel_insurance = make_panel(grid_frame, "🛡️ INSURANCE DECISIONS", 1, 0)
-        add_row(panel_insurance, ["keyboard_y"], "Take Insurance", "(Pays 2:1 on Dealer Ace)")
-        add_row(panel_insurance, ["keyboard_n", "keyboard_escape"], "Decline", "(Decline side bet)")
+        # --------------------------------------------------------------------
+        # Tab 1: System & Controls Content
+        # --------------------------------------------------------------------
+        self.tab_system = tkinter.Frame(self.scroll_content, background=PANEL_BACKGROUND_COLOR)
+        grid_system = tkinter.Frame(self.tab_system, background=PANEL_BACKGROUND_COLOR)
+        grid_system.pack(fill="both", expand=True)
+        grid_system.columnconfigure(0, weight=1)
+        grid_system.columnconfigure(1, weight=1)
 
-        # 4. System & Controls
-        panel_system = make_panel(grid_frame, "⚙️ SYSTEM & CONTROLS", 1, 1)
-        add_row(panel_system, ["keyboard_m"], "Toggle Sound", "(Mute / Unmute)")
-        add_row(panel_system, ["keyboard_f10"], "Scale 1x / 2x", "(Toggle High-DPI UI)")
-        add_row(panel_system, ["keyboard_f11"], "Toggle Fullscreen", "(F11 or Escape to exit)")
-        add_row(panel_system, ["keyboard_question", "keyboard_f1"], "Toggle Help", "(Show / Hide this overlay)")
-        add_row(panel_system, ["mouse_left"], "Click Button / Chip", "(Direct mouse interaction)")
+        # Left Column: Display & Wardrobe
+        left_col_s = tkinter.Frame(grid_system, background=PANEL_BACKGROUND_COLOR)
+        left_col_s.grid(row=0, column=0, sticky="nsew", padx=(0, 4))
 
-        # Footer Tip Banner
+        panel_display = make_panel(left_col_s, "🖥️ AUDIO & DISPLAY")
+        add_row(panel_display, ["keyboard_m"], "Toggle Sound", "(Mute / Unmute audio)")
+        add_row(panel_display, ["keyboard_shift", "keyboard_s"], "Scale 1x / 2x", "(Shift+S or F10)")
+        add_row(panel_display, ["keyboard_f11"], "Toggle Fullscreen", "(F11 or Escape to exit)")
+        add_row(panel_display, ["keyboard_v"], "Dealer Portrait", "(Toggle upper stage view)")
+
+        panel_wardrobe = make_panel(left_col_s, "🎩 WARDROBE & RECORDS")
+        add_row(panel_wardrobe, ["keyboard_shift", "keyboard_w"], "Dealer Wardrobe", "(Costumes & customizer)")
+        add_row(panel_wardrobe, ["keyboard_shift", "keyboard_h"], "Hall of Fame", "(Trophy shelf & records)")
+
+        # Right Column: Trainer & Accessibility
+        right_col_s = tkinter.Frame(grid_system, background=PANEL_BACKGROUND_COLOR)
+        right_col_s.grid(row=0, column=1, sticky="nsew", padx=(4, 0))
+
+        panel_trainer = make_panel(right_col_s, "🧮 TRAINER & SUPERNATURAL")
+        add_row(panel_trainer, ["keyboard_k", "keyboard_shift", "keyboard_c"], "Card Counter HUD", "(K or Shift+C)")
+        add_row(panel_trainer, ["keyboard_x"], "Miracle Draw", "(Hell's Table relic redraw)")
+
+        panel_help = make_panel(right_col_s, "🖱️ ACCESSIBILITY & HELP")
+        add_row(panel_help, ["keyboard_question", "keyboard_f1"], "Toggle Help", "(Show / Hide this HUD)")
+        add_row(panel_help, ["keyboard_escape"], "Dismiss Dialog", "(Close active overlay)")
+        add_row(panel_help, ["mouse_left"], "Click Button / Chip", "(Direct mouse interaction)")
+
+        self._tab_frames = [self.tab_gameplay, self.tab_system]
+
+        # 4. Footer Tip Banner
         footer_frame = tkinter.Frame(self, background=PANEL_BACKGROUND_COLOR)
-        footer_frame.pack(fill="x", pady=(8, 0))
+        footer_frame.pack(fill="x", padx=14, pady=(3, 5))
 
         tkinter.Label(
             footer_frame,
-            text="💡 Tip: Keyboard shortcuts are context-sensitive and only activate when the corresponding button is enabled.",
+            text="💡 Tip: Switch tabs with [Left] / [Right] arrow keys or [1] / [2]. Shortcuts activate when controls are enabled.",
             font=("Arial", 8, "italic"), fg="#ffe082", background=PANEL_BACKGROUND_COLOR
         ).pack(anchor="center")
+
+        # Initial tab presentation
+        self._switch_tab(0)
+
+    def _switch_tab(self, tab_idx: int):
+        """Switches between Gameplay & Betting (0) and System & Controls (1)."""
+        self.current_tab = max(0, min(1, tab_idx))
+        if self.current_tab == 0:
+            self.tab_system.pack_forget()
+            self.tab_gameplay.pack(fill="both", expand=True)
+            self.btn_tab_gameplay.configure(background="#2e7d32", fg="white", borderwidth=2)
+            self.btn_tab_system.configure(background="#1e382b", fg="#cfd8dc", borderwidth=1)
+        else:
+            self.tab_gameplay.pack_forget()
+            self.tab_system.pack(fill="both", expand=True)
+            self.btn_tab_system.configure(background="#2e7d32", fg="white", borderwidth=2)
+            self.btn_tab_gameplay.configure(background="#1e382b", fg="#cfd8dc", borderwidth=1)
+
+        self.canvas.yview_moveto(0.0)
+        self.scroll_content.update_idletasks()
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
 
     def _on_close(self, event=None):
         cb = self.on_close_cb

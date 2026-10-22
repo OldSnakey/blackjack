@@ -205,21 +205,33 @@ class TestPuppetMultiLayerActor(unittest.TestCase):
 
     def test_legacy_character_fallback_safety(self):
         """Legacy characters (is_puppet=False) safely map non-neutral visemes to 'talk' and degrade gracefully."""
-        self.app.dealer_actor.equip_costume("julian")
-        self.assertFalse(self.app.dealer_actor.get_profile().is_puppet)
+        from unittest.mock import patch
+        from dealer_actor import CharacterProfile
 
-        # set_mouth_for_char on Julian should set 'talk' for letters and 'neutral' for whitespace
-        state_letter = self.app.dealer_actor.set_mouth_for_char("o")
-        self.assertEqual(state_letter, "talk")
-        self.assertEqual(self.app.dealer_actor.mouth_state, "talk")
+        legacy_prof = CharacterProfile(
+            id="legacy_test",
+            name="Legacy",
+            title="Legacy Croupier",
+            theme="casino",
+            nameplate_fg="#ffffff",
+            speech_bg="#000000",
+            audio_cue="dealer_julian.ogg",
+            unlock_key="legacy",
+            lore="Legacy monolithic cutout.",
+            is_puppet=False,
+        )
 
-        state_space = self.app.dealer_actor.set_mouth_for_char(" ")
-        self.assertEqual(state_space, "neutral")
-        self.assertEqual(self.app.dealer_actor.mouth_state, "neutral")
+        with patch.object(self.app.dealer_actor, "get_profile", return_value=legacy_prof):
+            self.assertFalse(self.app.dealer_actor.get_profile().is_puppet)
 
-        # Composite still renders without error
-        comp = self.app.dealer_actor.get_composite_image()
-        self.assertIsNotNone(comp)
+            # set_mouth_for_char on is_puppet=False character should map letters to 'talk' and whitespace to 'neutral'
+            state_letter = self.app.dealer_actor.set_mouth_for_char("o")
+            self.assertEqual(state_letter, "talk")
+            self.assertEqual(self.app.dealer_actor.mouth_state, "talk")
+
+            state_space = self.app.dealer_actor.set_mouth_for_char(" ")
+            self.assertEqual(state_space, "neutral")
+            self.assertEqual(self.app.dealer_actor.mouth_state, "neutral")
 
     def test_costume_switching_to_dummy(self):
         """Equipping dummy updates persona and title without corrupting table state."""

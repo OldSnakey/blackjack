@@ -30,6 +30,7 @@ from config import (
     OVERLAY_ICONS_DIR,
 )
 from rules import Card
+from dialogue_voice_engine import AnimaleseVoiceEngine
 
 # Silence pygame greeting message on import to ensure clean stdout in CLI pipelines
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
@@ -167,6 +168,8 @@ class SoundManager:
             "chips_handle": [],
         }
 
+        self.voice_engine = AnimaleseVoiceEngine(enabled=self.enabled, volume=self.volume)
+
         self._init_mixer()
         if self.is_available:
             self._load_sounds()
@@ -221,11 +224,34 @@ class SoundManager:
                     sound.set_volume(self.volume)
                 except Exception:
                     pass
+        if hasattr(self, "voice_engine") and self.voice_engine:
+            self.voice_engine.set_volume(self.volume)
 
     def toggle_mute(self) -> bool:
         """Toggles mute state. Returns True if sound is now enabled, False if muted."""
         self.enabled = not self.enabled
+        if hasattr(self, "voice_engine") and self.voice_engine:
+            self.voice_engine.enabled = self.enabled
         return self.enabled
+
+    def play_dialogue_blip(
+        self,
+        character_id: str,
+        char: str,
+        char_index: int = 0,
+        inflection: str = "normal",
+    ) -> bool:
+        """Plays character-specific procedural Animalese voice blip for typewriter speech."""
+        if not self.enabled or not self.is_available:
+            return False
+        if hasattr(self, "voice_engine") and self.voice_engine:
+            return self.voice_engine.play_speech_blip(
+                character_id=character_id,
+                char=char,
+                char_index=char_index,
+                inflection=inflection,
+            )
+        return False
 
     @property
     def is_muted(self) -> bool:

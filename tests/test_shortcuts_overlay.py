@@ -23,6 +23,7 @@ from blackjack import (
     BlackjackApp,
     Card,
 )
+import config
 
 
 class TestKeyboardOverlayAssets(unittest.TestCase):
@@ -42,12 +43,17 @@ class TestKeyboardOverlayAssets(unittest.TestCase):
         "keyboard_2.png",
         "keyboard_3.png",
         "keyboard_4.png",
+        "keyboard_5.png",
         "keyboard_a.png",
         "keyboard_c.png",
         "keyboard_y.png",
         "keyboard_n.png",
         "keyboard_escape.png",
         "keyboard_m.png",
+        "keyboard_k.png",
+        "keyboard_shift.png",
+        "keyboard_v.png",
+        "keyboard_x.png",
         "keyboard_f10.png",
         "keyboard_f11.png",
         "mouse_left.png",
@@ -179,6 +185,94 @@ class TestShortcutsOverlayGui(unittest.TestCase):
                 f"Expected binding for key '{key}' on root window, but none found",
             )
 
+    def test_shortcuts_dialog_tabs_and_navigation(self):
+        """Shortcuts dialog supports two-tab category switching and arrow-key navigation."""
+        self.app._show_shortcuts_overlay()
+        dialog = self.app._shortcuts_dialog
+        self.assertIsNotNone(dialog)
+        self.assertTrue(hasattr(dialog, "current_tab"))
+        self.assertEqual(dialog.current_tab, 0)
+        self.assertTrue(hasattr(dialog, "btn_tab_gameplay"))
+        self.assertTrue(hasattr(dialog, "btn_tab_system"))
+
+        # Switch to Tab 1 (System & Controls)
+        dialog._switch_tab(1)
+        self.assertEqual(dialog.current_tab, 1)
+
+        # Switch back to Tab 0 via method
+        dialog._switch_tab(0)
+        self.assertEqual(dialog.current_tab, 0)
+
+        # Test arrow key events
+        dialog.focus_force()
+        dialog.update()
+        dialog.event_generate("<Right>")
+        dialog.update()
+        self.assertEqual(dialog.current_tab, 1)
+
+        dialog.event_generate("<Left>")
+        dialog.update()
+        self.assertEqual(dialog.current_tab, 0)
+
+        self.app._close_shortcuts_overlay()
+
+    def test_shortcuts_dialog_contains_all_essential_controls(self):
+        """Shortcuts dialog includes all controls: $1000 chip, Shift+W, Shift+H, Shift+C, Shift+S, V, X."""
+        self.app._show_shortcuts_overlay()
+        dialog = self.app._shortcuts_dialog
+        self.assertIsNotNone(dialog)
+
+        # Switch across both tabs and collect all action texts
+        all_action_texts = []
+        for tab_idx in (0, 1):
+            dialog._switch_tab(tab_idx)
+            dialog.update_idletasks()
+            for widget in dialog.winfo_children():
+                # Recursively search for labels in the dialog
+                def extract_labels(w):
+                    texts = []
+                    if isinstance(w, tkinter.Label):
+                        texts.append(w.cget("text"))
+                    for ch in w.winfo_children():
+                        texts.extend(extract_labels(ch))
+                    return texts
+                all_action_texts.extend(extract_labels(widget))
+
+        combined_text = " ".join(all_action_texts)
+        # Check presence of key 5 / $1,000
+        self.assertIn("1,000", combined_text, "Missing $1,000 chip shortcut")
+        # Check Wardrobe
+        self.assertIn("Wardrobe", combined_text, "Missing Wardrobe shortcut")
+        # Check Hall of Fame
+        self.assertIn("Hall of Fame", combined_text, "Missing Hall of Fame shortcut")
+        # Check Card Counter
+        self.assertIn("Card Counter", combined_text, "Missing Card Counter shortcut")
+        # Check Scale
+        self.assertIn("Scale", combined_text, "Missing Scale shortcut")
+        # Check Fullscreen
+        self.assertIn("Fullscreen", combined_text, "Missing Fullscreen shortcut")
+
+        self.app._close_shortcuts_overlay()
+
+    def test_shortcuts_dialog_scrollable_container_and_no_clipping(self):
+        """Shortcuts dialog wraps content in a scrollable container with mousewheel support and zero clipped rows."""
+        self.app._show_shortcuts_overlay()
+        dialog = self.app._shortcuts_dialog
+        self.assertIsNotNone(dialog)
+        self.assertTrue(hasattr(dialog, "_on_mousewheel") or hasattr(dialog, "canvas"))
+
+        # Verify dialog geometry fits within live configuration bounds
+        dialog.update_idletasks()
+        req_h = dialog.winfo_reqheight()
+        max_allowed_h = min(
+            self.root.winfo_screenheight() - 80,
+            int(config.DEFAULT_WINDOW_HEIGHT * getattr(self.app, "scale_factor", 1.0)),
+        )
+        self.assertLessEqual(req_h, max_allowed_h, f"Dialog height {req_h} exceeds live display allowance {max_allowed_h}")
+
+        self.app._close_shortcuts_overlay()
+
 
 if __name__ == "__main__":
     unittest.main()
+

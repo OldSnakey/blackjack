@@ -19,6 +19,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from save_manager import SaveManager
+import config
 import blackjack
 from blackjack import BlackjackApp, TABLE_BACKGROUND_COLOR, PANEL_BACKGROUND_COLOR, Phase
 
@@ -109,6 +110,62 @@ class TestSettingsDialog(unittest.TestCase):
         # Cursed stakes button must be removed from grid
         self.assertFalse(bool(self.app.cursed_stakes_button.grid_info()))
 
+    def test_settings_dialog_button_grid_layout(self):
+        """Settings buttons are organized in two tiers with sufficient width (no truncation)."""
+        self.app._open_settings_dialog()
+        dialog = self.app._settings_dialog
+        self.assertIsNotNone(dialog)
+
+        # Check all 5 preference buttons exist
+        self.assertTrue(hasattr(dialog, "sound_btn"))
+        self.assertTrue(hasattr(dialog, "scale_btn"))
+        self.assertTrue(hasattr(dialog, "dealer_btn"))
+        self.assertTrue(hasattr(dialog, "wardrobe_btn"))
+        self.assertTrue(hasattr(dialog, "voice_btn"))
+
+        # Verify buttons are mapped and rendered width is not squished (all buttons >= 100px actual width)
+        dialog.update()
+        for btn in (dialog.sound_btn, dialog.voice_btn, dialog.scale_btn, dialog.dealer_btn, dialog.wardrobe_btn):
+            w = btn.winfo_width()
+            self.assertGreaterEqual(w, 100, f"Button {btn} actual width {w} is too narrow and will truncate text")
+
+        self.app._close_settings_dialog()
+
+    def test_settings_dialog_displays_card_counting_streak(self):
+        """Settings dialog displays card counting drill streak in career records."""
+        self.app.save_manager.data.highscores.best_counting_streak = 14
+        self.app.save_manager.data.highscores.counting_streak = 8
+        self.app._open_settings_dialog()
+        dialog = self.app._settings_dialog
+        self.assertIsNotNone(dialog)
+
+        # Verify stats labels contain counting streak info
+        labels_text = " ".join(
+            w.cget("text") for w in dialog.stats_frame.winfo_children() if isinstance(w, tkinter.Label)
+        )
+        self.assertIn("Counting", labels_text)
+        self.assertIn("14", labels_text)
+
+        self.app._close_settings_dialog()
+
+    def test_settings_dialog_scrollable_container_and_screen_clamping(self):
+        """Settings dialog embeds content in a scrollable frame with mousewheel support."""
+        self.app._open_settings_dialog()
+        dialog = self.app._settings_dialog
+        self.assertIsNotNone(dialog)
+        self.assertTrue(hasattr(dialog, "_on_mousewheel") or hasattr(dialog, "canvas"))
+
+        dialog.update_idletasks()
+        req_h = dialog.winfo_reqheight()
+        max_allowed_h = min(
+            self.root.winfo_screenheight() - 80,
+            int(config.DEFAULT_WINDOW_HEIGHT * getattr(self.app, "scale_factor", 1.0)),
+        )
+        self.assertLessEqual(req_h, max_allowed_h, f"Settings dialog requested height {req_h} exceeds live display allowance {max_allowed_h}")
+
+        self.app._close_settings_dialog()
+
 
 if __name__ == "__main__":
     unittest.main()
+

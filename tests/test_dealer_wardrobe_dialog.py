@@ -84,18 +84,19 @@ class TestDealerWardrobeDialog(unittest.TestCase):
         """Next and Prev page navigation switches pages and updates navigation controls."""
         self.app._on_click_stage_hanger()
         dialog = self.app._wardrobe_dialog
+        total_pages = len(dialog.PAGE_CONFIG)
         self.assertEqual(dialog.current_page, 0)
-        self.assertIn("Page 1 of 2", dialog.page_lbl.cget("text"))
+        self.assertIn(f"Page 1 of {total_pages}", dialog.page_lbl.cget("text"))
 
         # Switch to Page 2
         dialog._next_page()
         self.assertEqual(dialog.current_page, 1)
-        self.assertIn("Page 2 of 2", dialog.page_lbl.cget("text"))
+        self.assertIn(f"Page 2 of {total_pages}", dialog.page_lbl.cget("text"))
 
         # Switch back to Page 1
         dialog._prev_page()
         self.assertEqual(dialog.current_page, 0)
-        self.assertIn("Page 1 of 2", dialog.page_lbl.cget("text"))
+        self.assertIn(f"Page 1 of {total_pages}", dialog.page_lbl.cget("text"))
 
     def test_equipping_tiffany_updates_actor_and_save(self):
         """Equipping Tiffany switches dealer persona, table avatar, and save data."""
@@ -161,6 +162,30 @@ class TestDealerWardrobeDialog(unittest.TestCase):
         self.assertFalse(dialog.winfo_exists())
         self.assertIsNone(self.app._wardrobe_dialog)
 
+    def test_wardrobe_tab2_hof_scrollable_plaques(self):
+        """Tab 2 (Hall of Fame) contains all 8 plaques in a scrollable frame with mousewheel support."""
+        self.app._on_click_stage_hanger()
+        dialog = self.app._wardrobe_dialog
+        self.assertIsNotNone(dialog)
+
+        # Switch to Tab 2
+        dialog._switch_tab(1)
+        self.assertEqual(dialog.current_tab, 1)
+
+        # Check all 8 plaques are registered
+        self.assertEqual(len(dialog.plaque_widgets), 8)
+        for ach_id in ("exorcist", "high_roller", "natural_streak", "cursed_survivor",
+                       "split_maestro", "big_spender", "apprentice_counter", "master_counter"):
+            self.assertIn(ach_id, dialog.plaque_widgets)
+
+        # Verify scrollable canvas or mousewheel support on Tab 2
+        self.assertTrue(
+            hasattr(dialog, "hof_canvas") or hasattr(dialog, "_on_hof_mousewheel") or hasattr(dialog, "_on_mousewheel")
+        )
+
+        dialog._on_close()
+
 
 if __name__ == "__main__":
     unittest.main()
+

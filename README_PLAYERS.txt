@@ -44,6 +44,9 @@ KEYBOARD SHORTCUTS (Hands-Free Play):
 - [C]                : Clear Current Bet
 - [Y] / [N, Esc]     : Take / Decline Insurance on Dealer Ace
 - [M]                : Mute / Unmute Audio Toggle
+- [K] or [Shift+C]   : Toggle Card Counter Trainer HUD (Running Count, True Count, Quiz)
+- [Shift+W]          : Open Dealer Wardrobe & Costume Customizer
+- [Shift+H]          : Open Hall of Fame & Achievements
 - [V]                : Toggle Dealer Portrait View ON / OFF
 - [X]                : Miracle Draw (Banish and redraw active card in Hell's Table)
 - [F10]              : Toggle 1x / 2x Interface Scaling

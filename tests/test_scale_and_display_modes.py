@@ -194,15 +194,24 @@ class TestScaleAndDisplayModes(unittest.TestCase):
         dlg = getattr(self.app, "_shortcuts_dialog", None)
         self.assertIsNotNone(dlg)
 
-        # Inspect shortcut text inside dialog frames
+        # Inspect shortcut text inside dialog frames (recursively supporting tabbed and canvas containers)
+        def extract_labels(w):
+            texts = []
+            if isinstance(w, tkinter.Label):
+                texts.append(str(w.cget("text")))
+            for ch in w.winfo_children():
+                texts.extend(extract_labels(ch))
+            return texts
+
         labels_text = []
-        for w in dlg.winfo_children():
-            for sub in w.winfo_children():
-                for item in sub.winfo_children():
-                    if isinstance(item, tkinter.Frame):
-                        for leaf in item.winfo_children():
-                            if isinstance(leaf, tkinter.Label):
-                                labels_text.append(str(leaf.cget("text")))
+        if hasattr(dlg, "_switch_tab"):
+            for tab_idx in (0, 1):
+                dlg._switch_tab(tab_idx)
+                for w in dlg.winfo_children():
+                    labels_text.extend(extract_labels(w))
+        else:
+            for w in dlg.winfo_children():
+                labels_text.extend(extract_labels(w))
 
         has_scale_shortcut = any("Scale" in t or "1x" in t or "2x" in t for t in labels_text)
         has_full_shortcut = any("Fullscreen" in t for t in labels_text)

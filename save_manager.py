@@ -30,6 +30,8 @@ class HighScores:
     total_hands_won: int = 0
     total_blackjacks: int = 0
     hell_table_clears: int = 0
+    counting_streak: int = 0
+    best_counting_streak: int = 0
 
 
 @dataclass
@@ -40,6 +42,8 @@ class Achievements:
     cursed_survivor: bool = False    # Survived the cursed 13 card
     split_maestro: bool = False      # Won both split hands
     big_spender: bool = False        # Won a $1,000+ all-in bet
+    apprentice_counter: bool = False # 5 consecutive correct card counting quiz answers
+    master_counter: bool = False     # 20 consecutive correct card counting quiz answers
 
 
 @dataclass
@@ -81,6 +85,8 @@ class SaveData:
                 total_hands_won=hs_data.get("total_hands_won", 0),
                 total_blackjacks=hs_data.get("total_blackjacks", 0),
                 hell_table_clears=hs_data.get("hell_table_clears", 0),
+                counting_streak=hs_data.get("counting_streak", 0),
+                best_counting_streak=hs_data.get("best_counting_streak", 0),
             ),
             achievements=Achievements(
                 exorcist=ach_data.get("exorcist", False),
@@ -89,6 +95,8 @@ class SaveData:
                 cursed_survivor=ach_data.get("cursed_survivor", False),
                 split_maestro=ach_data.get("split_maestro", False),
                 big_spender=ach_data.get("big_spender", False),
+                apprentice_counter=ach_data.get("apprentice_counter", False),
+                master_counter=ach_data.get("master_counter", False),
             ),
             chips_mode=bool(data.get("chips_mode", True)),
         )
@@ -287,3 +295,29 @@ class SaveManager:
             self.unlock_costume("malphas")
 
         return current_streak, session_blackjacks
+
+    def record_counting_quiz(self, is_correct: bool) -> tuple[int, bool, bool]:
+        """
+        Records a card counting quiz result, updates streaks, and unlocks achievements.
+        Returns: (current_streak, unlocked_apprentice, unlocked_master)
+        """
+        unlocked_apprentice = False
+        unlocked_master = False
+
+        if is_correct:
+            self.data.highscores.counting_streak += 1
+            cur = self.data.highscores.counting_streak
+            if cur > self.data.highscores.best_counting_streak:
+                self.data.highscores.best_counting_streak = cur
+
+            if cur >= 5 and not self.data.achievements.apprentice_counter:
+                self.unlock_achievement("apprentice_counter")
+                unlocked_apprentice = True
+            if cur >= 20 and not self.data.achievements.master_counter:
+                self.unlock_achievement("master_counter")
+                unlocked_master = True
+        else:
+            self.data.highscores.counting_streak = 0
+
+        self.save()
+        return self.data.highscores.counting_streak, unlocked_apprentice, unlocked_master
