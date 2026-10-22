@@ -311,6 +311,7 @@ To foster code discoverability and provide junior developers with clean patterns
 - **`ui_dialogs.py`**: Modal `tkinter.Toplevel` dialogs: `ShortcutsDialog`, `SettingsDialog`, `StoryDialogueDialog`, and `AngelicDraftDialog`.
 - **`save_manager.py`**: Career statistics, persistent JSON storage, and round achievement evaluation (`evaluate_round_achievements`).
 - **`blackjack.py`**: Main application coordinator (`BlackjackApp`) wiring event loops, user keyboard/mouse bindings, and game phase transitions, while re-exporting key domain symbols for 100% backward compatibility.
+- **[CRC Architecture & System Design (`docs/ARCHITECTURE_CRC.md`)](docs/ARCHITECTURE_CRC.md)**: Exhaustive Class-Responsibility-Collaboration (CRC) reference covering all 35 project classes, sequence flows, and architectural improvement analyses.
 
 ### 9. Procedural Animalese Dialogue Voice Engine
 Instead of bundling hundreds of static `.ogg` voice clips that bloat repository size, `dialogue_voice_engine.py` synthesizes lightweight, high-fidelity 16-bit mono 44.1 kHz PCM WAV audio buffers procedurally in memory using Python's standard `wave`, `struct`, and `math` libraries.
@@ -428,6 +429,7 @@ Blackjack/
 │   ├── capture_wardrobe_dummy_demo.py # Automation tool for capturing wardrobe dialog with dummy puppet
 │   └── capture_welcome_splash_verification.py # Automation tool for capturing WelcomeSplashDialog and table mode verifications
 ├── docs/
+│   ├── ARCHITECTURE_CRC.md         # Class-Responsibility-Collaboration (CRC) architecture & review
 │   └── ITCH_IO_GUIDE.md            # itch.io deployment, store copy, and release guide
 └── tests/                          # Automated test suite (307 tests)
     ├── __init__.py
