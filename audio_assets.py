@@ -32,6 +32,7 @@ from config import (
 # Silence pygame greeting message on import to ensure clean stdout in CLI pipelines
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
 
+from rules import Card
 from dialogue_voice_engine import AnimaleseVoiceEngine
 
 # Optional pygame.mixer support for authentic tactile casino audio
