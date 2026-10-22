@@ -20,9 +20,13 @@ from __future__ import annotations
 
 import io
 import math
+import os
 import struct
 import wave
 from typing import Any, Dict, Optional
+
+# Silence pygame greeting message on import to ensure clean stdout in CLI pipelines
+os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
 
 # Optional pygame.mixer support
 try:

@@ -29,11 +29,10 @@ from config import (
     HAUNTED_AUDIO_DIR,
     OVERLAY_ICONS_DIR,
 )
-from rules import Card
-from dialogue_voice_engine import AnimaleseVoiceEngine
-
 # Silence pygame greeting message on import to ensure clean stdout in CLI pipelines
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
+
+from dialogue_voice_engine import AnimaleseVoiceEngine
 
 # Optional pygame.mixer support for authentic tactile casino audio
 try:
