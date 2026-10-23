@@ -13,7 +13,7 @@ Before creating your itch.io page, compile the release bundle:
    - Run the automated unit test suite to ensure zero bugs are shipped.
    - Compile a standalone executable with PyInstaller.
    - Bundle all cards, organic sound effects, and `README_PLAYERS.txt`.
-   - Generate `dist/Blackjack-Windows-v1.3.0.zip`.
+   - Generate `dist/Blackjack-Windows-v1.3.1.zip`.
 
 ---
 
@@ -50,7 +50,7 @@ Before creating your itch.io page, compile the release bundle:
 
 Under the **Uploads** section:
 
-1. Click **Upload files** and select `dist/Blackjack-Windows-v1.3.0.zip`.
+1. Click **Upload files** and select `dist/Blackjack-Windows-v1.3.1.zip`.
 2. Check the **Windows** platform checkbox (the Windows logo icon).
 3. Under **Display name**, type: `Blackjack (Windows 64-bit)`.
 4. Check the box: **"This file will be seen by everyone"**.
@@ -107,7 +107,7 @@ Experience authentic casino Blackjack with zero setup or installation required! 
 Paste the following in the **Download & Install Instructions** section on itch.io:
 
 ```text
-1. Download the ZIP file: "Blackjack-Windows-v1.3.0.zip".
+1. Download the ZIP file: "Blackjack-Windows-v1.3.1.zip".
 2. Right-click the downloaded file and select "Extract All...".
 3. Open the extracted folder and double-click "Blackjack.exe" to play!
 
