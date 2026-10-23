@@ -101,7 +101,9 @@ class CardCountingHud(tkinter.Frame):
         self.use_grid = use_grid
         self.grid_row = grid_row
         self.is_visible = False
+        self.drill_mode = False
         self._last_rec_bet = 25
+        self._last_cards_remaining = int(getattr(self.counter, "deck_count", 4)) * 52
 
         self._build_ui()
 
@@ -150,6 +152,17 @@ class CardCountingHud(tkinter.Frame):
         )
         self.tc_label.pack(side="left", padx=(2, 0))
 
+        # Player Advantage (Edge %)
+        self.edge_frame = tkinter.Frame(self, background="#0d231b")
+        self.edge_frame.pack(side="left", padx=5)
+        tkinter.Label(
+            self.edge_frame, text="Edge:", font=("Arial", 8, "bold"), fg="#80cbc4", background="#0d231b"
+        ).pack(side="left")
+        self.edge_label = tkinter.Label(
+            self.edge_frame, text="-0.5%", font=("Arial", 9, "bold"), fg="#38bdf8", background="#0d231b"
+        )
+        self.edge_label.pack(side="left", padx=(2, 0))
+
         # Bet Sizing Guide
         self.bet_guide_frame = tkinter.Frame(self, background="#0d231b")
         self.bet_guide_frame.pack(side="left", padx=5)
@@ -174,6 +187,24 @@ class CardCountingHud(tkinter.Frame):
         )
         self.strategy_label.pack(side="left", padx=(2, 0))
 
+        # Assisted vs Drill Challenge Mode Toggle Button
+        self.mode_btn = tkinter.Button(
+            self,
+            text="👁️ Assisted",
+            font=("Arial", 8, "bold"),
+            background="#1b382d",
+            foreground="#80cbc4",
+            activebackground="#2e5441",
+            activeforeground="#ffffff",
+            relief="flat",
+            padx=5,
+            pady=1,
+            cursor="hand2",
+            takefocus=False,
+            command=lambda: self.toggle_drill_mode(self._last_cards_remaining),
+        )
+        self.mode_btn.pack(side="left", padx=(4, 2))
+
         # Quiz Drill Challenge Button
         self.quiz_btn = tkinter.Button(
             self,
@@ -190,7 +221,7 @@ class CardCountingHud(tkinter.Frame):
             takefocus=False,
             command=self._on_quiz_click,
         )
-        self.quiz_btn.pack(side="left", padx=(6, 4))
+        self.quiz_btn.pack(side="left", padx=(4, 4))
 
         # Hide toggle button
         self.close_btn = tkinter.Button(
@@ -269,14 +300,41 @@ class CardCountingHud(tkinter.Frame):
         display_text = f"{action_name} ({reason})" if reason else action_name
         self.strategy_label.configure(text=display_text, fg=fg_col)
 
+    def set_drill_mode(self, enabled: bool, cards_remaining: int = 208, base_bet: int = 25) -> bool:
+        """Sets Drill Challenge Mode (masks live RC/TC/Edge as '?' when enabled)."""
+        self.drill_mode = bool(enabled)
+        if hasattr(self, "mode_btn") and self.mode_btn.winfo_exists():
+            if self.drill_mode:
+                self.mode_btn.configure(text="🧠 Drill", foreground="#ffd54f", background="#3e2723")
+            else:
+                self.mode_btn.configure(text="👁️ Assisted", foreground="#80cbc4", background="#1b382d")
+        self.update_counts(cards_remaining=cards_remaining, base_bet=base_bet)
+        return self.drill_mode
+
+    def toggle_drill_mode(self, cards_remaining: int = 208, base_bet: int = 25) -> bool:
+        """Toggles between Assisted HUD Mode and Drill Challenge Mode."""
+        return self.set_drill_mode(not self.drill_mode, cards_remaining=cards_remaining, base_bet=base_bet)
+
     def update_counts(self, cards_remaining: int, base_bet: int = 25):
         """Refreshes HUD count badges from internal counter state."""
+        self._last_cards_remaining = cards_remaining
         rc = self.counter.running_count
         decks = self.counter.decks_remaining(cards_remaining)
         tc = self.counter.true_count(cards_remaining)
+        adv = self.counter.get_player_advantage(cards_remaining)
         rec_bet = self.counter.get_recommended_bet(base_bet, tc)
         self._last_rec_bet = rec_bet
         rec_units = max(1, rec_bet // max(1, base_bet))
+
+        # Decks remaining is always visible (visual shoe estimation)
+        self.decks_label.configure(text=f"{decks:.1f}")
+
+        if self.drill_mode:
+            self.rc_label.configure(text="?", fg="#ffd54f")
+            self.tc_label.configure(text="?", fg="#ffd54f")
+            self.edge_label.configure(text="?", fg="#ffd54f")
+            self.bet_guide_label.configure(text="? (Drill)")
+            return
 
         # Format RC with explicit +/- sign
         rc_sign = "+" if rc > 0 else ""
@@ -285,14 +343,19 @@ class CardCountingHud(tkinter.Frame):
             fg="#00e676" if rc > 0 else ("#ff5252" if rc < 0 else "#ffffff"),
         )
 
-        # Decks remaining
-        self.decks_label.configure(text=f"{decks:.1f}")
-
         # Format TC with explicit +/- sign
         tc_sign = "+" if tc > 0 else ""
         self.tc_label.configure(
             text=f"{tc_sign}{tc:.1f}",
             fg="#00e676" if tc >= 1.0 else ("#ff5252" if tc <= -1.0 else "#ffffff"),
+        )
+
+        # Format Player Advantage (Edge %) with roadmap color coding
+        adv_sign = "+" if adv > 0 else ""
+        edge_col = "#4ade80" if tc >= 2.0 else ("#f87171" if tc < -1.0 else "#38bdf8")
+        self.edge_label.configure(
+            text=f"{adv_sign}{adv:.1f}%",
+            fg=edge_col,
         )
 
         # Bet Guide recommendation

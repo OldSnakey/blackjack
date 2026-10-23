@@ -139,9 +139,9 @@ def synthesize_viseme_pcm(
         elif inflection == "period":
             # Pitch falls -12% toward the tail of the syllable
             current_freq *= 1.0 - (0.12 * progress)
-        elif inflection == "exclamation":
-            # Sustained bright pitch +10%
-            current_freq *= 1.10
+        elif inflection in ("exclamation", "exclaim"):
+            # Rising +20% pitch emphasis toward the tail of the exclaimed syllable
+            current_freq *= 1.0 + (0.20 * progress)
 
         # Special viseme glide mechanics
         if viseme == "smirk":
@@ -197,7 +197,7 @@ def synthesize_viseme_pcm(
             rel_prog = (progress - 0.70) / 0.30
             env = 0.5 * (1.0 + math.cos(math.pi * rel_prog))
 
-        if inflection == "exclamation":
+        if inflection in ("exclamation", "exclaim"):
             env *= 1.20
 
         # Scale to 16-bit signed PCM range [-32767, 32767] with 0.7 headroom
@@ -262,16 +262,24 @@ class AnimaleseVoiceEngine:
 
         character_dict: Dict[str, Any] = {}
         for viseme in ("a", "o", "e", "f", "talk", "smirk", "gasp"):
-            wav_bytes = synthesize_viseme_pcm(base_freq=base_freq, viseme=viseme, timbre=timbre)
-            sound_obj = None
-            if self.is_available and pygame_mixer is not None:
-                try:
-                    sound_obj = pygame_mixer.Sound(io.BytesIO(wav_bytes))
-                    sound_obj.set_volume(self.volume)
-                except Exception:
-                    sound_obj = None
-            # Store sound object (or mock/None if headless)
-            character_dict[viseme] = sound_obj or wav_bytes
+            for inf in ("normal", "question", "period", "exclamation"):
+                wav_bytes = synthesize_viseme_pcm(
+                    base_freq=base_freq,
+                    viseme=viseme,
+                    timbre=timbre,
+                    inflection=inf,
+                )
+                sound_obj = None
+                if self.is_available and pygame_mixer is not None:
+                    try:
+                        sound_obj = pygame_mixer.Sound(io.BytesIO(wav_bytes))
+                        sound_obj.set_volume(self.volume)
+                    except Exception:
+                        sound_obj = None
+                entry = sound_obj or wav_bytes
+                if inf == "normal":
+                    character_dict[viseme] = entry
+                character_dict[f"{viseme}_{inf}"] = entry
 
         self._sound_cache[cid] = character_dict
         return character_dict
@@ -314,7 +322,8 @@ class AnimaleseVoiceEngine:
             return False
 
         sounds = self.get_character_sounds(character_id)
-        sound_entry = sounds.get(viseme)
+        norm_inf = "exclamation" if inflection == "exclaim" else inflection
+        sound_entry = sounds.get(f"{viseme}_{norm_inf}") or sounds.get(viseme)
 
         if not sound_entry:
             return False

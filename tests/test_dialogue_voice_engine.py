@@ -29,7 +29,7 @@ class TestDialogueVoiceEngine(unittest.TestCase):
 
     def test_voice_profiles_registered_for_all_characters(self):
         """All dealer characters have defined voice profiles with base frequency and timbre."""
-        expected_characters = ["tiffany", "julian", "malphas", "uriel", "mortimer", "dummy"]
+        expected_characters = ["tiffany", "julian", "malphas", "uriel", "mortimer", "selene", "vladimir", "dummy"]
         for cid in expected_characters:
             self.assertIn(cid, VOICE_PROFILES, f"Character '{cid}' missing voice profile")
             prof = VOICE_PROFILES[cid]
@@ -70,13 +70,48 @@ class TestDialogueVoiceEngine(unittest.TestCase):
         self.assertNotEqual(malphas_bytes, uriel_bytes, "Deep demonic pitch must differ from celestial chime")
 
     def test_inflection_pitch_shifts(self):
-        """Question inflection raises pitch while period inflection drops pitch."""
+        """Question, period, and exclamation inflections produce distinct pitch/amplitude waveforms."""
         normal_bytes = synthesize_viseme_pcm(base_freq=380.0, viseme="e", inflection="normal")
         question_bytes = synthesize_viseme_pcm(base_freq=380.0, viseme="e", inflection="question")
         period_bytes = synthesize_viseme_pcm(base_freq=380.0, viseme="e", inflection="period")
+        exclaim_bytes = synthesize_viseme_pcm(base_freq=380.0, viseme="e", inflection="exclamation")
 
         self.assertNotEqual(normal_bytes, question_bytes)
         self.assertNotEqual(normal_bytes, period_bytes)
+        self.assertNotEqual(normal_bytes, exclaim_bytes)
+        self.assertNotEqual(question_bytes, exclaim_bytes)
+
+    def test_persona_specific_outcome_and_tactical_dialogue(self):
+        """Every dealer profile provides persona-tailored outcome and tactical risky-play dialogue."""
+        import tkinter
+        from dealer_actor import CHARACTERS, DealerActor
+
+        root = tkinter.Tk()
+        root.withdraw()
+        try:
+            actor = DealerActor(master=root)
+            outcomes = ["NATURAL_BLACKJACK", "DEALER_BUST", "PLAYER_WINS", "PLAYER_BUST", "DEALER_WINS", "PUSH", "SURRENDER"]
+            triggers = ["RISKY_HIT", "DOUBLE_ELEVEN", "SPLIT_PAIR", "INSURANCE_TAKEN"]
+
+            observed_bj_lines = set()
+            observed_risky_lines = set()
+            for cid in CHARACTERS:
+                actor.equip_costume(cid)
+                for out in outcomes:
+                    line = actor.get_outcome_dialogue(out)
+                    self.assertTrue(isinstance(line, str) and len(line) > 5, f"Empty outcome line for {cid}/{out}")
+                observed_bj_lines.add(actor.get_outcome_dialogue("NATURAL_BLACKJACK"))
+
+                for trig in triggers:
+                    tline = actor.get_tactical_dialogue(trig)
+                    self.assertTrue(isinstance(tline, str) and len(tline) > 5, f"Empty tactical line for {cid}/{trig}")
+                observed_risky_lines.add(actor.get_tactical_dialogue("RISKY_HIT"))
+
+            # Personas should have distinct lines rather than all sharing one identical line
+            self.assertGreaterEqual(len(observed_bj_lines), 6)
+            self.assertGreaterEqual(len(observed_risky_lines), 6)
+        finally:
+            root.destroy()
 
     def test_neutral_viseme_is_silent(self):
         """Viseme 'neutral' produces an empty/silent buffer for punctuation and pauses."""

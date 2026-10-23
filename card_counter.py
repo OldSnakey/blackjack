@@ -98,6 +98,14 @@ class HiLoCardCounter:
         decks = self.decks_remaining(cards_remaining)
         return round(self.running_count / decks, 1)
 
+    def get_player_advantage(self, cards_remaining: int) -> float:
+        """
+        Estimates player advantage percentage based on True Count:
+        Advantage (%) = -0.5% + (0.5% * TC)
+        """
+        tc = self.true_count(cards_remaining)
+        return round(-0.5 + (0.5 * tc), 2)
+
     def get_recommended_bet(self, base_bet: int, true_count: float) -> int:
         """
         Recommends bet sizing in units based on positive player advantage:

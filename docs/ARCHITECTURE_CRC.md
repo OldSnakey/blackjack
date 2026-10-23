@@ -35,8 +35,11 @@ The application is structured into decoupled domain rules, puppet presentation c
 
 ```mermaid
 graph TD
-    subgraph Core Domain [Core Rules & Domain]
-        rules[rules.py: Card, RoundPhase, BasicStrategyDecision]
+    subgraph Core Domain [Core Rules, Engine & Domain]
+        rules[rules.py: Card, Hand, RoundPhase, BasicStrategyDecision]
+        fsm[state_machine.py: GameStateMachine, InvalidStateTransitionError]
+        bus[event_bus.py: EventHub, GameEvent, GameEventType]
+        engine[game_engine.py: BlackjackEngine, RoundResult]
         counter[card_counter.py: HiLoCardCounter]
     end
 
@@ -80,6 +83,9 @@ graph TD
     end
 
     app --> rules
+    app --> fsm
+    app --> bus
+    app --> engine
     app --> counter
     app --> haunted
     app --> save
@@ -93,6 +99,10 @@ graph TD
     app --> soul_c
     app --> hud
     app --> count_hud
+
+    engine --> rules
+    engine --> fsm
+    engine --> bus
 
     app --> settings_dlg
     app --> shortcuts_dlg
@@ -120,10 +130,25 @@ graph TD
 | :--- | :--- |
 | **Knows**: Rank (`int` 1--13), suit (`str` `♠`, `♥`, `♦`, `♣`), face value, display label, and asset file name.<br>**Knows**: Special card identity (e.g. Card 13 cursed Card of Skulls, Ace soft value).<br>**Does**: Formats rank string (`"A"`, `"K"`, `"13"`), computes point values, checks blackjack / bust properties, decomposes wagers (`breakdown_chips`) and bankroll reserve stacks (`breakdown_bankroll_piles`) across all 5 chip denominations (\$5, \$25, \$100, \$500, \$1,000 Platinum), and builds/shuffles multi-deck shoes (`build_shoe`). | None (Pure immutable value object / stateless domain functions). |
 
-#### `RoundPhase` ([rules.py](../rules.py#L99))
+#### `Hand` ([rules.py](../rules.py#L100))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Enumerated round lifecycles (`BETTING`, `DEALING`, `PLAYER_TURN`, `DEALER_TURN`, `ROUND_OVER`).<br>**Does**: Provides explicit state identifiers synchronized via `BlackjackApp.round_phase` across the game lifecycle. | Collaborates with [BlackjackApp](../blackjack.py) and [TableAnnouncementHUD](../ui_canvases.py#L645). |
+| **Knows**: Ordered list of `Card` instances, active `bet`, `is_doubled`, `is_split_hand`, `is_surrendered`, `is_stood`, and settled `outcome`.<br>**Does**: Computes dynamic `score`, `is_blackjack`, `is_bust`, `is_soft`, and implements full `list[Card]` sequence protocol compatibility (`len`, indexing, iteration, `append`, `pop`). | Collaborates with [Card](../rules.py#L44) and [BlackjackEngine](../game_engine.py). |
+
+#### `RoundPhase` ([rules.py](../rules.py#L84)) & `GameStateMachine` ([state_machine.py](../state_machine.py))
+| Responsibility | Collaboration |
+| :--- | :--- |
+| **Knows**: Enumerated round lifecycles (`BETTING`, `DEALING`, `INSURANCE_PROMPT`, `PLAYER_TURN`, `DEALER_TURN`, `PAYOUT`, `ROUND_OVER`, `GAME_OVER`) and formal legal state transition table.<br>**Does**: Enforces legal state transitions via `GameStateMachine.transition(target_phase)` and raises `InvalidStateTransitionError` on illegal jumps. | Collaborates with [BlackjackEngine](../game_engine.py), [BlackjackApp](../blackjack.py), and [TableAnnouncementHUD](../ui_canvases.py#L645). |
+
+#### `EventHub` & `GameEvent` ([event_bus.py](../event_bus.py))
+| Responsibility | Collaboration |
+| :--- | :--- |
+| **Knows**: Subscribed listener callbacks mapped by `GameEventType` (`CARD_DEALT`, `HOLE_CARD_REVEALED`, `SHOE_SHUFFLED`, `BET_PLACED`, `PHASE_CHANGED`, `PLAYER_ACTION`, `ROUND_CONCLUDED`, `ACHIEVEMENT_UNLOCKED`, `DEALER_SPEECH`).<br>**Does**: Synchronously publishes typed `GameEvent` payloads to registered observers without coupling domain logic to UI widgets. | Collaborates with [BlackjackEngine](../game_engine.py) and [BlackjackApp](../blackjack.py). |
+
+#### `BlackjackEngine` & `RoundResult` ([game_engine.py](../game_engine.py))
+| Responsibility | Collaboration |
+| :--- | :--- |
+| **Knows**: Active shoe, `player_hands`, `dealer_hand`, `bankroll`, `staged_bet`, `insurance_bet`, `state_machine`, and `event_bus`.<br>**Does**: Executes headless Blackjack domain actions (`stage_bet`, `deal_initial_cards`, `hit`, `stand`, `double_down`, `split`, `surrender`, `play_dealer_turn`, `settle_round`) and emits domain events with zero Tkinter dependencies. | Collaborates with [Hand](../rules.py#L100), [GameStateMachine](../state_machine.py), and [EventHub](../event_bus.py). |
 
 #### `BasicStrategyDecision` ([rules.py](../rules.py#L226))
 | Responsibility | Collaboration |
@@ -133,7 +158,7 @@ graph TD
 #### `HiLoCardCounter` ([card_counter.py](../card_counter.py#L23))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Running count (RC), total face-up cards observed, initial shoe deck count (`DEFAULT_DECK_COUNT = 4` decks / 208 cards), and remaining deck estimation.<br>**Does**: Consumes observed face-up cards and applies standard Hi-Lo card counting weights ($2\text{--}6 \to +1$, $7\text{--}9 \to 0$, $10\text{--}\text{A} \to -1$).<br>**Does**: Computes estimated remaining decks ($\max(0.5, \text{cards} / 52.0)$) and mathematically converts RC to True Count ($\text{TC} = \text{RC} / \text{Decks}$).<br>**Does**: Provides betting unit recommendations based on Kelly criterion / True Count thresholds. | Collaborates with [Card](../rules.py#L44), [CardCountingHud](../card_counting_hud.py#L58), and [BlackjackApp](../blackjack.py). |
+| **Knows**: Running count (RC), total face-up cards observed, initial shoe deck count (`DEFAULT_DECK_COUNT = 4` decks / 208 cards), and remaining deck estimation.<br>**Does**: Consumes observed face-up cards and applies standard Hi-Lo card counting weights ($2\text{--}6 \to +1$, $7\text{--}9 \to 0$, $10\text{--}\text{A} \to -1$).<br>**Does**: Computes estimated remaining decks ($\max(0.5, \text{cards} / 52.0)$), converts RC to True Count ($\text{TC} = \text{RC} / \text{Decks}$), and calculates player mathematical edge percentage (`get_player_advantage`: $-0.5\% + 0.5\% \times \text{TC}$).<br>**Does**: Provides betting unit recommendations based on Kelly criterion / True Count thresholds. | Collaborates with [Card](../rules.py#L44), [CardCountingHud](../card_counting_hud.py#L58), and [BlackjackApp](../blackjack.py). |
 
 ---
 
@@ -161,7 +186,7 @@ graph TD
 #### `DealerActor` ([dealer_actor.py](../dealer_actor.py#L133))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Active dealer identity (`character_id` / `current_character` across all 8 personas: `julian`, `tiffany`, `malphas`, `uriel`, `mortimer`, `selene`, `vladimir`, `dummy`), active costume alias, 7 puppet layer image composites (*shadow*, *torso*, *neck*, *head*, *eyes*, *mouth*, *arms*), idle breathing cycle phase, procedural blink countdown, and emotional expression state.<br>**Does**: Loads, caches, and scales multi-layer character PNG sprites.<br>**Does**: Computes breathing offsets and dynamic eye-blink durations; selects phonetic mouth visemes during speech (`a`, `o`, `e`, `f`, `talk`, `smirk`, `gasp`).<br>**Does**: Blits composite character layers onto the stage canvas; triggers character voice utterances on typewriter dialogue events. | Collaborates with [CharacterProfile](../dealer_actor.py#L33), [AnimaleseVoiceEngine](../dialogue_voice_engine.py#L25), [SoundManager](../audio_assets.py#L140), and [DealerStageCanvas](../ui_canvases.py#L1319). |
+| **Knows**: Active dealer identity (`character_id` / `current_character` across all 8 personas: `julian`, `tiffany`, `malphas`, `uriel`, `mortimer`, `selene`, `vladimir`, `dummy`), active costume alias, 7 true de-occluded puppet strata (*shadow*, *torso*, *neck*, *head* mannequin faceplate, isolated per-socket *eyes*, *mouth* visemes, articulated *arms*), independent multi-layer kinematic offsets (`torso_offset`, `head_offset`, `arm_offset`, `eye_gaze_offset`), idle breathing cycle phase, procedural blink countdown, and emotional expression state.<br>**Does**: Loads, caches, and scales multi-layer character PNG sprites.<br>**Does**: Computes breathing offsets, dynamic eye-blink durations, and per-layer kinematic gestures (`set_layer_offsets`, `set_gaze_target`, `reset_kinematics`); selects phonetic mouth visemes during speech (`a`, `o`, `e`, `f`, `talk`, `smirk`, `gasp`).<br>**Does**: Blits composite character layers onto the stage canvas; supplies persona-specific outcome and tactical dialogue (`get_outcome_dialogue`, `get_tactical_dialogue`) and triggers character voice utterances on typewriter dialogue events. | Collaborates with [CharacterProfile](../dealer_actor.py#L33), [AnimaleseVoiceEngine](../dialogue_voice_engine.py#L25), [SoundManager](../audio_assets.py#L140), and [DealerStageCanvas](../ui_canvases.py#L1319). |
 
 #### `CharacterProfile` ([dealer_actor.py](../dealer_actor.py#L33))
 | Responsibility | Collaboration |
@@ -171,7 +196,7 @@ graph TD
 #### `AnimaleseVoiceEngine` ([dialogue_voice_engine.py](../dialogue_voice_engine.py#L25))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Acoustic parameters per dealer (fundamental frequency $F_0$, harmonics, formant filter frequencies, phonetic viseme map, volume scale).<br>**Does**: Procedurally synthesizes 16-bit mono 44.1 kHz PCM audio in memory with zero external sound files.<br>**Does**: Dynamically inflects pitch (rising on `?`, falling on `.`) and plays phonetic audio chirps matching typewriter text animation. | Collaborates with [DealerActor](../dealer_actor.py#L133) and [SoundManager](../audio_assets.py#L140). |
+| **Knows**: Acoustic parameters per dealer (fundamental frequency $F_0$, harmonics, formant filter frequencies, phonetic viseme map, volume scale).<br>**Does**: Procedurally synthesizes 16-bit mono 44.1 kHz PCM audio in memory with zero external sound files.<br>**Does**: Dynamically inflects pitch (rising `+18%` on `?`, falling `-12%` on `.`, rising `+20%` with `1.20x` amplitude boost on `!`) and plays phonetic audio chirps matching typewriter text animation. | Collaborates with [DealerActor](../dealer_actor.py#L133) and [SoundManager](../audio_assets.py#L140). |
 
 ---
 
@@ -204,12 +229,12 @@ graph TD
 #### `SaveManager` ([save_manager.py](../save_manager.py#L182))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Active save file path (`blackjack_save.json`), fallback paths, and in-memory `SaveData` payload.<br>**Does**: Safely serializes and deserializes player records, unlocked dealers, unlocked costumes, card counting test streaks, and 8 achievement badges. Gracefully recovers from corrupted JSON files. | Collaborates with [SaveData](../save_manager.py#L140), [Achievements](../save_manager.py#L65), [HighScores](../save_manager.py#L26), and [BlackjackApp](../blackjack.py). |
+| **Knows**: Active save file path (`blackjack_save.json`), fallback paths, and in-memory `SaveData` payload.<br>**Does**: Safely serializes and deserializes player records, unlocked dealers, unlocked costumes, card counting test streaks and telemetry (`counting_quizzes_taken`, `counting_quizzes_correct`, `counting_accuracy_pct`), and all 10 achievement badges (including `shoe_whisperer` and `count_capitalist`). Gracefully recovers from corrupted JSON files. | Collaborates with [SaveData](../save_manager.py#L140), [Achievements](../save_manager.py#L65), [HighScores](../save_manager.py#L26), and [BlackjackApp](../blackjack.py). |
 
 #### `SaveData`, `Achievements`, `HighScores` ([save_manager.py](../save_manager.py#L26))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Persistent player stats: total hands played, hands won/lost/pushed, natural blackjacks, peak bankroll, Hell's Table clears, card counting quiz streaks, and all 8 unlocked achievements.<br>**Does**: Provides validated dataclass structures for JSON serialization. | Collaborates with [SaveManager](../save_manager.py#L182). |
+| **Knows**: Persistent player stats: total hands played, hands won/lost/pushed, natural blackjacks, peak bankroll, Hell's Table clears, card counting quiz streaks and accuracy telemetry, and all 10 unlocked achievements.<br>**Does**: Provides validated dataclass structures for JSON serialization. | Collaborates with [SaveManager](../save_manager.py#L182). |
 
 ---
 
@@ -248,7 +273,7 @@ graph TD
 #### `CardCountingHud` & `FloatingCountBadge` ([card_counting_hud.py](../card_counting_hud.py#L20))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Hi-Lo Running Count, True Count, remaining shoe decks (`4.0` default), visibility toggle state, and floating count badge coordinates.<br>**Does**: Draws compact felt-embedded count HUD; animates transient floating text badges (`+1`, `-1`, `0`) above dealt cards; provides betting spread advice. | Collaborates with [HiLoCardCounter](../card_counter.py#L23) and [BlackjackApp](../blackjack.py). |
+| **Knows**: Hi-Lo Running Count, True Count, remaining shoe decks (`4.0` default), player mathematical Edge %, Assisted vs. Drill Challenge Mode state (`drill_mode`), visibility toggle state, and floating count badge coordinates.<br>**Does**: Draws compact felt-embedded count HUD; masks live RC/TC/Edge % readouts with `???` during Drill Challenge Mode until verified via quiz; animates transient floating text badges (`+1`, `-1`, `0`) above dealt cards; provides betting spread advice. | Collaborates with [HiLoCardCounter](../card_counter.py#L23) and [BlackjackApp](../blackjack.py). |
 
 ---
 

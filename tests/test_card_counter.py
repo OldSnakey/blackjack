@@ -133,6 +133,92 @@ class TestCardCounter(unittest.TestCase):
         self.assertFalse(self.counter.verify_quiz_answer(submitted_rc=3, submitted_tc=2.0, cards_remaining=104))
         self.assertFalse(self.counter.verify_quiz_answer(submitted_rc=4, submitted_tc=1.0, cards_remaining=104))
 
+    def test_player_advantage_percentage(self):
+        """Player advantage is estimated as -0.5% + 0.5% * TC."""
+        # TC = 0.0 -> -0.5%
+        self.counter.running_count = 0
+        self.assertAlmostEqual(self.counter.get_player_advantage(cards_remaining=104), -0.5, places=2)
+
+        # TC = +1.0 -> 0.0%
+        self.counter.running_count = 2
+        self.assertAlmostEqual(self.counter.get_player_advantage(cards_remaining=104), 0.0, places=2)
+
+        # TC = +3.0 -> +1.0%
+        self.counter.running_count = 6
+        self.assertAlmostEqual(self.counter.get_player_advantage(cards_remaining=104), 1.0, places=2)
+
+        # TC = -2.0 -> -1.5%
+        self.counter.running_count = -4
+        self.assertAlmostEqual(self.counter.get_player_advantage(cards_remaining=104), -1.5, places=2)
+
+    def test_hud_edge_display_and_drill_mode_masking(self):
+        """CardCountingHud displays Edge % and masks RC/TC/Edge as '?' in Drill Challenge Mode."""
+        import tkinter
+        from card_counting_hud import CardCountingHud
+
+        root = tkinter.Tk()
+        root.withdraw()
+        try:
+            hud = CardCountingHud(master=root, counter=self.counter)
+            self.counter.running_count = 6  # 104 cards (2 decks) -> TC = +3.0, Edge = +1.0%
+            hud.update_counts(cards_remaining=104, base_bet=25)
+
+            self.assertFalse(hud.drill_mode)
+            self.assertEqual(hud.rc_label.cget("text"), "+6")
+            self.assertEqual(hud.tc_label.cget("text"), "+3.0")
+            self.assertEqual(hud.edge_label.cget("text"), "+1.0%")
+            self.assertEqual(hud.edge_label.cget("fg"), "#4ade80")
+
+            # Toggle into Drill Challenge Mode: live RC, TC, Edge are masked as '?'
+            hud.toggle_drill_mode(cards_remaining=104, base_bet=25)
+            self.assertTrue(hud.drill_mode)
+            self.assertEqual(hud.rc_label.cget("text"), "?")
+            self.assertEqual(hud.tc_label.cget("text"), "?")
+            self.assertEqual(hud.edge_label.cget("text"), "?")
+
+            # Toggle back to Assisted Mode: live values restored
+            hud.toggle_drill_mode(cards_remaining=104, base_bet=25)
+            self.assertFalse(hud.drill_mode)
+            self.assertEqual(hud.rc_label.cget("text"), "+6")
+            self.assertEqual(hud.tc_label.cget("text"), "+3.0")
+            self.assertEqual(hud.edge_label.cget("text"), "+1.0%")
+        finally:
+            root.destroy()
+
+    def test_extended_counting_telemetry_and_achievements(self):
+        """SaveManager persists quiz accuracy telemetry and unlocks Shoe Whisperer & Count Capitalist."""
+        import tempfile
+        from pathlib import Path
+        from save_manager import SaveManager
+
+        with tempfile.TemporaryDirectory() as tmp:
+            sm = SaveManager(save_path=Path(tmp) / "test_save.json")
+            for _ in range(3):
+                sm.record_counting_quiz(True)
+            self.assertEqual(sm.data.highscores.counting_quizzes_taken, 3)
+            self.assertEqual(sm.data.highscores.counting_quizzes_correct, 3)
+            self.assertAlmostEqual(sm.data.highscores.counting_accuracy_pct, 100.0, places=1)
+
+            # Completing a shoe with >=3 quizzes and 100% accuracy unlocks shoe_whisperer
+            self.assertTrue(sm.evaluate_shoe_whisperer())
+            self.assertTrue(sm.data.achievements.shoe_whisperer)
+
+            # Winning a $1,000+ wager when TC >= +3.0 unlocks count_capitalist
+            sm.evaluate_round_achievements(
+                outcomes=["PLAYER_WINS"],
+                player_hands=[[Card(10, None, "10", "spade"), Card(10, None, "king", "heart")]],
+                dealer_hand=[Card(10, None, "10", "club"), Card(8, None, "8", "diamond")],
+                current_streak=1,
+                chips_mode=True,
+                current_bankroll=2500,
+                hand_bets=[1000],
+                is_all_in=False,
+                haunted_phase="normal",
+                session_blackjacks=0,
+                true_count=3.5,
+            )
+            self.assertTrue(sm.data.achievements.count_capitalist)
+
 
 if __name__ == "__main__":
     unittest.main()

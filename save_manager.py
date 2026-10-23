@@ -33,6 +33,9 @@ class HighScores:
     hell_table_clears: int = 0
     counting_streak: int = 0
     best_counting_streak: int = 0
+    counting_quizzes_taken: int = 0
+    counting_quizzes_correct: int = 0
+    counting_accuracy_pct: float = 0.0
 
 
 @dataclass
@@ -45,6 +48,8 @@ class Achievements:
     big_spender: bool = False        # Won a $1,000+ all-in bet
     apprentice_counter: bool = False # 5 consecutive correct card counting quiz answers
     master_counter: bool = False     # 20 consecutive correct card counting quiz answers
+    shoe_whisperer: bool = False     # Completed a shoe to cut card with 100% quiz accuracy (min 3 quizzes)
+    count_capitalist: bool = False   # Won a $1,000+ wager when True Count >= +3.0
 
 
 @dataclass
@@ -92,6 +97,9 @@ class SaveData:
                 hell_table_clears=hs_data.get("hell_table_clears", 0),
                 counting_streak=hs_data.get("counting_streak", 0),
                 best_counting_streak=hs_data.get("best_counting_streak", 0),
+                counting_quizzes_taken=hs_data.get("counting_quizzes_taken", 0),
+                counting_quizzes_correct=hs_data.get("counting_quizzes_correct", 0),
+                counting_accuracy_pct=float(hs_data.get("counting_accuracy_pct", 0.0)),
             ),
             achievements=Achievements(
                 exorcist=ach_data.get("exorcist", False),
@@ -102,6 +110,8 @@ class SaveData:
                 big_spender=ach_data.get("big_spender", False),
                 apprentice_counter=ach_data.get("apprentice_counter", False),
                 master_counter=ach_data.get("master_counter", False),
+                shoe_whisperer=ach_data.get("shoe_whisperer", False),
+                count_capitalist=ach_data.get("count_capitalist", False),
             ),
             chips_mode=bool(data.get("chips_mode", True)),
             play_mode=str(data.get("play_mode", "betting")),
@@ -251,6 +261,7 @@ class SaveManager:
         is_all_in: bool,
         haunted_phase: Any,
         session_blackjacks: int,
+        true_count: float = 0.0,
     ) -> tuple[int, int]:
         """
         Evaluates round outcomes, records statistics, updates streaks, and unlocks achievements.
@@ -307,11 +318,13 @@ class SaveManager:
             if all(o in win_outcomes for o in outcomes):
                 self.unlock_achievement("split_maestro")
 
-        # 6. Big Spender (Win an all-in bet of $1,000+)
+        # 6. Big Spender (Win an all-in bet of $1,000+) & Count Capitalist ($1,000+ win at TC >= +3.0)
         if chips_mode and hand_bets:
             total_bet = sum(hand_bets)
             if total_bet >= 1000 and any_won and is_all_in:
                 self.unlock_achievement("big_spender")
+            if total_bet >= 1000 and any_won and true_count >= 3.0:
+                self.unlock_achievement("count_capitalist")
 
         # 7. Exorcist / Malphas costume
         phase_str = getattr(haunted_phase, "value", str(haunted_phase)).lower()
@@ -324,13 +337,22 @@ class SaveManager:
 
     def record_counting_quiz(self, is_correct: bool) -> tuple[int, bool, bool]:
         """
-        Records a card counting quiz result, updates streaks, and unlocks achievements.
+        Records a card counting quiz result, updates streaks and accuracy telemetry,
+        and unlocks achievements.
         Returns: (current_streak, unlocked_apprentice, unlocked_master)
         """
         unlocked_apprentice = False
         unlocked_master = False
 
+        self.data.highscores.counting_quizzes_taken += 1
+        if not hasattr(self, "_shoe_quizzes_taken"):
+            self._shoe_quizzes_taken = 0
+            self._shoe_quizzes_correct = 0
+        self._shoe_quizzes_taken += 1
+
         if is_correct:
+            self.data.highscores.counting_quizzes_correct += 1
+            self._shoe_quizzes_correct += 1
             self.data.highscores.counting_streak += 1
             cur = self.data.highscores.counting_streak
             if cur > self.data.highscores.best_counting_streak:
@@ -345,5 +367,25 @@ class SaveManager:
         else:
             self.data.highscores.counting_streak = 0
 
+        taken = max(1, self.data.highscores.counting_quizzes_taken)
+        self.data.highscores.counting_accuracy_pct = round(
+            100.0 * self.data.highscores.counting_quizzes_correct / taken, 1
+        )
+
         self.save()
         return self.data.highscores.counting_streak, unlocked_apprentice, unlocked_master
+
+    def evaluate_shoe_whisperer(self, reset_shoe_tracker: bool = True) -> bool:
+        """
+        Evaluates whether the player tracked the shoe to the cut card with 100% quiz accuracy
+        across at least 3 quizzes, unlocking the 'shoe_whisperer' achievement.
+        """
+        taken = getattr(self, "_shoe_quizzes_taken", self.data.highscores.counting_quizzes_taken)
+        correct = getattr(self, "_shoe_quizzes_correct", self.data.highscores.counting_quizzes_correct)
+        unlocked = False
+        if taken >= 3 and correct == taken:
+            unlocked = self.unlock_achievement("shoe_whisperer") or self.data.achievements.shoe_whisperer
+        if reset_shoe_tracker:
+            self._shoe_quizzes_taken = 0
+            self._shoe_quizzes_correct = 0
+        return unlocked

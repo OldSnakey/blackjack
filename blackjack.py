@@ -72,8 +72,10 @@ APP_VERSION = __version__
 # Re-exported domain rules & card models (pure Python, zero GUI dependencies)
 from rules import (
     Card,
+    Hand,
     RoundPhase,
     score_hand,
+    is_soft_hand,
     dealer_should_hit,
     can_split,
     determine_outcome,
@@ -1685,6 +1687,10 @@ class BlackjackApp:
             except Exception:
                 pass
         self.dealer_actor.set_arm_state("deal")
+        self.dealer_actor.set_layer_offsets(
+            arm_offset=(0, 2),
+            eye_gaze_offset=(random.choice([-1, 0, 1]), 1),
+        )
         self._refresh_dealer_avatar_image()
         try:
             if self.root.winfo_exists():
@@ -1702,6 +1708,11 @@ class BlackjackApp:
             except Exception:
                 pass
         self.dealer_actor.set_arm_state("peek")
+        self.dealer_actor.set_layer_offsets(
+            head_offset=(0, 1),
+            arm_offset=(-1, 1),
+            eye_gaze_offset=(-1, 1),
+        )
         self._refresh_dealer_avatar_image()
         try:
             if self.root.winfo_exists():
@@ -1719,6 +1730,11 @@ class BlackjackApp:
             self._dealer_gesture_timer_id = None
         if hasattr(self, "dealer_actor"):
             self.dealer_actor.set_arm_state("rest")
+            self.dealer_actor.set_layer_offsets(
+                head_offset=(0, 0),
+                arm_offset=(0, 0),
+                eye_gaze_offset=(0, 0),
+            )
             self._refresh_dealer_avatar_image()
 
     def _trigger_dealer_gasp(self, duration_ms: int = 1200):
@@ -1796,7 +1812,9 @@ class BlackjackApp:
             else:
                 text = "Do you hear the whispers in the dark?"
         else:
-            if outcome == 'NATURAL_BLACKJACK':
+            if hasattr(self, "dealer_actor") and self.dealer_actor:
+                text = self.dealer_actor.get_outcome_dialogue(outcome)
+            elif outcome == 'NATURAL_BLACKJACK':
                 text = "Blackjack! Natural 21 pays 3 to 2. Splendid hand."
             elif outcome == 'DEALER_BUST':
                 text = "Dealer busts! The table pays all active hands."
@@ -1823,6 +1841,14 @@ class BlackjackApp:
                 self._trigger_dealer_gasp()
 
         self.set_dealer_speech(text, stream=True)
+
+    def _update_dealer_speech_for_tactical_action(self, trigger: str):
+        """Triggers persona-specific dealer reaction to a mid-hand tactical or risky play."""
+        if not hasattr(self, "dealer_actor") or not self.dealer_actor:
+            return
+        line = self.dealer_actor.get_tactical_dialogue(trigger)
+        if line:
+            self.set_dealer_speech(line, stream=True)
 
     def _update_dealer_avatar(self):
         """Updates the dealer avatar image based on toggle state and haunted phase."""
@@ -2526,6 +2552,8 @@ class BlackjackApp:
             self.deck = build_shoe(self.all_cards, self.deck_count)
             self.shoe_needs_reshuffle = False
             if hasattr(self, "card_counter") and self.card_counter:
+                if hasattr(self, "save_manager") and self.save_manager:
+                    self.save_manager.evaluate_shoe_whisperer(reset_shoe_tracker=True)
                 self.card_counter.reset_shoe(deck_count=self.deck_count)
                 self._hole_card_observed = False
                 if hasattr(self, "card_counting_hud") and self.card_counting_hud:
@@ -2922,6 +2950,8 @@ class BlackjackApp:
             self.deck = build_shoe(self.all_cards, self.deck_count)
             self.shoe_needs_reshuffle = False
             if hasattr(self, "card_counter") and self.card_counter:
+                if hasattr(self, "save_manager") and self.save_manager:
+                    self.save_manager.evaluate_shoe_whisperer(reset_shoe_tracker=True)
                 self.card_counter.reset_shoe(deck_count=self.deck_count)
                 self._hole_card_observed = False
                 if hasattr(self, "card_counting_hud") and self.card_counting_hud:
@@ -3334,6 +3364,7 @@ class BlackjackApp:
         # 2. Deal second card to both Hand 1 and Hand 2
         self._deal_card_to_player(hand_index=0)
         self._deal_card_to_player(hand_index=1)
+        self._update_dealer_speech_for_tactical_action("SPLIT_PAIR")
 
         # 3. Update action buttons for Hand 1 (Double Down available on 2 cards if eligible)
         self._update_action_buttons()
@@ -3371,9 +3402,12 @@ class BlackjackApp:
         self.split_button.configure(state="disabled")
         self.surrender_button.configure(state="disabled")
 
+        score_before_double = self._score_player_hand(hand)
         # Deal exactly 1 card
         self._deal_card_to_player()
         score = self._score_player_hand(self.player_hands[self.active_hand_index])
+        if score_before_double == 11 and score <= BLACKJACK_TARGET:
+            self._update_dealer_speech_for_tactical_action("DOUBLE_ELEVEN")
 
         if score > BLACKJACK_TARGET:
             # Busted on double down
@@ -3443,9 +3477,14 @@ class BlackjackApp:
         self.double_button.configure(state="disabled")
         self.split_button.configure(state="disabled")
         self.surrender_button.configure(state="disabled")
+        hand_before = self.player_hands[self.active_hand_index]
+        score_before = self._score_player_hand(hand_before)
+        is_risky_stiff = score_before in (15, 16) and not is_soft_hand(hand_before)
         self._deal_card_to_player()
         current_hand = self.player_hands[self.active_hand_index]
         current_score = self._score_player_hand(current_hand)
+        if is_risky_stiff and current_score <= BLACKJACK_TARGET:
+            self._update_dealer_speech_for_tactical_action("RISKY_HIT")
 
         if current_score > BLACKJACK_TARGET:
             # Current hand busted!
@@ -3702,6 +3741,11 @@ class BlackjackApp:
             is_all_in = getattr(self, "_is_all_in_round", False) or (
                 self.chips_mode_var.get() and len(payouts) > 0 and self.bankroll_var.get() == sum(payouts)
             )
+            cur_tc = (
+                self.card_counter.true_count(len(self.deck))
+                if getattr(self, "card_counter", None) and hasattr(self, "deck")
+                else 0.0
+            )
             self._current_win_streak, self._session_blackjacks = self.save_manager.evaluate_round_achievements(
                 outcomes=outcomes,
                 player_hands=self.player_hands,
@@ -3713,6 +3757,7 @@ class BlackjackApp:
                 haunted_phase=self.haunted.phase,
                 current_streak=getattr(self, "_current_win_streak", 0),
                 session_blackjacks=getattr(self, "_session_blackjacks", 0),
+                true_count=cur_tc,
             )
             self._is_all_in_round = False
 

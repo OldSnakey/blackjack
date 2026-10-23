@@ -302,16 +302,19 @@ Career statistics, costume unlocks, and game mode preferences are encapsulated w
 ### 8. Educational Modular Architecture & Separation of Concerns
 To foster code discoverability and provide junior developers with clean patterns, the core codebase is decoupled into modular layers:
 - **`config.py`**: Centralized configuration, game constants, screen dimension limits, theme color math (`hex_to_rgb`), and frozen `@dataclass` `ThemePalette` definitions with `get_phase_palette()`.
-- **`rules.py`**: Pure, stateless domain logic with zero GUI or Tkinter dependencies. Implements `Card(tuple)` (supporting indexing `card[0]`, `val, img = card`, dot access, and `len(card) == 2`), `score_hand()`, `dealer_should_hit()`, `determine_outcome()`, `calculate_payout()`, and `breakdown_chips()`. Juniors can import and experiment with rules in a CLI REPL or headless test without spinning up a GUI.
-- **`card_counter.py`**: Pure stateless Hi-Lo card counting math, Running Count, True Count estimation, bet spread sizing, and quiz verification independent of the GUI.
-- **`card_counting_hud.py`**: Custom 2.5D felt HUD pill, transient floating count badges (`+1`, `-1`, `0`), and interactive mid-shoe counting quiz drill modal.
-- **`dialogue_voice_engine.py`**: Procedural Animalese dialogue voice synthesis generating in-memory 16-bit PCM WAV buffers with 1:1 deterministic viseme-to-sound mappings and punctuation inflection.
+- **`rules.py`**: Pure, stateless domain logic with zero GUI or Tkinter dependencies. Implements `Card(tuple)` (supporting indexing `card[0]`, `val, img = card`, dot access, and `len(card) == 2`), `Hand` (first-class hand domain model with `list[Card]` sequence compatibility), `RoundPhase`, `score_hand()`, `dealer_should_hit()`, `determine_outcome()`, `calculate_payout()`, and `breakdown_chips()`. Juniors can import and experiment with rules in a CLI REPL or headless test without spinning up a GUI.
+- **`state_machine.py`**: Pure Finite State Machine (`GameStateMachine`) governing legal `RoundPhase` transitions and raising `InvalidStateTransitionError` on illegal jumps.
+- **`event_bus.py`**: Synchronous publish-subscribe event bus (`EventHub`, `GameEvent`, `GameEventType`) decoupling domain state transitions from audio, HUDs, puppet kinematics, and persistence.
+- **`game_engine.py`**: Pure headless Blackjack state engine (`BlackjackEngine`, `RoundResult`) encapsulating shoe management, betting, multi-hand splits, double downs, surrenders, and dealer turns without GUI dependencies.
+- **`card_counter.py`**: Pure stateless Hi-Lo card counting math, Running Count, True Count estimation, player edge percentage (`get_player_advantage`), bet spread sizing, and quiz verification independent of the GUI.
+- **`card_counting_hud.py`**: Custom 2.5D felt HUD pill (with Running Count, True Count, Decks Remaining, Edge %, and Assisted vs. Drill Challenge Mode toggle), transient floating count badges (`+1`, `-1`, `0`), and interactive mid-shoe counting quiz drill modal.
+- **`dialogue_voice_engine.py`**: Procedural Animalese dialogue voice synthesis generating in-memory 16-bit PCM WAV buffers with 1:1 deterministic viseme-to-sound mappings and punctuation inflection (`?`, `.`, `!`).
 - **`audio_assets.py`**: Low-latency 16-channel polyphonic sound playback (`SoundManager`) with randomized acoustic sample pools and silent fallback, in-memory HiDPI image scaling (`AssetScaler`), and Kenney prompt icon caching (`KeyboardIconLoader`).
 - **`ui_canvases.py`**: Custom 2.5D `tkinter.Canvas` presentation components: `ChipVisualizer`, `SoulMeterCanvas`, `TableAnnouncementHUD`, `HauntedAltarCanvas` (with color synchronization), `DealerStageCanvas`, and `TableFeltCanvas`.
 - **`ui_dialogs.py`**: Modal `tkinter.Toplevel` dialogs: `ShortcutsDialog`, `SettingsDialog`, `StoryDialogueDialog`, and `AngelicDraftDialog`.
 - **`save_manager.py`**: Career statistics, persistent JSON storage, and round achievement evaluation (`evaluate_round_achievements`).
 - **`blackjack.py`**: Main application coordinator (`BlackjackApp`) wiring event loops, user keyboard/mouse bindings, and game phase transitions, while re-exporting key domain symbols for 100% backward compatibility.
-- **[CRC Architecture & System Design (`docs/ARCHITECTURE_CRC.md`)](docs/ARCHITECTURE_CRC.md)**: Exhaustive Class-Responsibility-Collaboration (CRC) reference covering all 35 project classes, sequence flows, and architectural improvement analyses.
+- **[CRC Architecture & System Design (`docs/ARCHITECTURE_CRC.md`)](docs/ARCHITECTURE_CRC.md)**: Exhaustive Class-Responsibility-Collaboration (CRC) reference covering all project classes, sequence flows, and architectural improvement analyses.
 
 ### 9. Procedural Animalese Dialogue Voice Engine
 Instead of bundling hundreds of static `.ogg` voice clips that bloat repository size, `dialogue_voice_engine.py` synthesizes lightweight, high-fidelity 16-bit mono 44.1 kHz PCM WAV audio buffers procedurally in memory using Python's standard `wave`, `struct`, and `math` libraries.
@@ -352,8 +355,9 @@ python -m unittest discover tests -v
 | [`tests/test_dealer_stage_canvas.py`](tests/test_dealer_stage_canvas.py) | Verifies panoramic 1000px/2000px stage backdrop scaling, sconce compositing, and stage lighting across themes. |
 | [`tests/test_dealer_wardrobe_dialog.py`](tests/test_dealer_wardrobe_dialog.py) | Tests Dealer Wardrobe dialog lifecycle, costume selection, preview rendering, unlock requirement enforcement, and scrollable Hall of Fame achievement trophy shelf. |
 | [`tests/test_deck.py`](tests/test_deck.py) | Verifies all 52 card PNGs and `back.png` exist, validates deck distribution, and tests `Card` tuple subclass properties. |
-| [`tests/test_dialogue_voice_engine.py`](tests/test_dialogue_voice_engine.py) | Validates procedural 16-bit mono 44.1 kHz PCM WAV byte buffer generation, 1:1 deterministic viseme-to-sound phonetic consistency, voice profile registration, volume/mute handling, and question/period pitch inflection. |
+| [`tests/test_dialogue_voice_engine.py`](tests/test_dialogue_voice_engine.py) | Validates procedural 16-bit mono 44.1 kHz PCM WAV byte buffer generation, 1:1 deterministic viseme-to-sound phonetic consistency, voice profile registration, volume/mute handling, and question/period/exclamation pitch inflection. |
 | [`tests/test_double_down.py`](tests/test_double_down.py) | Tests Double Down eligibility (2 cards only, bankroll checks), wager doubling, single card draw, auto-stand, and bust resolution. |
+| [`tests/test_event_bus.py`](tests/test_event_bus.py) | Validates synchronous pub-sub event dispatch, subscriber registration, unsubscription, and payload propagation across `EventHub`. |
 | [`tests/test_game_rules.py`](tests/test_game_rules.py) | Tests win/loss/push evaluations, dealer AI hit/stand rules, Natural Blackjack vs split 21s (1:1 payout), and surrender payouts. |
 | [`tests/test_gui_state.py`](tests/test_gui_state.py) | Validates actual `BlackjackApp` widget states (Hit, Stand, Double, Split, Surrender, New Game buttons, ties, timer cleanup) across real game lifecycle transitions. |
 | [`tests/test_hall_of_fame_and_achievements.py`](tests/test_hall_of_fame_and_achievements.py) | Tests Hall of Fame modal GUI, badge rendering, stats aggregation, and achievement unlock triggers. |
@@ -369,11 +373,13 @@ python -m unittest discover tests -v
 | [`tests/test_shortcuts_overlay.py`](tests/test_shortcuts_overlay.py) | Verifies curated Kenney prompt icon asset integrity (including keys 5, Shift, V, X), `KeyboardIconLoader` scaling & caching, `[?] Help` button placement, dialog open/close lifecycle, two-tab navigation, scrollable canvas container, and all 20+ gameplay & system shortcuts. |
 | [`tests/test_sound.py`](tests/test_sound.py) | Validates SoundManager audio engine, 42-file .ogg catalog loading across 10 categories, polyphony, volume clamping, mute toggling, UI sound button synchronization, keyboard shortcut integration, and headless fail-safe degradation. |
 | [`tests/test_split.py`](tests/test_split.py) | Tests hand split qualification (`can_split`), multi-hand turn progression, button states, and independent outcome resolution. |
+| [`tests/test_state_machine.py`](tests/test_state_machine.py) | Validates `GameStateMachine` transitions across `RoundPhase`, legal transition queries, and `InvalidStateTransitionError` enforcement. |
 | [`tests/test_surrender.py`](tests/test_surrender.py) | Tests Late Surrender eligibility (initial 2 cards only, un-split), 50% wager refund, hole card reveal, and dealer win recording. |
 | [`tests/test_table_felt.py`](tests/test_table_felt.py) | Validates procedural canvas texture generation, theme switching (casino/creep/hell), and child coordinate slice extraction. |
 | [`tests/test_table_hud.py`](tests/test_table_hud.py) | Tests 2.5D animated announcement HUD popups, banner styling, and auto-dismiss timers on the table felt. |
 | [`tests/test_typewriter_and_audio_accents.py`](tests/test_typewriter_and_audio_accents.py) | Validates typewriter dialogue streaming (25-35 ms cadence), directional speech tail rendering, fast-forward skip on click, character audio accents, and extension safety. |
 | [`tests/test_ui_geometry_and_rendering.py`](tests/test_ui_geometry_and_rendering.py) | Validates zero card clipping, beveled plaque geometry, TableAnnouncementHUD auto-dismiss, and OMEN altar color synchronization. |
+| [`tests/test_universal_puppet_faceplates.py`](tests/test_universal_puppet_faceplates.py) | Verifies universal 7-layer mannequin faceplate de-occlusion (blank eye sockets and mouth apertures), isolated eye socket layers, distinct articulated arm poses (`arm_idle`, `arm_deal`, `arm_peek`), and multi-layer puppet kinematics across all 8 dealers. |
 | [`tests/test_version.py`](tests/test_version.py) | Enforces single source of truth for versioning across `blackjack.py`, specifications, and documentation. |
 | [`tests/test_welcome_splash_dialog.py`](tests/test_welcome_splash_dialog.py) | Verifies WelcomeSplashDialog lifecycle, retro pixel art logo, dealer greeting banner, interactive selection across 3 modes (Casual, Betting, Training), dynamic display bounds, persistent save settings, and live basic strategy hint reflection. |
 
@@ -384,15 +390,18 @@ python -m unittest discover tests -v
 ```
 Blackjack/
 ├── blackjack.py                    # Main application coordinator: BlackjackApp event loop & re-exports
-├── card_counter.py                 # Pure stateless Hi-Lo card counting math, True Count, and quiz validation
-├── card_counting_hud.py            # 2.5D felt HUD pill, floating count badges, and interactive quiz drill modal
+├── card_counter.py                 # Pure stateless Hi-Lo card counting math, True Count, Edge %, and quiz validation
+├── card_counting_hud.py            # 2.5D felt HUD pill, Drill Mode toggle, floating count badges, and quiz drill modal
 ├── config.py                       # Game constants, ThemePalette dataclasses, and path resolution
-├── dealer_actor.py                 # Living Dealer animation engine: composite sprites, breathing, blinking
+├── dealer_actor.py                 # Living Dealer 7-layer puppet engine: kinematics, breathing, blinking, visemes
 ├── dealer_wardrobe_dialog.py       # Modal dialog for previewing and equipping dealer costumes
 ├── dialogue_voice_engine.py        # Procedural Animalese voice synthesis engine (16-bit PCM WAV in memory)
+├── event_bus.py                    # Synchronous pub-sub EventHub and GameEvent domain events
+├── game_engine.py                  # Pure headless BlackjackEngine and RoundResult domain state manager
 ├── haunted_manager.py              # Haunted Halloween narrative state: phases, altar candles, relics
-├── rules.py                        # Pure stateless Blackjack math and rules (zero GUI imports)
+├── rules.py                        # Pure stateless Blackjack math, Card, Hand, and RoundPhase (zero GUI imports)
 ├── save_manager.py                 # Persistent save data, stats tracking, and achievement unlocks
+├── state_machine.py                # Formal Finite State Machine (GameStateMachine) for RoundPhase transitions
 ├── audio_assets.py                 # Polyphonic SoundManager, AssetScaler & KeyboardIconLoader
 ├── ui_canvases.py                  # Custom 2.5D Canvas components (Chips, Altar, Stage, Felt)
 ├── ui_dialogs.py                   # Modal Toplevel dialogs (Shortcuts, Settings, Story, Draft)
@@ -426,8 +435,10 @@ Blackjack/
 │   ├── capture_puppet_demo.py      # Automation tool for capturing puppet exploded layers, visemes, and stage verification
 │   ├── capture_tiffany_puppet_demo.py # Automation tool for capturing Tiffany puppet exploded layers, phonetic visemes, arms, and live stage verification
 │   ├── capture_typewriter_demo.py  # Automation tool for capturing dialogue and stage screenshots
+│   ├── capture_universal_puppet_audit.py # Visual contact sheet generator for universal 7-layer dealer puppets & poses
 │   ├── capture_wardrobe_dummy_demo.py # Automation tool for capturing wardrobe dialog with dummy puppet
-│   └── capture_welcome_splash_verification.py # Automation tool for capturing WelcomeSplashDialog and table mode verifications
+│   ├── capture_welcome_splash_verification.py # Automation tool for capturing WelcomeSplashDialog and table mode verifications
+│   └── deocclude_dealer_faceplates.py # Pipeline tool for de-occluding mannequin faceplates, isolating eye sockets, and building articulated arm poses
 ├── docs/
 │   ├── ARCHITECTURE_CRC.md         # Class-Responsibility-Collaboration (CRC) architecture & review
 │   └── ITCH_IO_GUIDE.md            # itch.io deployment, store copy, and release guide
@@ -444,6 +455,7 @@ Blackjack/
     ├── test_deck.py
     ├── test_dialogue_voice_engine.py
     ├── test_double_down.py
+    ├── test_event_bus.py
     ├── test_game_rules.py
     ├── test_gui_state.py
     ├── test_hall_of_fame_and_achievements.py
@@ -459,11 +471,13 @@ Blackjack/
     ├── test_shortcuts_overlay.py
     ├── test_sound.py
     ├── test_split.py
+    ├── test_state_machine.py
     ├── test_surrender.py
     ├── test_table_felt.py
     ├── test_table_hud.py
     ├── test_typewriter_and_audio_accents.py
     ├── test_ui_geometry_and_rendering.py
+    ├── test_universal_puppet_faceplates.py
     ├── test_version.py
     └── test_welcome_splash_dialog.py
 ```

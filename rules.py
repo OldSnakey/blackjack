@@ -37,10 +37,13 @@ from config import (
 class RoundPhase(Enum):
     """Explicit state machine phases for a Blackjack round."""
     BETTING = "betting"
+    INITIAL_DEAL = "initial_deal"
     INSURANCE = "insurance"
     PLAYER_TURN = "player_turn"
     DEALER_TURN = "dealer_turn"
+    RESOLUTION = "resolution"
     ROUND_OVER = "round_over"
+    TRANSITION_CUTSCENE = "transition_cutscene"
 
 
 class Card(tuple):
@@ -76,6 +79,103 @@ class Card(tuple):
         return f"Card({r}{s}, val={self.value})"
 
 
+class Hand:
+    """
+    First-class domain object representing a player or dealer hand.
+    Encapsulates cards, bet, split/double/surrender/stand flags, and outcome state
+    while implementing full sequence methods (__len__, __getitem__, __iter__, append, pop, clear)
+    for 100% backward compatibility with callers expecting list[Card].
+    """
+
+    def __init__(
+        self,
+        cards: Optional[list[Card]] = None,
+        bet: int = 0,
+        is_split: bool = False,
+        is_doubled: bool = False,
+        is_surrendered: bool = False,
+        is_stood: bool = False,
+        is_settled: bool = False,
+        outcome: Optional[str] = None,
+        net_payout: int = 0,
+    ):
+        self.cards: list[Card] = list(cards) if cards is not None else []
+        self.bet: int = bet
+        self.is_split: bool = is_split
+        self.is_doubled: bool = is_doubled
+        self.is_surrendered: bool = is_surrendered
+        self.is_stood: bool = is_stood
+        self.is_settled: bool = is_settled
+        self.outcome: Optional[str] = outcome
+        self.net_payout: int = net_payout
+
+    # --- Sequence / list[Card] backward compatibility ---
+    def __len__(self) -> int:
+        return len(self.cards)
+
+    def __getitem__(self, idx):
+        return self.cards[idx]
+
+    def __iter__(self):
+        return iter(self.cards)
+
+    def __bool__(self) -> bool:
+        return bool(self.cards)
+
+    def __eq__(self, other: Any) -> bool:
+        if isinstance(other, Hand):
+            return self.cards == other.cards and self.bet == other.bet
+        if isinstance(other, list):
+            return self.cards == other
+        return False
+
+    def append(self, card: Card) -> None:
+        self.add_card(card)
+
+    def pop(self, index: int = -1) -> Card:
+        return self.cards.pop(index)
+
+    def clear(self) -> None:
+        self.cards.clear()
+        self.is_doubled = False
+        self.is_surrendered = False
+        self.is_stood = False
+        self.is_settled = False
+        self.outcome = None
+        self.net_payout = 0
+
+    # --- Domain properties & methods ---
+    def add_card(self, card: Card) -> None:
+        self.cards.append(card)
+        if self.score >= BLACKJACK_TARGET:
+            self.is_stood = True
+
+    @property
+    def score(self) -> int:
+        return score_hand(self.cards)
+
+    @property
+    def is_soft(self) -> bool:
+        values = [c[0] if isinstance(c, (tuple, list)) else c for c in self.cards]
+        return 1 in values and sum(values) + 10 <= BLACKJACK_TARGET
+
+    @property
+    def is_blackjack(self) -> bool:
+        return len(self.cards) == 2 and self.score == BLACKJACK_TARGET and not self.is_split
+
+    @property
+    def is_bust(self) -> bool:
+        return self.score > BLACKJACK_TARGET
+
+    @property
+    def can_split(self) -> bool:
+        return can_split(self.cards) and not self.is_doubled
+
+    @property
+    def can_double(self) -> bool:
+        return len(self.cards) == 2 and not self.is_doubled and not self.is_stood
+
+
 def score_hand(hand) -> int:
     """
     Calculates the best Blackjack score for a hand.
@@ -98,6 +198,13 @@ def score_hand(hand) -> int:
     if 1 in values and score + 10 <= BLACKJACK_TARGET:
         score += 10
     return score
+
+
+def is_soft_hand(hand) -> bool:
+    """Returns True if the hand contains an Ace currently counted as 11."""
+    values = [card[0] if isinstance(card, (tuple, list)) else card for card in hand]
+    score = sum(values)
+    return bool(1 in values and score + 10 <= BLACKJACK_TARGET)
 
 
 def dealer_should_hit(dealer_hand) -> bool:
