@@ -672,6 +672,70 @@ class TestHauntedGui(unittest.TestCase):
         self.assertFalse(bool(self.app.soul_meter_canvas.grid_info()), "Soul meter remained mapped after victory!")
         self.assertFalse(bool(self.app.accessories_frame.grid_info()), "Accessories frame remained mapped as a flat patch on normal table!")
 
+    def test_story_dialogue_dialogs_fit_text_without_horizontal_or_vertical_overflow(self):
+        """Pit Fiend and Celestial Messenger story modals must wrap and fit all text without horizontal or vertical clipping."""
+        pit_text = (
+            "Welcome to the Abyssal Wager, mortal.\n\n"
+            "Your petty chips mean nothing here. The stakes are now your immortal Soul.\n\n"
+            "Win hands to claw your way back to the light... Fail, and you belong to the Pit forever."
+        )
+        angel_text = (
+            "Be not afraid, mortal soul. The Heavens have witnessed this unholy trap.\n\n"
+            "I grant you sacred blessings forged in celestial fire. Choose your relic wisely, "
+            "and banish the Fiend with righteous hands."
+        )
+
+        for scale in (1.0, 2.0):
+            for cid, speaker, text, is_celestial in (
+                ("malphas", "☠ THE PIT FIEND ☠", pit_text, False),
+                ("uriel", "✦ CELESTIAL MESSENGER ✦", angel_text, True),
+            ):
+                port_img = self.app.dealer_actor.get_bust_photo_image(cid, scale_factor=scale)
+                dlg = StoryDialogueDialog(
+                    self.root,
+                    title="Test Modal",
+                    speaker=speaker,
+                    portrait_img=port_img,
+                    text_content=text,
+                    button_text="Accept Divine Aid",
+                    is_celestial=is_celestial,
+                )
+                try:
+                    dlg.update_idletasks()
+                    dlg.update()
+
+                    self.assertTrue(hasattr(dlg, "message_label"), "StoryDialogueDialog must expose message_label")
+                    self.assertTrue(hasattr(dlg, "content_box"), "StoryDialogueDialog must expose content_box")
+                    self.assertEqual(dlg.message_label.cget("anchor"), "w")
+                    self.assertEqual(dlg.message_label.cget("justify"), "left")
+
+                    content_w = dlg.content_box.winfo_width()
+                    wrap_len = int(dlg.message_label.cget("wraplength"))
+                    msg_req_w = dlg.message_label.winfo_reqwidth()
+
+                    self.assertLessEqual(
+                        wrap_len,
+                        content_w,
+                        f"wraplength ({wrap_len}) exceeds content_box width ({content_w}) for {cid} at {scale}x!"
+                    )
+                    self.assertLessEqual(
+                        msg_req_w,
+                        content_w,
+                        f"message_label reqwidth ({msg_req_w}) overflows content_box width ({content_w}) for {cid} at {scale}x!"
+                    )
+                    self.assertLessEqual(
+                        dlg.winfo_reqwidth(),
+                        dlg.winfo_width(),
+                        f"Dialog reqwidth ({dlg.winfo_reqwidth()}) overflows dialog width ({dlg.winfo_width()}) for {cid} at {scale}x!"
+                    )
+                    self.assertLessEqual(
+                        dlg.winfo_reqheight(),
+                        dlg.winfo_height(),
+                        f"Dialog reqheight ({dlg.winfo_reqheight()}) overflows dialog height ({dlg.winfo_height()}) for {cid} at {scale}x!"
+                    )
+                finally:
+                    dlg.destroy()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -2380,11 +2380,16 @@ class BlackjackApp:
             "The Heavens have bestowed upon you the EXORCIST title and +$6,666 casino bankroll.\n\n"
             "You have unlocked permanent Cursed Stakes mode at the bottom action bar!"
         )
+        port_img = None
+        if hasattr(self, "dealer_actor"):
+            port_img = self.dealer_actor.get_bust_photo_image("uriel", scale_factor=self.scale_factor)
+        if port_img is None:
+            port_img = self.haunted_assets.get("angel_avatar")
         self._active_story_dialog = StoryDialogueDialog(
             self.root,
             title="✦ THE EXORCIST'S TRIUMPH ✦",
             speaker="✦ CELESTIAL MESSENGER ✦",
-            portrait_img=self.haunted_assets.get("angel_avatar"),
+            portrait_img=port_img,
             text_content=text,
             button_text="Return to Table",
             on_close=on_victory_close,

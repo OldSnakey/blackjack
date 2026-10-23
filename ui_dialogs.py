@@ -49,7 +49,11 @@ class StoryDialogueDialog(tkinter.Toplevel):
         super().__init__(parent)
         self.on_close_cb = on_close
         self.title(title)
-        self.transient(parent)
+        try:
+            if parent.winfo_ismapped():
+                self.transient(parent)
+        except Exception:
+            pass
         self.resizable(False, False)
 
         bg_col = "#041421" if is_celestial else "#0d0204"
@@ -60,16 +64,12 @@ class StoryDialogueDialog(tkinter.Toplevel):
 
         self.configure(background=bg_col, padx=14, pady=14)
 
-        # Center relative to parent
-        w, h = 540, 240
-        try:
-            rx = parent.winfo_rootx()
-            ry = parent.winfo_rooty()
-            rw = parent.winfo_width()
-            rh = parent.winfo_height()
-            self.geometry(f"{w}x{h}+{max(0, rx + (rw - w) // 2)}+{max(0, ry + (rh - h) // 2)}")
-        except Exception:
-            self.geometry(f"{w}x{h}")
+        port_w = portrait_img.width() if portrait_img is not None else 0
+        is_hi_dpi = port_w > 140
+        speaker_font_sz = 12 if is_hi_dpi else 11
+        body_font_sz = 10 if is_hi_dpi else 9
+        btn_font_sz = 11 if is_hi_dpi else 10
+        wrap_w = 480 if is_hi_dpi else 400
 
         frame = tkinter.Frame(
             self, background=bg_col, relief="ridge", borderwidth=2,
@@ -86,27 +86,60 @@ class StoryDialogueDialog(tkinter.Toplevel):
             self.portrait_label = port_lbl
 
         # Content container
-        content_box = tkinter.Frame(frame, background=bg_col)
-        content_box.pack(side="left", fill="both", expand=True, padx=(4, 12), pady=10)
+        self.content_box = tkinter.Frame(frame, background=bg_col)
+        self.content_box.pack(side="left", fill="both", expand=True, padx=(8, 14), pady=10)
 
-        tkinter.Label(
-            content_box, text=speaker, font=("Arial", 11, "bold"),
-            fg=header_col, background=bg_col
-        ).pack(anchor="w")
+        self.speaker_label = tkinter.Label(
+            self.content_box, text=speaker, font=("Arial", speaker_font_sz, "bold"),
+            fg=header_col, background=bg_col, anchor="w", justify="left"
+        )
+        self.speaker_label.pack(side="top", anchor="w", fill="x")
 
-        tkinter.Label(
-            content_box, text=text_content, font=("Arial", 9),
-            fg="#eceff1", background=bg_col, justify="left", wraplength=380
-        ).pack(anchor="w", pady=(6, 12))
-
-        btn = tkinter.Button(
-            content_box, text=button_text, font=("Arial", 10, "bold"),
+        self.action_button = tkinter.Button(
+            self.content_box, text=button_text, font=("Arial", btn_font_sz, "bold"),
             background=btn_bg, foreground="#ffffff", activebackground=btn_active,
             activeforeground="#ffffff", relief="flat", borderwidth=0,
             highlightthickness=0, cursor="hand2", padx=16, pady=6,
             takefocus=False, command=self._dismiss
         )
-        btn.pack(anchor="e")
+        self.action_button.pack(side="bottom", anchor="e", pady=(8, 0))
+
+        self.message_label = tkinter.Label(
+            self.content_box, text=text_content, font=("Arial", body_font_sz),
+            fg="#eceff1", background=bg_col, anchor="w", justify="left", wraplength=wrap_w
+        )
+        self.message_label.pack(side="top", anchor="w", fill="x", expand=True, pady=(6, 10))
+
+        def _on_content_configure(event):
+            if event.width > 120:
+                new_wrap = max(200, event.width - 12)
+                if abs(int(self.message_label.cget("wraplength")) - new_wrap) > 4:
+                    self.message_label.configure(wraplength=new_wrap)
+
+        self.content_box.bind("<Configure>", _on_content_configure)
+
+        try:
+            self.update_idletasks()
+            req_w = self.winfo_reqwidth()
+            req_h = self.winfo_reqheight()
+            min_w = 740 if is_hi_dpi else 590
+            min_h = 310 if is_hi_dpi else 245
+            screen_w = max(800, parent.winfo_screenwidth())
+            screen_h = max(600, parent.winfo_screenheight())
+            w = min(max(min_w, req_w + 16), screen_w - 80)
+            h = min(max(min_h, req_h + 16), screen_h - 80)
+            rx = parent.winfo_rootx()
+            ry = parent.winfo_rooty()
+            rw = parent.winfo_width()
+            rh = parent.winfo_height()
+            self.dialog_width = w
+            self.dialog_height = h
+            self.geometry(f"{w}x{h}+{max(0, rx + (rw - w) // 2)}+{max(0, ry + (rh - h) // 2)}")
+            self.update_idletasks()
+        except Exception:
+            self.dialog_width = 600
+            self.dialog_height = 260
+            self.geometry("600x260")
 
         self.bind("<Return>", lambda e: self._dismiss())
         self.bind("<space>", lambda e: self._dismiss())
@@ -201,6 +234,20 @@ class AngelicDraftDialog(tkinter.Toplevel):
                 command=lambda b=blessing: self._pick(b)
             )
             btn.pack(side="bottom", pady=4)
+
+        try:
+            self.update_idletasks()
+            screen_w = max(800, parent.winfo_screenwidth())
+            screen_h = max(600, parent.winfo_screenheight())
+            w = min(max(680, self.winfo_reqwidth() + 16), screen_w - 80)
+            h = min(max(360, self.winfo_reqheight() + 16), screen_h - 80)
+            rx = parent.winfo_rootx()
+            ry = parent.winfo_rooty()
+            rw = parent.winfo_width()
+            rh = parent.winfo_height()
+            self.geometry(f"{w}x{h}+{max(0, rx + (rw - w) // 2)}+{max(0, ry + (rh - h) // 2)}")
+        except Exception:
+            pass
 
         self.protocol("WM_DELETE_WINDOW", lambda: None)  # Must draft a blessing to proceed
 
