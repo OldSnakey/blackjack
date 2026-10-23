@@ -562,6 +562,79 @@ class TestHauntedGui(unittest.TestCase):
         for gx in self.app.haunted_altar.gravestone_x_positions:
             self.assertTrue(0 <= gx <= altar_w)
 
+    def test_5th_candle_loss_maps_soul_meter_canvas_in_actual_play(self):
+        """When the 5th candle snuffs out in _conclude_round, _trigger_hell_table must map soul_meter_canvas."""
+        self.app.chips_mode_var.set(True)
+        self.app._on_toggle_chips_mode(confirm=True)
+
+        # Set state to 1 candle remaining in Phase.SNUFFING
+        self.app.haunted.phase = Phase.SNUFFING
+        self.app.haunted.candles_remaining = 1
+        self.app.haunted.gravestones_risen = 4
+
+        # Set up a losing hand (Player 15 vs Dealer 20)
+        c10 = Card(10, self.app.back_image, rank="10", suit="spade")
+        c5 = Card(5, self.app.back_image, rank="5", suit="heart")
+        self.app.player_hands = [[c10, c5]]
+        self.app.dealer_hand = [c10, c10]
+        self.app.hand_bets = [25]
+
+        # Conclude the round -> 5th candle snuffs out
+        self.app._conclude_round()
+        self.assertEqual(self.app.haunted.candles_remaining, 0)
+        self.assertEqual(self.app.haunted.phase, Phase.HELL_TABLE)
+        self.assertIsNotNone(self.app._haunted_round_timer_id)
+
+        # Trigger the scheduled transition callback as Tk's event loop does after 800ms
+        self.root.after_cancel(self.app._haunted_round_timer_id)
+        self.app._haunted_round_timer_id = None
+        self.app._trigger_hell_table()
+
+        # SoulMeterCanvas must now be mapped on the grid and ChipVisualizer hidden!
+        self.assertTrue(bool(self.app.soul_meter_canvas.grid_info()))
+        self.assertFalse(bool(self.app.chip_visualizer.grid_info()))
+
+        # Starting the next hand in Hell's Table keeps SoulMeterCanvas mapped
+        self.app.new_game()
+        self.assertTrue(bool(self.app.soul_meter_canvas.grid_info()))
+        self.assertFalse(bool(self.app.chip_visualizer.grid_info()))
+
+    def test_blessing_seraph_grace_redraws_busting_card_once_per_hand(self):
+        """Seraph's Grace automatically banishes a card that would cause a bust and redraws once per hand."""
+        self.app._trigger_hell_table()
+        self.app.haunted.equip_blessing(Blessing.SERAPH)
+
+        c10 = Card(10, self.app.back_image, rank="10", suit="spade")
+        c6 = Card(6, self.app.back_image, rank="6", suit="heart")
+        c5 = Card(5, self.app.back_image, rank="5", suit="club")
+        c8 = Card(8, self.app.back_image, rank="8", suit="diamond")
+
+        # Initial hand: Player has 10 + 6 = 16, Dealer has 10 + 8 = 18
+        # Next in deck (popped from end): first draw is c10 (16+10=26 bust!), replacement is c5 (16+5=21!)
+        self.app.deck = [c5] * 60 + [c5, c10, c8, c10, c6, c10]
+        self.app.shoe_needs_reshuffle = False
+        self.app.new_game()
+
+        self.assertEqual(self.app._score_player_hand(self.app.player_hands[0]), 16)
+        self.assertTrue(self.app.haunted.can_use_seraph_redraw())
+
+        # Player hits -> draws c10 (would bust at 26) -> Seraph's Grace banishes c10 and redraws c5 -> score 21!
+        self.app.on_hit()
+        self.assertFalse(self.app.haunted.can_use_seraph_redraw())
+        self.assertEqual(self.app._score_player_hand(self.app.player_hands[0]), 21)
+        self.assertEqual(self.app.player_hands[0][-1].value, 5)
+
+        # Next hand resets Seraph's Grace
+        self.app.deck = [c5] * 60 + [c10, c10, c8, c10, c6, c10]
+        self.app.shoe_needs_reshuffle = False
+        self.app.new_game()
+        self.assertTrue(self.app.haunted.can_use_seraph_redraw())
+
+        # If replacement card ALSO busts (c10 banished -> draws second c10), it does not redraw a second time
+        self.app.on_hit()
+        self.assertFalse(self.app.haunted.can_use_seraph_redraw())
+        self.assertEqual(self.app._score_player_hand(self.app.player_hands[0]), 26)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -198,6 +198,33 @@ class TestWelcomeSplashDialog(unittest.TestCase):
         self.assertIsInstance(hint, BasicStrategyDecision)
         self.assertEqual(hint.action, "SPLIT")
 
+    def test_no_strategy_recommended_when_player_busted_or_round_over(self):
+        """When the player busts (e.g. Hard 24) or the round concludes, no strategy is recommended ('-')."""
+        from rules import Card, RoundPhase
+
+        self.app.apply_play_mode("training")
+        c10 = Card(10, self.app.back_image, rank="10", suit="spade")
+        c4 = Card(4, self.app.back_image, rank="4", suit="heart")
+        c7 = Card(7, self.app.back_image, rank="7", suit="club")
+
+        # Set up active player turn with Hard 14 vs Dealer 7
+        self.app.is_betting_phase = False
+        self.app.round_phase = RoundPhase.PLAYER_TURN
+        self.app.player_hands = [[c10, c4]]
+        self.app.dealer_hand = [c7, c10]
+        self.app.active_hand_index = 0
+        self.app._update_action_buttons()
+        self.assertIn("HIT", self.app.card_counting_hud.strategy_label.cget("text"))
+
+        # Player hits and draws a 10 -> Hard 24 (Bust!)
+        self.app.deck = [c10] * 10
+        self.app.on_hit()
+
+        self.assertEqual(self.app.round_phase, RoundPhase.ROUND_OVER)
+        self.assertIsNone(self.app.get_current_strategy_hint())
+        self.assertEqual(self.app.card_counting_hud.strategy_label.cget("text"), "-")
+        self.assertNotIn("STAND", self.app.card_counting_hud.strategy_label.cget("text"))
+
 
 if __name__ == "__main__":
     unittest.main()

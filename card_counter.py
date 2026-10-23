@@ -17,6 +17,7 @@ Tracks:
 from __future__ import annotations
 
 from typing import Any, Optional
+from config import DEFAULT_DECK_COUNT
 
 
 class HiLoCardCounter:
@@ -25,7 +26,7 @@ class HiLoCardCounter:
     Maintains running and true counts strictly from observed face-up cards.
     """
 
-    def __init__(self, deck_count: int = 6):
+    def __init__(self, deck_count: int = DEFAULT_DECK_COUNT):
         self.deck_count = max(1, deck_count)
         self.running_count = 0
         self.observed_cards_count = 0

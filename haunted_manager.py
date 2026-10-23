@@ -6,8 +6,8 @@ Encapsulates:
 - 5-Candle snuffing lifecycle on round loss.
 - Tug-of-War Soul Meter combat economy (0% Abyss <---> 100% Light, starting at 25%).
 - 7 Balatro-style Roguelike Angelic Blessings:
-  - Seraph's Grace (Ace dynamic flexibility)
-  - Eye of Providence (Dealer hole card reveal)
+  - Seraph's Grace (Once per hand, automatically banish and redraw a card that would bust you)
+  - Eye of Providence (Dealer hole card reveal & immediate count observation)
   - Archangel's Smite (+25% bonus soul push on 21)
   - Cherub's Shield (22 bust forgiveness -> 21)
   - Heavenly Tithe (Safe Double/Split)
@@ -61,8 +61,8 @@ BLESSING_REGISTRY: dict[Blessing, BlessingDetails] = {
     Blessing.SERAPH: BlessingDetails(
         id=Blessing.SERAPH,
         title="Seraph's Grace",
-        tagline="Divine Flexibility",
-        description="Aces can flexibly evaluate as 1, 10, or 11 to form a winning 21 or avoid a bust.",
+        tagline="Divine Second Chance",
+        description="Once per hand, if a drawn card would cause your hand to bust (> 21), automatically banish it and redraw a replacement card.",
         icon_filename="relic_seraph.png",
     ),
     Blessing.EYE: BlessingDetails(
@@ -139,6 +139,7 @@ class HauntedManager:
         self.claimed_milestones: set[float] = set()
         self.is_draft_pending: bool = False
         self.miracle_used_this_round: bool = False
+        self.seraph_used_this_hand: bool = False
 
         # Persistent Unlocks
         self.unlocked_exorcist: bool = False
@@ -156,6 +157,8 @@ class HauntedManager:
         self.claimed_milestones.clear()
         self.consecutive_wins = 0
         self.hand_counter = 0
+        self.miracle_used_this_round = False
+        self.seraph_used_this_hand = False
         # Preserves persistent unlocks:
         self.unlocked_exorcist = True
         self.unlocked_cursed_stakes = True
@@ -171,6 +174,7 @@ class HauntedManager:
         Called at the beginning of each deal.
         """
         self.miracle_used_this_round = False
+        self.seraph_used_this_hand = False
 
         if self.phase in (Phase.HELL_TABLE, Phase.VICTORY, Phase.DEFEAT):
             return self.phase
@@ -307,6 +311,18 @@ class HauntedManager:
         """Marks Miracle Draw as used for the active round."""
         self.miracle_used_this_round = True
 
+    def can_use_seraph_redraw(self) -> bool:
+        """Determines if Seraph's Grace can automatically banish and redraw a busting card this hand."""
+        return (
+            self.phase == Phase.HELL_TABLE
+            and Blessing.SERAPH in self.equipped_blessings
+            and not self.seraph_used_this_hand
+        )
+
+    def use_seraph_redraw(self):
+        """Marks Seraph's Grace bust-redraw as used for the active hand."""
+        self.seraph_used_this_hand = True
+
     def get_draft_choices(self, count: int = 3) -> list[Blessing]:
         """Returns a list of unequipped blessings available for drafting."""
         available = [b for b in Blessing if b not in self.equipped_blessings]
@@ -330,6 +346,8 @@ class HauntedManager:
         self.candles_remaining = 0
         self.soul_meter = self.STARTING_SOUL_METER
         self.consecutive_wins = 0
+        self.miracle_used_this_round = False
+        self.seraph_used_this_hand = False
         self.is_draft_pending = True  # Initial blessing draft upon entering Hell
 
     def second_chance(self):
@@ -337,6 +355,8 @@ class HauntedManager:
         self.phase = Phase.HELL_TABLE
         self.soul_meter = self.STARTING_SOUL_METER
         self.consecutive_wins = 0
+        self.miracle_used_this_round = False
+        self.seraph_used_this_hand = False
         self.is_draft_pending = False
 
     def reset_to_mortal(self):

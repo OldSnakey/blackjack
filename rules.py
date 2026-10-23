@@ -14,7 +14,8 @@ Provides:
 - determine_outcome(): Comprehensive round resolution (Natural 21, busts, pushes, wins).
 - calculate_payout(): Standard 1:1, 3:2 Natural Blackjack, and surrender payouts.
 - calculate_insurance_payout(): 2:1 insurance side bet resolution with odd-bet rounding.
-- breakdown_chips(): Greedy chip denomination decomposition.
+- breakdown_chips(): Greedy chip denomination decomposition ($1,000, $500, $100, $25, $5).
+- breakdown_bankroll_piles(): Balanced reserve chip pile distribution across all 5 denominations.
 - build_shoe(): Multi-deck shoe creation and shuffling.
 """
 
@@ -228,7 +229,7 @@ def calculate_insurance_payout(dealer_has_blackjack: bool, insurance_bet: int, m
 def breakdown_chips(amount: int) -> list[tuple[int, int]]:
     """
     Decomposes an integer wager into denomination counts greedily from highest to lowest.
-    Supported denominations: $500, $100, $25, $5, and $1 (silver remainder).
+    Supported denominations: $1000, $500, $100, $25, $5, and $1 (silver remainder).
 
     Args:
         amount: Integer wager amount (>= 0).
@@ -240,12 +241,55 @@ def breakdown_chips(amount: int) -> list[tuple[int, int]]:
         return []
     result = []
     remaining = amount
-    for denom in (500, 100, 25, 5, 1):
+    for denom in (1000, 500, 100, 25, 5, 1):
         count = remaining // denom
         if count > 0:
             result.append((denom, count))
             remaining %= denom
     return result
+
+
+def breakdown_bankroll_piles(amount: int) -> dict[int, int]:
+    """
+    Computes visual stack counts for each of the 5 casino chip denominations
+    ($5, $25, $100, $500, $1,000) to represent the player's running bankroll
+    in the bottom-right chip reserve tray.
+
+    Allocates working stacks from smallest to largest denomination first so a player
+    with e.g. $1,000 has populated stacks across $5, $25, $100, and $500, while
+    ensuring any affordable denomination (denom <= amount) shows at least 1 clickable chip.
+    """
+    piles = {5: 0, 25: 0, 100: 0, 500: 0, 1000: 0}
+    if amount <= 0:
+        return piles
+
+    remaining = amount
+    # Allocate working change in lower denominations first so tray stacks look authentic
+    working_targets = (
+        (5, 5),     # Up to 5x $5 = $25
+        (25, 3),    # Up to 3x $25 = $75 (cumulative $100)
+        (100, 4),   # Up to 4x $100 = $400 (cumulative $500)
+        (500, 1),   # Up to 1x $500 = $500 (cumulative $1,000)
+    )
+    for denom, max_working in working_targets:
+        if remaining >= denom:
+            take = min(max_working, remaining // denom)
+            piles[denom] += take
+            remaining -= take * denom
+
+    # Distribute any remaining wealth greedily from $1,000 down to $5
+    for denom in (1000, 500, 100, 25, 5):
+        if remaining >= denom:
+            take = remaining // denom
+            piles[denom] += take
+            remaining %= denom
+
+    # Ensure any denomination the player can currently afford has at least 1 clickable chip visible
+    for denom in (5, 25, 100, 500, 1000):
+        if amount >= denom and piles[denom] == 0:
+            piles[denom] = 1
+
+    return piles
 
 
 def build_shoe(all_cards, num_decks: int = DEFAULT_DECK_COUNT) -> list:
@@ -282,15 +326,16 @@ def get_basic_strategy_decision(
     can_double: bool = True,
     can_split: bool = False,
     can_surrender: bool = True,
-) -> BasicStrategyDecision:
+) -> Optional[BasicStrategyDecision]:
     """
     Evaluates statistically optimal Blackjack basic strategy (4-8 decks, Dealer stands on 17).
 
     Returns:
-        BasicStrategyDecision with optimal action ('HIT', 'STAND', 'DOUBLE', 'SPLIT', 'SURRENDER').
+        BasicStrategyDecision with optimal action ('HIT', 'STAND', 'DOUBLE', 'SPLIT', 'SURRENDER'),
+        or None if the hand has already busted (> 21) or is empty.
     """
     if not player_hand or dealer_upcard is None:
-        return BasicStrategyDecision("STAND", "Stand", "No active hand")
+        return None
 
     # Normalize dealer upcard value (Ace -> 11, Face cards -> 10, else 2..9)
     up_val = dealer_upcard[0] if isinstance(dealer_upcard, (tuple, list)) else getattr(dealer_upcard, "value", dealer_upcard)
@@ -300,6 +345,8 @@ def get_basic_strategy_decision(
     # Extract card values
     values = [c[0] if isinstance(c, (tuple, list)) else getattr(c, "value", c) for c in player_hand]
     score = score_hand(player_hand)
+    if score > BLACKJACK_TARGET:
+        return None
     num_cards = len(player_hand)
 
     # 1. Check Pair Splitting (if exactly 2 cards and can_split)

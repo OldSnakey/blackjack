@@ -6,6 +6,7 @@ Provides:
 - AngelicDraftDialog: Balatro-style Roguelike celestial blessing card drafting dialog.
 - SettingsDialog: Preferences modal with audio/scaling toggles and save reset safety.
 - ShortcutsDialog: Clean 2x2 categorized grid illustrating all keyboard & mouse controls.
+- WelcomeSplashDialog: First-launch splash screen introducing game modes, rules, and hotkeys.
 """
 
 from __future__ import annotations

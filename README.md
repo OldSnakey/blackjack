@@ -5,7 +5,7 @@
 
 An interactive, graphical desktop implementation of the classic casino card game **Blackjack**, built with standard Python and Tkinter, featuring an **animated living dealer**, a supernatural **Haunted Halloween & Hell's Table expansion**, **2x HiDPI scaling**, and persistent **Hall of Fame & Achievements**.
 
-Designed as an educational project for Python learners and junior developers, this codebase demonstrates how to transition from basic procedural scripting to clean, production-quality Python: eliminating global variables with Object-Oriented Programming (OOP), managing non-blocking animations without freezing the GUI event loop, decoupling stage canvas rendering from table felt geometry, separating pure mathematical game rules into zero-GUI modules, and authoring exhaustive automated regression tests (288 tests).
+Designed as an educational project for Python learners and junior developers, this codebase demonstrates how to transition from basic procedural scripting to clean, production-quality Python: eliminating global variables with Object-Oriented Programming (OOP), managing non-blocking animations without freezing the GUI event loop, decoupling stage canvas rendering from table felt geometry, separating pure mathematical game rules into zero-GUI modules, and authoring exhaustive automated regression tests (300+ unit tests).
 
 ---
 
@@ -55,15 +55,15 @@ Designed as an educational project for Python learners and junior developers, th
   - Two new high-roller personas: *Selene* (Cyberpunk Croupier) and *Count Vladimir* (Crimson Nocturne Vampire), unlockable through Card Counting streak achievements.
   - Paginated wardrobe customizer (`Shift + W`) with real-time character previews and unlock status tracking.
 - **Haunted Halloween & Hell's Table Expansion (`haunted_manager.py`)**:
-  - Progressive supernatural narrative phases: `CLASSIC` → `CREEP` → `OMEN` → `SNUFFING` → `HELL_TABLE`.
+  - Progressive supernatural narrative phases: `NORMAL` → `CREEP` → `OMEN` → `SNUFFING` → `HELL_TABLE`.
   - Authentic custom **13 of Skulls** cursed card with authentic host deck geometry and typography.
   - Haunted Altar with 5 candles that snuff out on player busts/losses, summoning 2.5D rising gravestones.
-  - Showdown against **The Pit Fiend** with a 2.5D Animated Tug-of-War Soul Meter and Celestial Blessings (*St. Jude's Grace*, *Archangel's Smite*, *Eye of Providence*, *Aegis of Dawn*, *Holy Water*).
+  - Showdown against **The Pit Fiend** with a 2.5D Animated Tug-of-War Soul Meter and 7 Celestial Blessings (*Seraph's Grace* bust-redraw protection, *Eye of Providence*, *Archangel's Smite*, *Cherub's Shield*, *Heavenly Tithe*, *Miracle Draw*, and *Hallowed Run*).
 - **Hall of Fame & Save Persistence (`save_manager.py`)**:
   - Persistent career metrics (`blackjack_save.json`): Peak Bankroll, Longest Win Streak, Total Blackjacks, Hell's Table Clears, and Counting Streaks.
   - 8 unlockable gameplay achievements (*Exorcist*, *High Roller*, *Natural Streak*, *Cursed Survivor*, *Split Maestro*, *Big Spender*, *Apprentice Counter*, *Master Counter*).
 - **Dual Play Modes (Chips Mode Default)**:
-  - **Casino Mode (Default)**: Authentic wagering system with a \$1,000 starting bankroll, authentic casino chips (\$5, \$25, \$100, \$500, \$1,000), staged betting, an **"All In"** button, 3:2 Natural Blackjack payouts, and a \$1,000 rebuy feature.
+  - **Casino Mode (Default)**: Authentic wagering system with a \$1,000 starting bankroll, 5 authentic casino chip denominations (\$5, \$25, \$100, \$500, and \$1,000 Platinum), interactive bottom-right bankroll chip piles, staged betting, an **"All In"** button, 3:2 Natural Blackjack payouts, and a \$1,000 rebuy feature.
   - **Casual Mode**: Instant deals, zero-stress casual play with win/loss tracking and no bankroll overhead. Switching modes prompts confirmation and automatically persists preferences to disk.
 - **2x HiDPI Display Scaling & Fullscreen**:
   - Crisp integer 2x resolution scaling (`Shift + S` / `🔍 2x`) for 1440p and 4K monitors with nearest-neighbor scaled card assets.
@@ -71,7 +71,7 @@ Designed as an educational project for Python learners and junior developers, th
 - **Multi-Deck Shoe & Cut Card Penetration**: 4-deck shoe (208 cards) with persistent card depletion across rounds, live shoe count, and an authentic ~25% cut card penetration reshuffle trigger.
 - **Double Down Option**: Double down on initial 2-card hands (and split hands), doubling the wager, drawing exactly one card, and standing automatically.
 - **Late Surrender**: Forfeit initial 2-card hands after dealer peeks for Natural Blackjack to recover 50% of the initial wager.
-- **Procedural 2.5D Chip Visualizer**: Stacked clay chips with drop shadows and animations for bets, dealer rakes, payouts, and pushes.
+- **Procedural 2.5D Chip Visualizer & Interactive Bankroll Chip Piles**: Stacked clay chips in the active betting spot plus a bottom-right bankroll reserve tray showing all 5 chip denominations piled up as a live visual indicator of running wealth or losses—click any pile directly to add a chip to your bet.
 - **Authentic Dealer Hole Card**: Dealer receives one card face-up and one card face-down (`back.png`). The hidden card is revealed only after the player stands (or when round resolves early).
 - **Dynamic Score Tracking & Beveled Plaques**: Dealer upcard score shows `"X + ?"` until reveal, framed in antique gold-bordered casino score plaques.
 - **Insurance Option**: When the dealer's visible upcard is an Ace in Casino Mode, players are offered an Insurance side bet costing half their main bet and paying 2:1 against a Dealer Natural Blackjack.
@@ -331,7 +331,7 @@ The card counting trainer (`card_counter.py`, `card_counting_hud.py`) models the
 
 ## Automated Testing
 
-The project includes an exhaustive automated test suite with **288 unit tests** written with Python's built-in `unittest` framework, validating domain logic, Tkinter GUI widgets, audio fallbacks, and rendering geometry.
+The project includes an exhaustive automated test suite with **300+ unit tests** written with Python's built-in `unittest` framework, validating domain logic, Tkinter GUI widgets, audio fallbacks, and rendering geometry.
 
 ### Running the Tests
 To run all tests with verbose output:
@@ -431,7 +431,7 @@ Blackjack/
 ├── docs/
 │   ├── ARCHITECTURE_CRC.md         # Class-Responsibility-Collaboration (CRC) architecture & review
 │   └── ITCH_IO_GUIDE.md            # itch.io deployment, store copy, and release guide
-└── tests/                          # Automated test suite (307 tests)
+└── tests/                          # Automated test suite (300+ unit tests)
     ├── __init__.py
     ├── test_basic_strategy.py
     ├── test_betting.py

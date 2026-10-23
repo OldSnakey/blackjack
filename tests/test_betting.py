@@ -89,14 +89,15 @@ class TestBreakdownChips(unittest.TestCase):
         self.assertEqual(breakdown_chips(25), [(25, 1)])
         self.assertEqual(breakdown_chips(100), [(100, 1)])
         self.assertEqual(breakdown_chips(500), [(500, 1)])
+        self.assertEqual(breakdown_chips(1000), [(1000, 1)])
 
     def test_breakdown_composite_and_odd_amounts(self):
         # $135: 1x $100 + 1x $25 + 2x $5
         self.assertEqual(breakdown_chips(135), [(100, 1), (25, 1), (5, 2)])
         # $187: 1x $100 + 3x $25 + 2x $5 + 2x $1
         self.assertEqual(breakdown_chips(187), [(100, 1), (25, 3), (5, 2), (1, 2)])
-        # $1250: 2x $500 + 2x $100 + 2x $25
-        self.assertEqual(breakdown_chips(1250), [(500, 2), (100, 2), (25, 2)])
+        # $1250: 1x $1000 + 2x $100 + 2x $25
+        self.assertEqual(breakdown_chips(1250), [(1000, 1), (100, 2), (25, 2)])
 
 
 class TestBettingGuiAndState(unittest.TestCase):
@@ -699,6 +700,35 @@ class TestBettingGuiAndState(unittest.TestCase):
         self.app.chips_mode_var.set(True)
         self.app._on_toggle_chips_mode(confirm=True)
         self.assertEqual(self.app.bankroll_var.get(), STARTING_BANKROLL)
+
+    def test_platinum_1000_chip_and_interactive_bankroll_piles(self):
+        """Verifies $1,000 Platinum chip button and interactive bottom-right bankroll chip piles."""
+        self.app.chips_mode_var.set(True)
+        self.app.new_game()
+        self.app.bankroll_var.set(2500)
+        self.app.current_bet_var.set(0)
+        self.app._update_bankroll_display()
+        self.app._update_betting_controls()
+
+        # 5 chip buttons ($5, $25, $100, $500, $1000)
+        self.assertEqual(len(self.app.chip_buttons), 5)
+        self.assertEqual(self.app.chip_buttons[4].cget("text"), "$1000")
+
+        # Visualizer reflects available bankroll (2500) across piles
+        self.assertEqual(self.app.chip_visualizer.available_bankroll, 2500)
+        for denom in (5, 25, 100, 500, 1000):
+            items = self.app.chip_visualizer.find_withtag(f"bank_pile_{denom}")
+            self.assertGreater(len(items), 0, f"Expected bankroll pile for ${denom}")
+
+        # Clicking the $25 pile stages a $25 bet and updates available bankroll to 2475
+        self.app.chip_visualizer.trigger_pile_click(25)
+        self.assertEqual(self.app.current_bet_var.get(), 25)
+        self.assertEqual(self.app.chip_visualizer.available_bankroll, 2475)
+
+        # Clicking the $1,000 pile stages $1,000 -> total bet $1,025, available bankroll $1,475
+        self.app.chip_visualizer.trigger_pile_click(1000)
+        self.assertEqual(self.app.current_bet_var.get(), 1025)
+        self.assertEqual(self.app.chip_visualizer.available_bankroll, 1475)
 
 
 if __name__ == "__main__":

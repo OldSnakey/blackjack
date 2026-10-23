@@ -133,8 +133,9 @@ class CardCountingHud(tkinter.Frame):
         tkinter.Label(
             self.decks_frame, text="Decks:", font=("Arial", 8, "bold"), fg="#80cbc4", background="#0d231b"
         ).pack(side="left")
+        default_decks_text = f"{float(getattr(self.counter, 'deck_count', 4)):.1f}"
         self.decks_label = tkinter.Label(
-            self.decks_frame, text="6.0", font=("Arial", 9, "bold"), fg="#ffffff", background="#0d231b"
+            self.decks_frame, text=default_decks_text, font=("Arial", 9, "bold"), fg="#ffffff", background="#0d231b"
         )
         self.decks_label.pack(side="left", padx=(2, 0))
 

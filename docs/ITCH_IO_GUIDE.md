@@ -10,10 +10,10 @@ Before creating your itch.io page, compile the release bundle:
 
 1. Double-click `build_itch_release.bat` (or run `./build_itch_release.ps1` in PowerShell).
 2. The script will:
-   - Run all 92 unit tests to ensure zero bugs are shipped.
+   - Run the automated unit test suite to ensure zero bugs are shipped.
    - Compile a standalone executable with PyInstaller.
    - Bundle all cards, organic sound effects, and `README_PLAYERS.txt`.
-   - Generate `dist/Blackjack-Windows-v1.0.0.zip`.
+   - Generate `dist/Blackjack-Windows-v1.3.0.zip`.
 
 ---
 
@@ -30,7 +30,7 @@ Before creating your itch.io page, compile the release bundle:
 - **Classification**: `Games`
 - **Kind of project**: `Downloadable`
 - **Release status**: `Released`
-- **Pricing**: `No payments` (or `$0 or donate`)
+- **Pricing**: `No payments` (or `\$0 or donate`)
 
 ---
 
@@ -38,7 +38,7 @@ Before creating your itch.io page, compile the release bundle:
 
 - **Cover Image**: Upload `assets/cover_itch.png` (optimized 630x500 2.5D pixel graphics cover on green diamond felt).
 - **Screenshots** (5 high-resolution screenshots are ready in `assets/screenshots/`):
-  1. `assets/screenshots/screenshot_1_betting_table.png`: Casino Felt Table & 2.5D Staged Betting Chips ($125 bet in circle).
+  1. `assets/screenshots/screenshot_1_betting_table.png`: Casino Felt Table & 2.5D Staged Betting Chips (\$125 bet in circle).
   2. `assets/screenshots/screenshot_2_in_game_play.png`: Mid-Hand Decision (Player 16 vs Dealer 10 + Hole card; Hit/Stand/Double/Surrender).
   3. `assets/screenshots/screenshot_3_split_hands.png`: Pair Splitting with Dual Wagers & Active Hand Indicator (Split 8s).
   4. `assets/screenshots/screenshot_4_blackjack_win.png`: Natural 21 Blackjack Payout Celebration (Ace & Jack of Spades with 3:2 payout).
@@ -50,7 +50,7 @@ Before creating your itch.io page, compile the release bundle:
 
 Under the **Uploads** section:
 
-1. Click **Upload files** and select `dist/Blackjack-Windows-v1.0.0.zip`.
+1. Click **Upload files** and select `dist/Blackjack-Windows-v1.3.0.zip`.
 2. Check the **Windows** platform checkbox (the Windows logo icon).
 3. Under **Display name**, type: `Blackjack (Windows 64-bit)`.
 4. Check the box: **"This file will be seen by everyone"**.
@@ -71,12 +71,14 @@ Paste the following formatted description into the itch.io description editor:
 Experience authentic casino Blackjack with zero setup or installation required! Step up to the green felt table, place your wagers with realistic 3D stacked chips, and test your strategy against the dealer.
 
 ### Key Features
-- 🎰 **Casino Mode & Casual Mode**: Play with an authentic $1,000 bankroll and staged betting, or switch to casual mode for instant zero-stress practice.
+- 🎰 **Casino, Casual & Training Modes**: Play with an authentic \$1,000 bankroll and 5 casino chip denominations (\$5, \$25, \$100, \$500, \$1,000 Platinum), practice with the real-time Hi-Lo Card Counting & Basic Strategy Trainer, or switch to Casual Mode for instant zero-stress play.
+- 🎩 **Living Dealer & Animalese Voice Engine**: 8 unlockable multi-layer puppet dealers with autonomous breathing, blinking, phonetic lip-sync visemes, and procedural Animalese dialogue voices.
+- 🕯️ **Haunted Halloween & Hell's Table Mode**: Survive Hand 13 and the 5 altar candles to face The Pit Fiend in a 2.5D Tug-of-War Soul Meter battle with 7 roguelike Celestial Blessings.
 - 🃏 **Authentic Casino Rules**: Dealer Hole Card (face-down) peeks, 3:2 Natural Blackjack payouts, Double Down, Pair Splitting, Late Surrender, and 2:1 Insurance side bets.
 - 🔊 **Tactile Casino Sound Effects**: 42 organic audio variations including card slides, hole card placement, chip clicks, all-in thuds, and shoe shuffles.
-- 🪙 **Procedural 3D Chip Visualizer**: Stacked clay chips with drop shadows and dynamic chip animations for bets, dealer rakes, and payouts.
+- 🪙 **Procedural 2.5D Chip Visualizer & Interactive Bankroll Piles**: Stacked clay chips in the betting spot plus interactive bottom-right bankroll chip piles that grow and shrink with your wealth—click any pile to bet!
 - 🧮 **Multi-Deck Shoe with Cut Card**: Persistent 4-deck shoe with dynamic card count tracking and authentic 25% cut card penetration reshuffling.
-- ⌨️ **Keyboard Accessibility**: Full keyboard support for high-speed play (`Space`/`Enter` to Hit/Deal, `S` to Stand, `D` to Double, `P` to Split, `M` to Mute).
+- 🖥️ **2x HiDPI Scaling & Fullscreen**: Crisp 2x resolution scaling (`Shift+S`) and borderless fullscreen (`F11`).
 
 ---
 
@@ -88,7 +90,12 @@ Experience authentic casino Blackjack with zero setup or installation required! 
 | **Double Down** | Click Double | `D` |
 | **Split Pair** | Click Split | `P` |
 | **Surrender** | Click Surrender | `R` |
+| **Bet Chips** | Click Chip Buttons or Bankroll Piles | `1`, `2`, `3`, `4`, `5` |
 | **Toggle Audio** | Click Speaker Icon | `M` |
+| **Card Counter HUD** | Click Trainer Pill | `K` / `Shift+C` |
+| **Dealer Wardrobe** | Click Stage Hanger | `Shift+W` |
+| **Hall of Fame** | Click Wardrobe Tab 2 | `Shift+H` |
+| **Toggle 2x Scale** | Click `🔍 2x` | `Shift+S` / `F10` |
 | **Clear Bet** | Click Clear Bet | `C` |
 | **All In** | Click All In | `A` |
 ```
@@ -100,7 +107,7 @@ Experience authentic casino Blackjack with zero setup or installation required! 
 Paste the following in the **Download & Install Instructions** section on itch.io:
 
 ```text
-1. Download the ZIP file: "Blackjack-Windows-v1.0.0.zip".
+1. Download the ZIP file: "Blackjack-Windows-v1.3.0.zip".
 2. Right-click the downloaded file and select "Extract All...".
 3. Open the extracted folder and double-click "Blackjack.exe" to play!
 

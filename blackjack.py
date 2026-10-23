@@ -4,13 +4,17 @@ Blackjack GUI Game in Python using Tkinter.
 Architecture & Separation of Concerns:
 - config.py: Centralized constants, asset paths, and atmospheric ThemePalettes.
 - rules.py: Pure, stateless Blackjack math, card models, and shoe building (Zero Tkinter).
+- card_counter.py: Hi-Lo card counting domain engine, True Count math, and bet sizing guide.
+- card_counting_hud.py: Felt-embedded count HUD, floating count badges, and Count Check quiz modal.
 - audio_assets.py: SoundManager, High-DPI AssetScaler, and Kenney KeyboardIconLoader.
+- dialogue_voice_engine.py: Procedural in-memory Animalese phoneme synthesis per dealer persona.
 - ui_canvases.py: Custom 2.5D visualizers (ChipVisualizer, SoulMeterCanvas, TableAnnouncementHUD,
   HauntedAltarCanvas, DealerStageCanvas, TableFeltCanvas).
 - ui_dialogs.py: Toplevel modal dialogs (StoryDialogueDialog, AngelicDraftDialog,
-  SettingsDialog, ShortcutsDialog).
+  SettingsDialog, ShortcutsDialog, WelcomeSplashDialog).
+- dealer_wardrobe_dialog.py: Two-tab Dealer Wardrobe & Casino Hall of Fame modal.
 - save_manager.py: Persistent player records, achievements, and unlockables.
-- dealer_actor.py: Multi-layer layered sprite character roster and compositor.
+- dealer_actor.py: Multi-layer 7-strata sprite character roster and compositor.
 - haunted_manager.py: Roguelike celestial blessing engine and tug-of-war combat state.
 """
 
@@ -28,7 +32,6 @@ from typing import Optional, Callable, Any
 
 # Re-exported configuration, constants, and paths
 from config import (
-    APP_VERSION,
     BASE_DIR,
     ASSETS_DIR,
     AUDIO_DIR,
@@ -64,6 +67,7 @@ from config import (
 
 # Application Version (Single Source of Truth)
 __version__ = "1.3.0"
+APP_VERSION = __version__
 
 # Re-exported domain rules & card models (pure Python, zero GUI dependencies)
 from rules import (
@@ -153,6 +157,13 @@ class BlackjackApp:
         skip_splash: bool = False,
     ):
         self.root = root
+        prev_app = getattr(self.root, "_active_blackjack_app", None)
+        if prev_app is not None and prev_app is not self:
+            try:
+                prev_app._cancel_all_active_timers()
+            except Exception:
+                pass
+        self.root._active_blackjack_app = self
         self.root.title(f"Blackjack v{__version__}")
         self.root.geometry(f"{DEFAULT_WINDOW_WIDTH}x{DEFAULT_WINDOW_HEIGHT}")
         self.root.minsize(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)
@@ -689,7 +700,11 @@ class BlackjackApp:
 
         # 2.5D Casino Felt Betting Spot Visualizer (visible in Chips Mode)
         self.chip_visualizer = ChipVisualizer(
-            card_table_frame, width=180, height=135, background=PANEL_BACKGROUND_COLOR
+            card_table_frame,
+            width=200,
+            height=135,
+            background=PANEL_BACKGROUND_COLOR,
+            on_chip_click=self._add_chip_bet,
         )
         self.chip_visualizer.grid(row=1, column=2, padx=(10, 5), pady=2, sticky="e")
         if not self.chips_mode_var.get():
@@ -923,15 +938,22 @@ class BlackjackApp:
         for key in ("<v>", "<V>"):
             self.root.bind(key, lambda e: self._on_toggle_dealer_view())
         for key in ("<x>", "<X>"):
-            self.root.bind(key, lambda e: self._on_miracle_draw())
+            self.root.bind(key, lambda e: self._on_key_action(self._on_miracle_draw, getattr(self, "miracle_button", None)))
 
         # Shortcuts / Help Overlay toggle shortcuts
         for key in ("<question>", "?", "/", "<F1>"):
             self.root.bind(key, lambda e: self._toggle_shortcuts_overlay())
 
         # Scale and Fullscreen display mode shortcuts
-        self.root.bind("<F10>", lambda e: self.toggle_scale_mode())
+        for key in ("<F10>", "<Shift-S>", "<Shift-s>"):
+            self.root.bind(key, lambda e: self.toggle_scale_mode())
         self.root.bind("<F11>", lambda e: self.toggle_fullscreen())
+
+        # Wardrobe & Hall of Fame shortcuts (Shift+W / Shift+H)
+        for key in ("<Shift-W>", "<Shift-w>"):
+            self.root.bind(key, lambda e: self._open_wardrobe_dialog(initial_tab=0))
+        for key in ("<Shift-H>", "<Shift-h>"):
+            self.root.bind(key, lambda e: self._open_wardrobe_dialog(initial_tab=1))
 
         # Settings dialog shortcuts
         for key in ("<o>", "<O>", "<F2>"):
@@ -954,12 +976,13 @@ class BlackjackApp:
         # Context-sensitive Escape: closes shortcuts HUD, declines insurance, or exits fullscreen
         self.root.bind("<Escape>", self._on_escape_key)
 
-        # Chip denomination shortcuts: 1=$5, 2=$25, 3=$100, 4=$500
+        # Chip denomination shortcuts: 1=$5, 2=$25, 3=$100, 4=$500, 5=$1000
         chip_keys = {
             "<Key-1>": 5, "<KP_1>": 5,
             "<Key-2>": 25, "<KP_2>": 25,
             "<Key-3>": 100, "<KP_3>": 100,
             "<Key-4>": 500, "<KP_4>": 500,
+            "<Key-5>": 1000, "<KP_5>": 1000,
         }
         for k, amt in chip_keys.items():
             self.root.bind(k, lambda e, a=amt: self._on_key_chip(a))
@@ -1187,12 +1210,16 @@ class BlackjackApp:
 
     def get_current_strategy_hint(self) -> Optional[BasicStrategyDecision]:
         """Computes pure Basic Strategy advice for the active player hand against dealer upcard."""
+        if getattr(self, "round_phase", RoundPhase.PLAYER_TURN) != RoundPhase.PLAYER_TURN:
+            return None
         if not self.player_hands or not self.dealer_hand:
             return None
         if self.active_hand_index >= len(self.player_hands):
             return None
         player_hand = self.player_hands[self.active_hand_index]
         if not player_hand or not self.dealer_hand:
+            return None
+        if self._score_player_hand(player_hand) >= BLACKJACK_TARGET:
             return None
         dealer_upcard = self.dealer_hand[0]
         can_double = False
@@ -1225,7 +1252,7 @@ class BlackjackApp:
         """Synchronizes Basic Strategy recommendation with the card counting HUD."""
         if not hasattr(self, "card_counting_hud") or not self.card_counting_hud:
             return
-        if getattr(self, "play_mode", "betting") != "training":
+        if getattr(self, "play_mode", "betting") != "training" and not self.card_counting_hud.is_visible:
             self.card_counting_hud.update_strategy_hint(hint=None)
             return
         if getattr(self, "is_betting_phase", False):
@@ -1241,13 +1268,15 @@ class BlackjackApp:
         """Callback when the wardrobe hanger button on the stage canvas is clicked."""
         self._open_wardrobe_dialog()
 
-    def _open_wardrobe_dialog(self):
+    def _open_wardrobe_dialog(self, initial_tab: int = 0):
         """Displays the Dealer Wardrobe & Dressing Room modal dialog."""
         if getattr(self, "_wardrobe_dialog", None) is not None and self._wardrobe_dialog.winfo_exists():
+            if initial_tab in (0, 1):
+                self._wardrobe_dialog._switch_tab(initial_tab)
             self._wardrobe_dialog.lift()
             self._wardrobe_dialog.focus_set()
             return "break"
-        self._wardrobe_dialog = WardrobeDialog(self.root, self)
+        self._wardrobe_dialog = WardrobeDialog(self.root, self, initial_tab=initial_tab)
         return "break"
 
     def _close_wardrobe_dialog(self):
@@ -1464,6 +1493,12 @@ class BlackjackApp:
 
     def _dealer_breathing_tick(self):
         """25-30 FPS idle ticker oscillating dealer avatar vertically to simulate breathing and stage particles."""
+        if getattr(self, "_dealer_idle_timer_id", None):
+            try:
+                self.root.after_cancel(self._dealer_idle_timer_id)
+            except Exception:
+                pass
+            self._dealer_idle_timer_id = None
         if not hasattr(self, "root") or not self.root.winfo_exists():
             return
         self._dealer_anim_step += 0.15
@@ -2298,7 +2333,9 @@ class BlackjackApp:
             if hasattr(self, "pumpkin_label"):
                 self.pumpkin_label.pack_forget()
             if hasattr(self, "soul_meter_canvas"):
-                self.soul_meter_canvas.pack_forget()
+                self.soul_meter_canvas.grid_remove()
+            if hasattr(self, "chip_visualizer") and self.chips_mode_var.get():
+                self.chip_visualizer.grid()
             self._update_dealer_avatar()
             self.set_dealer_speech("✦ Darkness is banished! Peace returns to the table. ✦", stream=True)
             self.result_var.set("VICTORY! +$6,666 Exorcist Bounty Claimed!")
@@ -2371,6 +2408,8 @@ class BlackjackApp:
 
     def _on_miracle_draw(self):
         """Miracle Draw: banishes the last dealt player card and draws a fresh one."""
+        if getattr(self, "round_phase", RoundPhase.PLAYER_TURN) != RoundPhase.PLAYER_TURN:
+            return
         if not self.haunted.can_use_miracle_draw():
             return
         if not self.player_hand:
@@ -2505,17 +2544,29 @@ class BlackjackApp:
         self._update_blessings_tray()
 
         if self.haunted.phase == Phase.HELL_TABLE:
+            if hasattr(self, "chip_visualizer"):
+                self.chip_visualizer.grid_remove()
+            if hasattr(self, "soul_meter_canvas"):
+                self.soul_meter_canvas.grid()
+                self.soul_meter_canvas.set_meter(self.haunted.soul_meter, animated=False)
             self.is_betting_phase = False
             self._start_round_deal()
         elif self.chips_mode_var.get():
+            if hasattr(self, "soul_meter_canvas"):
+                self.soul_meter_canvas.grid_remove()
+            if hasattr(self, "chip_visualizer"):
+                self.chip_visualizer.grid()
             self._enter_betting_phase()
         else:
+            if hasattr(self, "soul_meter_canvas"):
+                self.soul_meter_canvas.grid_remove()
             self.is_betting_phase = False
             self._start_round_deal()
 
     def _enter_betting_phase(self):
         """Transitions game state into the betting phase where player places chips."""
         self.is_betting_phase = True
+        self.round_phase = RoundPhase.BETTING
         self._set_action_buttons_state("disabled")
         self.new_game_button.configure(state="disabled")
 
@@ -2543,6 +2594,7 @@ class BlackjackApp:
 
     def _start_round_deal(self):
         """Authentic initial deal: 2 cards to player, 2 to dealer (1 face-down hole card)."""
+        self.round_phase = RoundPhase.PLAYER_TURN
         self.result_var.set("")
         self._set_action_buttons_state("disabled")
         self.new_game_button.configure(state="disabled")
@@ -2712,7 +2764,7 @@ class BlackjackApp:
             self._update_betting_controls()
 
     def _update_bankroll_display(self):
-        """Updates the bankroll & bet label text."""
+        """Updates the bankroll & bet label text and synchronizes the bottom-right bankroll chip piles."""
         if not hasattr(self, "bankroll_label"):
             return
         bankroll = self.bankroll_var.get()
@@ -2720,6 +2772,9 @@ class BlackjackApp:
         self.bankroll_label.configure(
             text=f"Bankroll: ${bankroll:,}  |  Bet: ${bet:,}"
         )
+        if hasattr(self, "chip_visualizer"):
+            available = max(0, bankroll - self.current_bet_var.get()) if self.is_betting_phase else max(0, bankroll)
+            self.chip_visualizer.set_bankroll(available, interactive=self.is_betting_phase)
 
     def _update_betting_controls(self):
         """Updates states of chip buttons, clear bet, deal, and rebuy buttons."""
@@ -2728,7 +2783,10 @@ class BlackjackApp:
 
         bankroll = self.bankroll_var.get()
         staged_bet = self.current_bet_var.get()
-        remaining = bankroll - staged_bet
+        remaining = max(0, bankroll - staged_bet)
+        if hasattr(self, "chip_visualizer"):
+            avail = remaining if self.is_betting_phase else max(0, bankroll)
+            self.chip_visualizer.set_bankroll(avail, interactive=self.is_betting_phase)
 
         if self.is_betting_phase:
             for btn, (denom, _, _) in zip(self.chip_buttons, CHIP_DENOMINATIONS):
@@ -2754,6 +2812,7 @@ class BlackjackApp:
     def _prompt_insurance(self):
         """Offers the insurance side bet when the dealer shows an Ace in Chips Mode."""
         self.is_insurance_phase = True
+        self.round_phase = RoundPhase.INSURANCE
         self._set_action_buttons_state("disabled")
         self.new_game_button.configure(state="disabled")
 
@@ -2793,6 +2852,7 @@ class BlackjackApp:
     def _resolve_insurance_decision(self):
         """Concludes insurance phase, peeks at dealer hole card, and resolves or resumes play."""
         self.is_insurance_phase = False
+        self.round_phase = RoundPhase.PLAYER_TURN
         self.insurance_frame.grid_remove()
 
         dealer_score = score_hand(self.dealer_hand)
@@ -2870,6 +2930,23 @@ class BlackjackApp:
 
         self.player_hands[hand_index].append(card)
         self._observe_card_face_up(card)
+
+        # Seraph's Grace: once per hand, automatically banish and redraw a card that would cause a bust (> 21)
+        if (
+            len(self.player_hands[hand_index]) >= 2
+            and self._score_player_hand(self.player_hands[hand_index]) > BLACKJACK_TARGET
+            and getattr(self, "haunted", None)
+            and self.haunted.can_use_seraph_redraw()
+        ):
+            self.haunted.use_seraph_redraw()
+            self.player_hands[hand_index].pop()
+            replacement = self._draw_card()
+            self.player_hands[hand_index].append(replacement)
+            self._observe_card_face_up(replacement)
+            if hasattr(self, "sound_manager"):
+                self.sound_manager.play_haunted_sound("angel_chime")
+            self.result_var.set("✦ Seraph's Grace! Busting card banished and redrawn!")
+
         self._render_player_cards()
         self._update_player_score_display()
         if hasattr(self, "dealer_actor") and self.root.winfo_exists() and self.root.state() != "withdrawn":
@@ -2892,8 +2969,15 @@ class BlackjackApp:
         """
         card = self._draw_card()
         self.dealer_hand.append(card)
-        if not is_hole_card:
+        eye_revealed = bool(
+            is_hole_card
+            and getattr(self, "haunted", None)
+            and Blessing.EYE in self.haunted.equipped_blessings
+        )
+        if not is_hole_card or eye_revealed:
             self._observe_card_face_up(card)
+            if is_hole_card:
+                self._hole_card_observed = True
         else:
             self._hole_card_observed = False
         if hasattr(self, "dealer_actor") and self.root.winfo_exists() and self.root.state() != "withdrawn":
@@ -3154,6 +3238,7 @@ class BlackjackApp:
                 cards_rem = len(self.deck) if hasattr(self, "deck") else 0
                 base_bet = self.hand_bets[0] if (hasattr(self, "hand_bets") and self.hand_bets and self.hand_bets[0] > 0) else 25
                 self.card_counting_hud.update_counts(cards_remaining=cards_rem, base_bet=base_bet)
+            self._refresh_strategy_hint()
         return "break"
 
     def _open_card_counting_quiz(self):
@@ -3277,8 +3362,10 @@ class BlackjackApp:
                     self._reveal_dealer_hole_card()
                     self._conclude_round()
                 else:
+                    self.round_phase = RoundPhase.DEALER_TURN
                     self._set_action_buttons_state("disabled")
                     self.new_game_button.configure(state="disabled")
+                    self._refresh_strategy_hint()
                     self._reveal_dealer_hole_card()
                     self._dealer_timer_id = self.root.after(DEALER_DRAW_DELAY_MS, self._dealer_step)
         else:
@@ -3293,6 +3380,7 @@ class BlackjackApp:
         if len(self.player_hands) != 1 or len(self.player_hands[0]) != 2:
             return
 
+        self.round_phase = RoundPhase.ROUND_OVER
         self._set_action_buttons_state("disabled")
         self.new_game_button.configure(state="disabled")
         self._reveal_dealer_hole_card()
@@ -3315,6 +3403,7 @@ class BlackjackApp:
             self.result_var.set("Surrendered. Hand forfeited.")
 
         self.new_game_button.configure(state="normal")
+        self._refresh_strategy_hint()
 
     def on_hit(self):
         """
@@ -3347,8 +3436,10 @@ class BlackjackApp:
                     self._conclude_round()
                 else:
                     # At least one earlier hand is still in play; dealer plays
+                    self.round_phase = RoundPhase.DEALER_TURN
                     self._set_action_buttons_state("disabled")
                     self.new_game_button.configure(state="disabled")
+                    self._refresh_strategy_hint()
                     self._reveal_dealer_hole_card()
                     self._dealer_timer_id = self.root.after(DEALER_DRAW_DELAY_MS, self._dealer_step)
         elif current_score == BLACKJACK_TARGET:
@@ -3377,8 +3468,10 @@ class BlackjackApp:
             return
 
         # All player hands completed -> transition to dealer turn
+        self.round_phase = RoundPhase.DEALER_TURN
         self._set_action_buttons_state("disabled")
         self.new_game_button.configure(state="disabled")
+        self._refresh_strategy_hint()
         self._reveal_dealer_hole_card()
         self._dealer_timer_id = self.root.after(DEALER_DRAW_DELAY_MS, self._dealer_step)
 
@@ -3402,6 +3495,7 @@ class BlackjackApp:
             # Dealer must draw
             card = self._draw_card()
             self.dealer_hand.append(card)
+            self._observe_card_face_up(card)
             self._render_dealer_cards()
             self.dealer_score_var.set(str(score_hand(self.dealer_hand)))
             if hasattr(self, "sound_manager"):
@@ -3518,13 +3612,14 @@ class BlackjackApp:
         primary_outcome = outcomes[0]
         is_double = getattr(self, "_last_was_double", False)
         self._last_was_double = False
+        prev_phase = self.haunted.phase
 
         soul_delta, haunted_msg = self.haunted.on_round_outcome(
             primary_outcome, is_double=is_double, is_split=is_split
         )
         self._update_dealer_speech_for_outcome(primary_outcome)
 
-        if self.haunted.phase in (Phase.OMEN, Phase.SNUFFING):
+        if prev_phase in (Phase.OMEN, Phase.SNUFFING):
             self._update_candles_display()
             if primary_outcome in ('DEALER_WINS', 'PLAYER_BUST', 'SURRENDER'):
                 self._update_gravestones_display()
@@ -3535,7 +3630,10 @@ class BlackjackApp:
                 self._haunted_round_timer_id = self.root.after(800, self._trigger_hell_table)
 
         elif self.haunted.phase == Phase.HELL_TABLE:
+            if hasattr(self, "chip_visualizer"):
+                self.chip_visualizer.grid_remove()
             if hasattr(self, "soul_meter_canvas"):
+                self.soul_meter_canvas.grid()
                 self.soul_meter_canvas.set_meter(self.haunted.soul_meter, animated=True)
             if primary_outcome in ('DEALER_WINS', 'PLAYER_BUST', 'SURRENDER'):
                 self._update_gravestones_display()

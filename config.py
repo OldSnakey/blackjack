@@ -19,7 +19,6 @@ from pathlib import Path
 # ============================================================================
 # Application Metadata & Rule Constants
 # ============================================================================
-APP_VERSION = "1.3.0"
 
 # Standard Blackjack target and casino dealer rules
 BLACKJACK_TARGET = 21
@@ -33,10 +32,11 @@ CUT_CARD_PENETRATION = 0.25  # Cut card reshuffle trigger (when <= 25% cards rem
 STARTING_BANKROLL = 1000
 MINIMUM_BET = 5
 CHIP_DENOMINATIONS = [
-    (5, "#f5f5f5", "#000000"),    # White $5
-    (25, "#c62828", "#ffffff"),   # Red $25
-    (100, "#2e7d32", "#ffffff"),  # Green $100
-    (500, "#212121", "#ffd700"),  # Black & Gold $500
+    (5, "#f5f5f5", "#000000"),     # White $5
+    (25, "#c62828", "#ffffff"),    # Red $25
+    (100, "#2e7d32", "#ffffff"),   # Green $100
+    (500, "#212121", "#ffd700"),   # Black & Gold $500
+    (1000, "#e5e4e2", "#111111"),  # Platinum $1,000
 ]
 INSURANCE_PAYOUT_RATIO = 2  # Standard casino rule: Insurance pays 2 to 1
 
@@ -92,11 +92,12 @@ DEFAULT_SOUND_VOLUME = 0.7
 # ============================================================================
 
 CHIP_STYLES = {
-    500: {"bg": "#212121", "fg": "#ffd700", "rim": "#111111", "stripe": "#ffd700"},
-    100: {"bg": "#2e7d32", "fg": "#ffffff", "rim": "#1b5e20", "stripe": "#ffffff"},
-    25:  {"bg": "#c62828", "fg": "#ffffff", "rim": "#8e0000", "stripe": "#ffffff"},
-    5:   {"bg": "#f5f5f5", "fg": "#212121", "rim": "#bdbdbd", "stripe": "#c62828"},
-    1:   {"bg": "#9e9e9e", "fg": "#ffffff", "rim": "#616161", "stripe": "#ffffff"},
+    1000: {"bg": "#e5e4e2", "fg": "#111111", "rim": "#9e9e9e", "stripe": "#ffd700"},
+    500:  {"bg": "#212121", "fg": "#ffd700", "rim": "#111111", "stripe": "#ffd700"},
+    100:  {"bg": "#2e7d32", "fg": "#ffffff", "rim": "#1b5e20", "stripe": "#ffffff"},
+    25:   {"bg": "#c62828", "fg": "#ffffff", "rim": "#8e0000", "stripe": "#ffffff"},
+    5:    {"bg": "#f5f5f5", "fg": "#212121", "rim": "#bdbdbd", "stripe": "#c62828"},
+    1:    {"bg": "#9e9e9e", "fg": "#ffffff", "rim": "#616161", "stripe": "#ffffff"},
 }
 
 

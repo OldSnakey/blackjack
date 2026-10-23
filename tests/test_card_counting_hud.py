@@ -162,6 +162,53 @@ class TestCardCountingIntegration(unittest.TestCase):
         # Now hole card is observed: 1 + (-1) = 0
         self.assertEqual(self.app.card_counter.running_count, 0)
 
+    def test_default_deck_count_is_four(self):
+        """Default deck count in HiLoCardCounter and CardCountingHud matches the 4-deck shoe."""
+        default_counter = HiLoCardCounter()
+        self.assertEqual(default_counter.deck_count, 4)
+        hud = CardCountingHud(master=self.app.card_table_frame, counter=default_counter)
+        self.assertEqual(hud.decks_label.cget("text"), "4.0")
+        hud.destroy()
+
+    def test_dealer_step_hit_cards_observed_by_counter(self):
+        """Cards drawn by the dealer during _dealer_step() must be observed by the card counter."""
+        self.app.card_counter.reset_shoe(deck_count=self.app.deck_count)
+        c10 = Card(10, self.app.back_image, rank="10", suit="spade")
+        c8 = Card(8, self.app.back_image, rank="8", suit="heart")
+        c5 = Card(5, self.app.back_image, rank="5", suit="club")  # +1 tag
+        c6 = Card(6, self.app.back_image, rank="6", suit="diamond")  # +1 tag
+
+        # Player stands on 18; Dealer has 10 + 5 = 15 (< 17, must hit) and draws c6 (+1) -> 21
+        self.app.player_hands = [[c10, c8]]
+        self.app.dealer_hand = [c10, c5]
+        self.app.deck = [c6] * 20
+        self.app._hole_card_observed = True
+
+        rc_before = self.app.card_counter.running_count
+        obs_before = self.app.card_counter.observed_cards_count
+        self.app._dealer_step()
+
+        self.assertEqual(self.app.card_counter.observed_cards_count, obs_before + 1)
+        self.assertEqual(self.app.card_counter.running_count, rc_before + 1)
+
+    def test_blessing_eye_observes_hole_card_on_deal_without_double_counting(self):
+        """When Blessing.EYE is equipped, the revealed hole card is observed on deal and not double-counted on reveal."""
+        from haunted_manager import Blessing
+        self.app._trigger_hell_table()
+        self.app.haunted.equip_blessing(Blessing.EYE)
+        self.app.card_counter.reset_shoe(deck_count=self.app.deck_count)
+
+        c2 = Card(2, self.app.back_image, rank="2", suit="heart")  # +1
+        self.app.deck = [c2] * 20
+        self.app._deal_card_to_dealer(is_hole_card=True)
+
+        self.assertTrue(self.app._hole_card_observed)
+        self.assertEqual(self.app.card_counter.running_count, 1)
+
+        # Revealing hole card at round end must NOT count it a second time
+        self.app._reveal_dealer_hole_card()
+        self.assertEqual(self.app.card_counter.running_count, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

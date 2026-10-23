@@ -115,10 +115,17 @@ class TestBasicStrategy(unittest.TestCase):
         dec_14_vs_7 = get_basic_strategy_decision([Card(10), Card(4)], Card(7))
         self.assertEqual(dec_14_vs_7.action, "HIT")
 
-        # 17+: Always Stand
+        # 17-21: Always Stand
         for total in (17, 18, 19, 20):
             dec_hard = get_basic_strategy_decision([Card(10), Card(total - 10)], Card(10))
             self.assertEqual(dec_hard.action, "STAND")
+
+    def test_busted_hand_returns_none(self):
+        """A busted hand (> 21, e.g. Hard 24) must return None and never recommend STAND."""
+        busted_24 = [Card(10), Card(10), Card(4)]
+        self.assertIsNone(get_basic_strategy_decision(busted_24, Card(10)))
+        busted_22 = [Card(10), Card(5), Card(7)]
+        self.assertIsNone(get_basic_strategy_decision(busted_22, Card(6)))
 
 
 if __name__ == "__main__":

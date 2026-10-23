@@ -47,3 +47,4 @@ Keyboard & Mouse/
 # Save Data & Game Progress
 blackjack_save.json
 *.tmp
+verification/

@@ -176,7 +176,10 @@ class TestShortcutsOverlayGui(unittest.TestCase):
 
     def test_keyboard_shortcuts_bound_on_root(self):
         """All expected shortcut keys must have bindings on the root window."""
-        expected_keys = ["<question>", "?", "/", "<F1>", "<h>", "<H>", "<s>", "<S>"]
+        expected_keys = [
+            "<question>", "?", "/", "<F1>", "<h>", "<H>", "<s>", "<S>",
+            "<Key-5>", "<Shift-W>", "<Shift-H>", "<Shift-S>",
+        ]
         for key in expected_keys:
             # Check that root has a binding for this sequence
             binding = self.root.bind(key)

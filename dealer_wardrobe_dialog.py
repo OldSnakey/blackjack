@@ -3,14 +3,16 @@ Dealer Wardrobe & Casino Hall of Fame Dialog for Blackjack.
 
 Provides:
 - Tab 1: 🎩 Wardrobe Closet
-  - 5 interactive character cards for Julian, Tiffany, Malphas, Uriel, and Mortimer.
+  - 8 interactive character cards for Julian, Tiffany, Malphas, Uriel, Mortimer,
+    Selene, Vladimir, and Dummy.
   - High-resolution bust preview, title, lore, and audio voice preview.
   - Dynamic unlock criteria checking against persistent save achievements and table milestones.
   - Instant costume equipping with table avatar and stage synchronization.
 - Tab 2: 🏆 Hall of Fame & Trophy Shelf
   - All-time casino records banner (peak bankroll, longest streak, hands won/played, blackjacks).
-  - 6 visual achievement plaques (The Exorcist, High Roller, Natural Born Winner,
-    Cursed Survivor, Split Maestro, Big Spender) with unlock badges and criteria.
+  - 8 visual achievement plaques (The Exorcist, High Roller, Natural Born Winner,
+    Cursed Survivor, Split Maestro, Big Spender, Card Shark, Rain Man) with unlock badges and criteria.
+- Direct tab activation via `initial_tab` (`<Shift-W>` for Wardrobe, `<Shift-H>` for Hall of Fame).
 - Disk persistence via SaveManager.
 """
 
@@ -114,7 +116,7 @@ class WardrobeDialog(tkinter.Toplevel):
         },
     ]
 
-    def __init__(self, parent: tkinter.Tk, app: Any):
+    def __init__(self, parent: tkinter.Tk, app: Any, initial_tab: int = 0):
         super().__init__(parent)
         self.app = app
         self.title("🎩 Dealer Wardrobe & Dressing Room")
@@ -148,6 +150,8 @@ class WardrobeDialog(tkinter.Toplevel):
         self._page_frames: Dict[int, tkinter.Frame] = {}
 
         self._build_ui()
+        if initial_tab in (0, 1) and initial_tab != 0:
+            self._switch_tab(initial_tab)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.bind("<Escape>", lambda e: self._on_close())
         self.bind("<Left>", lambda e: self._prev_page() if self.current_tab == 0 else None)

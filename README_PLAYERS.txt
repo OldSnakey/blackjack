@@ -22,15 +22,16 @@ HOW TO PLAY
 GAME CONTROLS & SHORTCUTS
 ------------------------------------------------------------------------------
 MOUSE CONTROLS:
-- Click on chips ($5, $25, $100, $500) to place your bet.
-- Click "Deal" to begin the round.
+- Click on chip buttons ($5, $25, $100, $500, $1,000) or click directly on your
+  bottom-right bankroll chip piles to add a chip from that pile to your bet.
+- Click "Deal Hand" to begin the round.
 - Click "Hit", "Stand", "Double", "Split", or "Surrender" as desired.
 - Click "All In" to wager your entire bankroll in Casino Mode.
 - Click "[M] Sound" to toggle audio ON or OFF.
 - Click "[🔍 2x]" / "[🔍 1x]" to toggle 1x / 2x interface scaling.
 - Click "[⛶ Full]" / "[🗗 Window]" to toggle fullscreen display mode.
 - Click "[?] Help" in the top bar to open the visual keyboard shortcuts HUD.
-- Check "[ ] Chips Mode" in the bottom-right action bar to toggle Casino / Casual play.
+- Click "[⚙ Settings]" (or press [Shift+M]) to switch between Casual, Betting, and Training modes.
 
 KEYBOARD SHORTCUTS (Hands-Free Play):
 - [Enter] or [Space] : Context-sensitive action (Deal Hand / Hit / Next Game)
@@ -39,17 +40,18 @@ KEYBOARD SHORTCUTS (Hands-Free Play):
 - [D]                : Double Down (Double bet, draw 1 card)
 - [P]                : Split Pair (Split equal-rank cards into 2 hands)
 - [R]                : Surrender (Forfeit half bet before hitting)
-- [1], [2], [3], [4] : Add $5, $25, $100, $500 chip to bet
+- [1]..[5]           : Add $5, $25, $100, $500, or $1,000 Platinum chip to bet
 - [A]                : All In (Wager full bankroll)
 - [C]                : Clear Current Bet
 - [Y] / [N, Esc]     : Take / Decline Insurance on Dealer Ace
 - [M]                : Mute / Unmute Audio Toggle
+- [Shift+M]          : Cycle Play Mode (Casual -> Betting -> Training)
 - [K] or [Shift+C]   : Toggle Card Counter Trainer HUD (Running Count, True Count, Quiz)
 - [Shift+W]          : Open Dealer Wardrobe & Costume Customizer
 - [Shift+H]          : Open Hall of Fame & Achievements
-- [V]                : Toggle Dealer Portrait View ON / OFF
+- [O] or [F2]        : Open Settings & Save Data Dialog
 - [X]                : Miracle Draw (Banish and redraw active card in Hell's Table)
-- [F10]              : Toggle 1x / 2x Interface Scaling
+- [Shift+S] or [F10] : Toggle 1x / 2x Interface Scaling
 - [F11]              : Toggle Fullscreen Mode
 - [?] or [F1]        : Toggle Keyboard Shortcuts Informational Overlay
 - [Esc]              : Close Shortcuts Overlay / Decline Insurance / Exit Fullscreen

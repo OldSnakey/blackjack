@@ -2,7 +2,8 @@
 Custom 2.5D Canvas Components and HUD Overlays for Blackjack.
 
 Provides:
-- ChipVisualizer: Procedural 2.5D betting spot with 3D stacked chips & micro-animations.
+- ChipVisualizer: Procedural 2.5D active betting spot & interactive bankroll reserve
+  chip piles ($5, $25, $100, $500, $1,000 Platinum) with 3D stacked chips & micro-animations.
 - SoulMeterCanvas: 2.5D tug-of-war soul meter for Hell's Table combat.
 - TableAnnouncementHUD: Two-tiered result and lore banner with click-to-dismiss.
 - HauntedAltarCanvas: 5 candles, 5 rising gravestones, dynamic drop shadows,
@@ -39,7 +40,7 @@ from config import (
     TABLE_BACKGROUND_COLOR,
     hex_to_rgb,
 )
-from rules import breakdown_chips
+from rules import breakdown_chips, breakdown_bankroll_piles
 
 # Parameterized Typography & HUD Constants
 HUD_OUTCOME_FONT_FAMILY = "Georgia"
@@ -58,21 +59,35 @@ HUD_DEFAULT_WRAPLENGTH = 600
 
 class ChipVisualizer(tkinter.Canvas):
     """
-    Renders a procedural 2.5D casino felt betting spot with 3D stacked chips
+    Renders a procedural 2.5D casino felt betting spot with 3D stacked chips,
+    an interactive bottom-right bankroll chip reserve tray separated by denomination,
     and non-blocking micro-animations for drops, clears, payouts, sweeps, and pushes.
     """
 
-    def __init__(self, master, width=180, height=135, background=PANEL_BACKGROUND_COLOR, **kwargs):
+    def __init__(
+        self,
+        master,
+        width=200,
+        height=135,
+        background=PANEL_BACKGROUND_COLOR,
+        on_chip_click: Optional[Callable[[int], None]] = None,
+        **kwargs,
+    ):
         super().__init__(
             master, width=width, height=height, background=background,
             highlightthickness=0, borderwidth=0, relief="flat", **kwargs
         )
         self.scale = 1.0
+        self.base_width = width
+        self.base_height = height
         self.canvas_width = width
         self.canvas_height = height
         self.cx = width // 2
-        self.cy = height // 2
+        self.cy = int(height * 0.31)
         self.current_bet = 0
+        self.available_bankroll = 1000
+        self.interactive_bankroll = True
+        self.on_chip_click = on_chip_click
         self._active_timers: set[str] = set()
         self._felt_slice_photo: Optional[Any] = None
         self._felt_slice_img: Optional[Any] = None
@@ -80,6 +95,7 @@ class ChipVisualizer(tkinter.Canvas):
         self._felt_coords: Optional[tuple[int, int]] = None
 
         self._draw_base_spot()
+        self.render_bankroll_piles()
 
     def sync_felt_background(self, felt_img: Optional[Any], rel_x: int, rel_y: int):
         """Draws the underlying felt texture slice as the canvas background item safely with no black borders."""
@@ -114,16 +130,17 @@ class ChipVisualizer(tkinter.Canvas):
     def set_scale(self, scale: float):
         """Scales visualizer canvas and re-renders base spot proportionally without table overflow."""
         self.scale = scale
-        self.canvas_width = int(180 * scale)
-        self.canvas_height = int(135 * (1.0 if scale <= 1.0 else 1.25))
+        self.canvas_width = int(getattr(self, "base_width", 200) * scale)
+        self.canvas_height = int(getattr(self, "base_height", 135) * (1.0 if scale <= 1.0 else 1.25))
         self.configure(width=self.canvas_width, height=self.canvas_height)
         self.cx = self.canvas_width // 2
-        self.cy = self.canvas_height // 2
+        self.cy = int(self.canvas_height * 0.31)
         if self._felt_source_img and self._felt_coords:
             self.sync_felt_background(self._felt_source_img, self._felt_coords[0], self._felt_coords[1])
         self._draw_base_spot()
         if self.current_bet > 0:
             self.render_stacks(self.current_bet)
+        self.render_bankroll_piles()
 
     def _draw_base_spot(self):
         """Draws the felt betting spot: outer dashed gold ellipse, inner accent ring, watermark, and badge."""
@@ -137,12 +154,12 @@ class ChipVisualizer(tkinter.Canvas):
 
         # 1. Outer betting circle felt background and golden dashed ring
         self.create_oval(
-            cx - int(74 * s), cy - int(38 * s), cx + int(74 * s), cy + int(38 * s),
+            cx - int(72 * s), cy - int(25 * s), cx + int(72 * s), cy + int(25 * s),
             outline="#d4af37", width=max(1, int(2 * s)), dash=(4, 3), fill="", tags="spot_base"
         )
         # 2. Inner subtle gold accent ring
         self.create_oval(
-            cx - int(66 * s), cy - int(32 * s), cx + int(66 * s), cy + int(32 * s),
+            cx - int(65 * s), cy - int(20 * s), cx + int(65 * s), cy + int(20 * s),
             outline="#8a6d1b", width=1, dash=(2, 3), tags="spot_ring"
         )
         # 3. Felt watermark
@@ -152,9 +169,85 @@ class ChipVisualizer(tkinter.Canvas):
         )
         # 4. Top badge for bet amount
         self.create_text(
-            cx, int(13 * s), text="", fill="#ffd700",
-            font=("Arial", max(8, int(9 * s)), "bold"), tags="badge"
+            cx, int(9 * s), text="", fill="#ffd700",
+            font=("Arial", max(7, int(8 * s)), "bold"), tags="badge"
         )
+        # 5. Divider & Bankroll Tray Header
+        tray_top_y = int(73 * s)
+        self.create_line(
+            int(10 * s), tray_top_y, self.canvas_width - int(10 * s), tray_top_y,
+            fill="#8a6d1b", width=1, dash=(2, 2), tags="tray_divider"
+        )
+        self.create_text(
+            cx, int(82 * s), text="", fill="#ffd54f",
+            font=("Arial", max(6, int(7 * s)), "bold"), tags="bankroll_badge"
+        )
+
+    def set_bankroll(self, available_bankroll: int, interactive: bool = True):
+        """Updates the player's available bankroll chip piles in the bottom reserve tray."""
+        self.available_bankroll = max(0, int(available_bankroll))
+        self.interactive_bankroll = bool(interactive)
+        self.render_bankroll_piles()
+
+    def trigger_pile_click(self, denom: int):
+        """Invokes the chip bet callback when a denomination pile in the bankroll tray is clicked."""
+        if self.interactive_bankroll and self.available_bankroll >= denom and callable(self.on_chip_click):
+            self.on_chip_click(denom)
+
+    def render_bankroll_piles(self):
+        """Draws the 5 interactive denomination piles ($5, $25, $100, $500, $1,000) in the bottom reserve tray."""
+        self.delete("bankroll_chip")
+        s = getattr(self, "scale", 1.0)
+        avail = getattr(self, "available_bankroll", 0)
+        hint_suffix = " (Click Pile)" if getattr(self, "interactive_bankroll", False) and avail >= 5 else ""
+        self.itemconfigure("bankroll_badge", text=f"CHIPS: ${avail:,}{hint_suffix}")
+
+        piles = breakdown_bankroll_piles(avail)
+        denoms = (5, 25, 100, 500, 1000)
+        num_cols = len(denoms)
+        margin_x = int(24 * s)
+        usable_w = max(40, self.canvas_width - 2 * margin_x)
+        spacing = usable_w / max(1, num_cols - 1)
+        base_y = int(self.canvas_height - int(18 * s))
+
+        for idx, denom in enumerate(denoms):
+            col_x = int(margin_x + idx * spacing)
+            count = piles.get(denom, 0)
+            style = CHIP_STYLES.get(denom, CHIP_STYLES[5])
+            pile_tag = f"bank_pile_{denom}"
+            combined_tags = ("bankroll_chip", pile_tag)
+            short_lbl = "$1K" if denom == 1000 else f"${denom}"
+
+            if count > 0:
+                visible_count = min(count, 5)
+                for c_idx in range(visible_count):
+                    chip_y = base_y - int(c_idx * 3 * s)
+                    is_top = (c_idx == visible_count - 1)
+                    self._draw_single_chip(
+                        col_x, chip_y, denom, style, is_top=is_top,
+                        count=count if count > 5 and is_top else None,
+                        tags=combined_tags, compact=True
+                    )
+                lbl_color = "#ffffff" if self.interactive_bankroll else "#b0bec5"
+            else:
+                rx, ry = int(12 * s), int(6 * s)
+                self.create_oval(
+                    col_x - rx, base_y - ry, col_x + rx, base_y + ry,
+                    outline="#5d4a18", width=1, dash=(2, 2), fill="", tags=combined_tags
+                )
+                lbl_color = "#6e6e6e"
+
+            self.create_text(
+                col_x, base_y + int(11 * s), text=short_lbl, fill=lbl_color,
+                font=("Arial", max(6, int(6 * s)), "bold"), tags=combined_tags
+            )
+
+            self.tag_bind(pile_tag, "<Button-1>", lambda e, d=denom: self.trigger_pile_click(d))
+            if self.interactive_bankroll and count > 0:
+                self.tag_bind(pile_tag, "<Enter>", lambda e: self.configure(cursor="hand2"))
+                self.tag_bind(pile_tag, "<Leave>", lambda e: self.configure(cursor=""))
+            else:
+                self.tag_bind(pile_tag, "<Enter>", lambda e: self.configure(cursor=""))
 
     def _is_animation_enabled(self) -> bool:
         """Determines if animations should run (only when window is actively mapped)."""
@@ -232,10 +325,13 @@ class ChipVisualizer(tkinter.Canvas):
                     count=count if count > 6 and is_top else None, tags="chip"
                 )
 
-    def _draw_single_chip(self, x: int, y: int, denom: int, style: dict, is_top: bool = False, count: int = None, tags="chip"):
+    def _draw_single_chip(self, x: int, y: int, denom: int, style: dict, is_top: bool = False, count: int = None, tags="chip", compact: bool = False):
         """Draws one 2.5D chip with rim thickness, edge stripes, top face, and denomination."""
         s = getattr(self, "scale", 1.0)
-        rx, ry, depth = int(15 * s), int(8 * s), int(4 * s)
+        if compact:
+            rx, ry, depth = int(12 * s), int(6 * s), int(3 * s)
+        else:
+            rx, ry, depth = int(14 * s), int(7 * s), int(4 * s)
 
         # 1. Shadow / bottom rim
         self.create_oval(
@@ -248,8 +344,9 @@ class ChipVisualizer(tkinter.Canvas):
         )
 
         # 2. Edge stripes
-        self.create_line(x - int(8 * s), y + 1, x - int(8 * s), y + depth, fill=style["stripe"], width=max(1, int(2 * s)), tags=tags)
-        self.create_line(x + int(8 * s), y + 1, x + int(8 * s), y + depth, fill=style["stripe"], width=max(1, int(2 * s)), tags=tags)
+        stripe_x = int((6 if compact else 8) * s)
+        self.create_line(x - stripe_x, y + 1, x - stripe_x, y + depth, fill=style["stripe"], width=max(1, int(2 * s)), tags=tags)
+        self.create_line(x + stripe_x, y + 1, x + stripe_x, y + depth, fill=style["stripe"], width=max(1, int(2 * s)), tags=tags)
 
         # 3. Top face
         self.create_oval(
@@ -263,10 +360,12 @@ class ChipVisualizer(tkinter.Canvas):
         )
 
         # 4. Text (denomination or count badge if stack is capped)
-        display_text = f"x{count}" if (count and count > 6) else f"${denom}"
+        short_denom = "$1K" if denom == 1000 else f"${denom}"
+        cap_limit = 5 if compact else 6
+        display_text = f"x{count}" if (count and count > cap_limit) else short_denom
         self.create_text(
             x, y, text=display_text, fill=style["fg"],
-            font=("Arial", 6 if len(display_text) > 3 else 7, "bold"), tags=tags
+            font=("Arial", 6 if len(display_text) > 3 or compact else 7, "bold"), tags=tags
         )
 
     def animate_chip_drop(self, added_amount: int, new_total: int, animated: bool = True):

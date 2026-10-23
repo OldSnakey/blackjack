@@ -2,16 +2,19 @@
 DealerActor Layered Sprite Compositor and Character Roster.
 
 Provides:
-- CharacterProfile metadata for Julian, Malphas, Uriel, and Mortimer.
-- Dynamic alpha-compositing across 5 sprite strata:
-  1. Torso (suit / mantle / robes)
-  2. Head (facial structure / hair / horns / halo / top hat)
-  3. Eyes (open / half-lidded / closed)
-  4. Mouth (neutral / talk / smirk / gasp)
-  5. Arms (rested / deal sweep / hole-card peek)
+- CharacterProfile metadata for all 8 dealer personas:
+  Julian, Tiffany, Malphas, Uriel, Mortimer, Selene, Vladimir, and Dummy.
+- Dynamic alpha-compositing across 7 sprite strata:
+  0. Shadow (ambient backdrop depth silhouette)
+  1. Torso (suit / gown / mantle / armor / robes / mannequin frame)
+  2. Neck (collar / neck articulation bridge)
+  3. Head (facial structure / hair / horns / halo / top hat)
+  4. Eyes (open / half-lidded / closed)
+  5. Mouth (neutral / talk / smirk / gasp + phonetic visemes 'a', 'o', 'e', 'f')
+  6. Arms (rested / deal sweep / hole-card peek)
 - In-memory PhotoImage caching for high-framerate rendering (25-30 FPS).
 - High-DPI 1x <-> 2x display scaling.
-- Costume switching with backwards-compatible alias normalization.
+- Costume switching with backwards-compatible alias normalization and `character_id` property.
 """
 
 from __future__ import annotations
@@ -222,6 +225,11 @@ class DealerActor:
         self._raw_layers_cache: Dict[str, Image.Image] = {}
         self._cached_composite_pil: Optional[Image.Image] = None
         self._cached_composite_photo: Optional[ImageTk.PhotoImage] = None
+
+    @property
+    def character_id(self) -> str:
+        """Returns the active character ID for AnimaleseVoiceEngine and UI callers."""
+        return self.current_character
 
     @staticmethod
     def _resolve_character_id(char_id: str) -> str:

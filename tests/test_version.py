@@ -46,6 +46,11 @@ class TestApplicationVersion(unittest.TestCase):
         finally:
             app._on_close()
 
+    def test_version_defined_solely_in_blackjack_module(self):
+        """__version__ must be maintained solely in blackjack.py, not duplicated as APP_VERSION in config.py."""
+        import config
+        self.assertFalse(hasattr(config, "APP_VERSION"))
+
 
 if __name__ == "__main__":
     unittest.main()

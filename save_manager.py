@@ -2,8 +2,9 @@
 Save Data Manager for Blackjack.
 
 Manages persistent storage in blackjack_save.json:
-- High scores (peak bankroll, win streaks, hands played/won, blackjacks).
-- Achievements (The Exorcist, High Roller, Natural Born Winner, Cursed Survivor, Split Maestro, Big Spender).
+- High scores (peak bankroll, win streaks, hands played/won, blackjacks, counting streaks).
+- Achievements (The Exorcist, High Roller, Natural Born Winner, Cursed Survivor,
+  Split Maestro, Big Spender, Card Shark, Rain Man).
 - Unlocked dealer costumes & equipped preference.
 - Blank slate reset with confirmation safety.
 """
