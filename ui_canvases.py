@@ -83,7 +83,7 @@ class ChipVisualizer(tkinter.Canvas):
         self.canvas_width = width
         self.canvas_height = height
         self.cx = width // 2
-        self.cy = int(height * 0.31)
+        self.cy = int(height * 0.28)
         self.current_bet = 0
         self.available_bankroll = 1000
         self.interactive_bankroll = True
@@ -134,7 +134,7 @@ class ChipVisualizer(tkinter.Canvas):
         self.canvas_height = int(getattr(self, "base_height", 135) * (1.0 if scale <= 1.0 else 1.25))
         self.configure(width=self.canvas_width, height=self.canvas_height)
         self.cx = self.canvas_width // 2
-        self.cy = int(self.canvas_height * 0.31)
+        self.cy = int(self.canvas_height * 0.28)
         if self._felt_source_img and self._felt_coords:
             self.sync_felt_background(self._felt_source_img, self._felt_coords[0], self._felt_coords[1])
         self._draw_base_spot()
@@ -173,13 +173,13 @@ class ChipVisualizer(tkinter.Canvas):
             font=("Arial", max(7, int(8 * s)), "bold"), tags="badge"
         )
         # 5. Divider & Bankroll Tray Header
-        tray_top_y = int(73 * s)
+        tray_top_y = int(68 * s)
         self.create_line(
             int(10 * s), tray_top_y, self.canvas_width - int(10 * s), tray_top_y,
             fill="#8a6d1b", width=1, dash=(2, 2), tags="tray_divider"
         )
         self.create_text(
-            cx, int(82 * s), text="", fill="#ffd54f",
+            cx, int(77 * s), text="", fill="#ffd54f",
             font=("Arial", max(6, int(7 * s)), "bold"), tags="bankroll_badge"
         )
 
@@ -208,7 +208,7 @@ class ChipVisualizer(tkinter.Canvas):
         margin_x = int(24 * s)
         usable_w = max(40, self.canvas_width - 2 * margin_x)
         spacing = usable_w / max(1, num_cols - 1)
-        base_y = int(self.canvas_height - int(18 * s))
+        base_y = int(self.canvas_height - int(22 * s))
 
         for idx, denom in enumerate(denoms):
             col_x = int(margin_x + idx * spacing)
@@ -1939,11 +1939,23 @@ class TableFeltCanvas(tkinter.Canvas):
             for child in parent.winfo_children():
                 cx = base_x + child.winfo_x()
                 cy = base_y + child.winfo_y()
-                if hasattr(child, "sync_felt_background") and bool(child.winfo_manager()):
-                    try:
-                        child.sync_felt_background(self._felt_img, cx, cy)
-                    except Exception:
-                        pass
+                if hasattr(child, "sync_felt_background"):
+                    if bool(child.winfo_manager()):
+                        try:
+                            child.sync_felt_background(self._felt_img, cx, cy)
+                        except Exception:
+                            pass
+                    elif getattr(child, "_felt_coords", None) is not None:
+                        try:
+                            prev_x, prev_y = child._felt_coords
+                            child.sync_felt_background(self._felt_img, prev_x, prev_y)
+                        except Exception:
+                            pass
+                    else:
+                        try:
+                            child.sync_felt_background(self._felt_img, cx, cy)
+                        except Exception:
+                            pass
                 if child.winfo_children():
                     _sync(child, cx, cy)
 

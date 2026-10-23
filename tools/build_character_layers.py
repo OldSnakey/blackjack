@@ -160,6 +160,12 @@ def generate_character_layers(char_id: str, cfg: dict):
     bust_2x.save(out_dir / "bust_2x.png")
     bust_1x.save(out_dir / "bust.png")
 
+    from build_roster_puppet_assets import ROSTER_PUPPET_CONFIGS, rebuild_puppet_layers_from_bust
+    if char_id in ROSTER_PUPPET_CONFIGS:
+        rebuild_puppet_layers_from_bust(char_id, ROSTER_PUPPET_CONFIGS[char_id])
+        print(f"Generated all refined zero-banding puppet layers for {char_id} successfully.")
+        return
+
     collar_y = cfg["collar_y"]
     eyes_box = cfg["eyes_box"]
     mouth_box = cfg["mouth_box"]

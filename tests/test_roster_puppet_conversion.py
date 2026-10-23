@@ -95,6 +95,67 @@ class TestRosterPuppetConversion(unittest.TestCase):
                 img = self.actor.get_composite_image()
                 self.assertIsNotNone(img.getbbox())
 
+    def test_zero_collar_seam_and_zero_facial_banding_at_2x(self):
+        """All primary dealer puppets must have 100% opaque interior face/neck/collar pixels (no alpha<255 horizontal slits or black-premultiplied boxes)."""
+        import numpy as np
+
+        for cid in ("julian", "malphas", "uriel", "mortimer", "tiffany", "selene", "vladimir"):
+            self.actor.equip_costume(cid)
+            self.actor.set_scale(2.0)
+            self.actor.set_eye_state("open")
+            self.actor.set_mouth_state("neutral")
+            self.actor.set_arm_state("rest")
+
+            comp = np.array(self.actor.get_composite_image())
+            # Central vertical spine of face & neck & torso (x: 106..118, y: 70..145) must be 100% opaque (alpha == 255)
+            spine_alpha = comp[70:145, 106:118, 3]
+            min_alpha = int(spine_alpha.min())
+            self.assertEqual(
+                min_alpha,
+                255,
+                f"Character '{cid}' has semi-transparent interior neck/collar seam (min alpha={min_alpha} < 255)!"
+            )
+
+            # Face & collar composite (y: 25..120, x: 75..150) in neutral state must match bust_2x
+            # with zero rectangular feather-border banding or collar darkening
+            bust_img = self.actor.get_bust_image(cid, scale_factor=2.0)
+            self.assertIsNotNone(bust_img)
+            comp_face = comp[25:120, 75:150, :3].astype(int)
+            bust_face = np.array(bust_img)[25:120, 75:150, :3].astype(int)
+            face_diff = np.abs(comp_face - bust_face).max(axis=2)
+            self.assertLessEqual(
+                int((face_diff > 15).sum()),
+                10,
+                f"Character '{cid}' neutral composite face has {int((face_diff > 15).sum())} banded/divergent pixels vs bust_2x!"
+            )
+
+    def test_visemes_and_eye_states_produce_distinct_composites(self):
+        """Changing eye_state or mouth_state on puppet characters visibly alters the rendered composite."""
+        import numpy as np
+
+        for cid in ("julian", "malphas", "uriel", "mortimer", "tiffany", "selene", "vladimir"):
+            self.actor.equip_costume(cid)
+            self.actor.set_scale(2.0)
+            self.actor.set_eye_state("open")
+            self.actor.set_mouth_state("neutral")
+            base_arr = np.array(self.actor.get_composite_image())
+
+            self.actor.set_eye_state("closed")
+            closed_arr = np.array(self.actor.get_composite_image())
+            self.assertFalse(
+                np.array_equal(base_arr, closed_arr),
+                f"Character '{cid}' eyes_closed composite is identical to eyes_open!"
+            )
+
+            self.actor.set_eye_state("open")
+            for vstate in ("a", "o", "e", "talk", "smirk", "gasp"):
+                self.actor.set_mouth_state(vstate)
+                v_arr = np.array(self.actor.get_composite_image())
+                self.assertFalse(
+                    np.array_equal(base_arr, v_arr),
+                    f"Character '{cid}' mouth_{vstate} composite is identical to mouth_neutral!"
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -291,6 +291,7 @@ class DealerActor:
 
     def _invalidate_composite(self) -> None:
         self._cached_composite_pil = None
+        self._cached_composite_2x_pil = None
         self._cached_composite_photo = None
 
     def get_profile(self, character_id: Optional[str] = None) -> CharacterProfile:
@@ -298,12 +299,12 @@ class DealerActor:
         cid = self._resolve_character_id(character_id) if character_id else self.current_character
         return CHARACTERS.get(cid, CHARACTERS["julian"])
 
-    def get_layer_image(self, layer_name: str) -> Optional[Image.Image]:
+    def get_layer_image(self, layer_name: str, force_2x: bool = False) -> Optional[Image.Image]:
         """Public accessor for discrete layer images."""
-        return self._get_layer_image(layer_name)
+        return self._get_layer_image(layer_name, force_2x=force_2x)
 
-    def _get_layer_image(self, layer_name: str) -> Optional[Image.Image]:
-        suffix = "_2x" if self.scale_factor > 1.5 else ""
+    def _get_layer_image(self, layer_name: str, force_2x: bool = False) -> Optional[Image.Image]:
+        suffix = "_2x" if (force_2x or self.scale_factor > 1.5) else ""
         cache_key = f"{self.current_character}_{layer_name}{suffix}"
         if cache_key in self._raw_layers_cache:
             return self._raw_layers_cache[cache_key]
@@ -337,13 +338,17 @@ class DealerActor:
                 return None
         return None
 
-    def get_composite_image(self) -> Image.Image:
+    def get_composite_image(self, force_2x: bool = False) -> Image.Image:
         """Assembles active sprite strata according to character profile (puppet vs legacy)."""
-        if self._cached_composite_pil is not None:
+        use_2x = force_2x or (self.scale_factor > 1.5)
+        if use_2x and not (self.scale_factor > 1.5):
+            if getattr(self, "_cached_composite_2x_pil", None) is not None:
+                return self._cached_composite_2x_pil
+        elif self._cached_composite_pil is not None:
             return self._cached_composite_pil
 
         # Determine canvas size
-        target_size = (224, 224) if self.scale_factor > 1.5 else (112, 112)
+        target_size = (224, 224) if use_2x else (112, 112)
         composite = Image.new("RGBA", target_size, (0, 0, 0, 0))
 
         profile = self.get_profile()
@@ -371,14 +376,17 @@ class DealerActor:
             layer_names.append(f"arm_{self.arm_state}")
 
         for lname in layer_names:
-            l_img = self._get_layer_image(lname)
+            l_img = self._get_layer_image(lname, force_2x=use_2x)
             if l_img is not None:
                 if l_img.size != target_size:
-                    resample = getattr(Image, "Resampling", Image).BILINEAR
+                    resample = getattr(Image, "Resampling", Image).LANCZOS
                     l_img = l_img.resize(target_size, resample)
                 composite.alpha_composite(l_img)
 
-        self._cached_composite_pil = composite
+        if use_2x and not (self.scale_factor > 1.5):
+            self._cached_composite_2x_pil = composite
+        else:
+            self._cached_composite_pil = composite
         return composite
 
     def get_photo_image(self) -> Optional[ImageTk.PhotoImage]:

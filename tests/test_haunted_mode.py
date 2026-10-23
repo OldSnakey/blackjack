@@ -635,6 +635,43 @@ class TestHauntedGui(unittest.TestCase):
         self.assertFalse(self.app.haunted.can_use_seraph_redraw())
         self.assertEqual(self.app._score_player_hand(self.app.player_hands[0]), 26)
 
+    def test_victory_return_to_normal_cleans_up_felt_and_syncs_chip_visualizer(self):
+        """Exiting Hell's Table upon defeating Pit Boss restores normal felt on ChipVisualizer and hides relics/accessories."""
+        self.app.chips_mode_var.set(True)
+        self.app._on_toggle_chips_mode()
+        self.root.update_idletasks()
+
+        # Enter Hell's Table and equip a blessing so blessings_tray is visible
+        self.app._trigger_hell_table()
+        self.app.haunted.equip_blessing(Blessing.SERAPH)
+        self.app._update_blessings_tray()
+        self.root.update_idletasks()
+
+        self.assertEqual(self.app.card_table_frame.current_theme, "hell")
+        self.assertTrue(bool(self.app.blessings_tray.grid_info()))
+        self.assertFalse(bool(self.app.chip_visualizer.grid_info()))
+
+        # Trigger Victory (headless mode immediately invokes on_victory_close)
+        self.app._show_victory_dialog()
+        self.root.update_idletasks()
+
+        # 1. Phase and table theme must be back to NORMAL ("casino")
+        self.assertEqual(self.app.haunted.phase, Phase.NORMAL)
+        self.assertEqual(self.app.card_table_frame.current_theme, "casino")
+
+        # 2. ChipVisualizer must be mapped AND its _felt_source_img must match the normal casino _felt_img (not Hell's Table!)
+        self.assertTrue(bool(self.app.chip_visualizer.grid_info()))
+        self.assertIs(
+            self.app.chip_visualizer._felt_source_img,
+            self.app.card_table_frame._felt_img,
+            "ChipVisualizer retained stale Hell's Table felt background after victory!"
+        )
+
+        # 3. Relics blessings_tray, soul_meter_canvas, and accessories_frame must all be unmapped
+        self.assertFalse(bool(self.app.blessings_tray.grid_info()), "Relics tray remained mapped after victory!")
+        self.assertFalse(bool(self.app.soul_meter_canvas.grid_info()), "Soul meter remained mapped after victory!")
+        self.assertFalse(bool(self.app.accessories_frame.grid_info()), "Accessories frame remained mapped as a flat patch on normal table!")
+
 
 if __name__ == "__main__":
     unittest.main()

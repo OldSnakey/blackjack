@@ -632,6 +632,7 @@ class BlackjackApp:
         # Table Accessories Frame (Haunted Altar: 5 Candles & 5 Rising Gravestones on Table Felt)
         self.accessories_frame = tkinter.Frame(card_table_frame, background=PANEL_BACKGROUND_COLOR, borderwidth=0, highlightthickness=0)
         self.accessories_frame.grid(row=0, column=2, sticky="ne", padx=0, pady=0)
+        self.accessories_frame.grid_remove()
 
         # Unified 2.5D Haunted Altar Canvas (5 Candles, Directional Shadows, Rising Gravestones)
         self.haunted_altar = HauntedAltarCanvas(
@@ -1618,14 +1619,14 @@ class BlackjackApp:
         """Returns a high-resolution, scale-proportional PhotoImage for the horizon stage with curtain headroom."""
         if not hasattr(self, "dealer_actor"):
             return None
-        pil_img = self.dealer_actor.get_composite_image()
+        pil_img = self.dealer_actor.get_composite_image(force_2x=True)
         stage_h = self.dealer_stage_canvas.winfo_height() if hasattr(self, "dealer_stage_canvas") else 250
         if stage_h <= 20:
             stage_h = getattr(self.dealer_stage_canvas, "canvas_height", 250) if hasattr(self, "dealer_stage_canvas") else 250
         max_h = max(100, int(stage_h * 0.88))
         target_size = min(int(190 * self.scale_factor), max_h)
         if pil_img.size != (target_size, target_size):
-            resample_mode = getattr(Image, "Resampling", Image).BILINEAR
+            resample_mode = getattr(Image, "Resampling", Image).LANCZOS
             pil_img = pil_img.resize((target_size, target_size), resample_mode)
         self._scaled_dealer_photo = ImageTk.PhotoImage(pil_img, master=self.root)
         return self._scaled_dealer_photo
@@ -1916,10 +1917,24 @@ class BlackjackApp:
         if hasattr(self, "dealer_nameplate_label"):
             self.dealer_nameplate_label.configure(background=bg_col)
 
+    def _sync_accessories_frame_visibility(self):
+        """Maps accessories_frame only when Haunted Altar or legacy accessory bars are visible."""
+        if not hasattr(self, "accessories_frame"):
+            return
+        altar_mapped = hasattr(self, "haunted_altar") and bool(self.haunted_altar.winfo_manager())
+        candles_mapped = hasattr(self, "candle_bar_frame") and bool(self.candle_bar_frame.winfo_manager())
+        graves_mapped = hasattr(self, "gravestones_frame") and bool(self.gravestones_frame.winfo_manager())
+        if altar_mapped or candles_mapped or graves_mapped:
+            self.accessories_frame.grid(row=0, column=2, sticky="ne", padx=0, pady=0)
+        else:
+            self.accessories_frame.grid_remove()
+
     def _update_candles_display(self):
         """Synchronizes 5-candle indicator bar and 2.5D Altar with remaining candles."""
         if hasattr(self, "haunted_altar"):
             if self.haunted.phase in (Phase.OMEN, Phase.SNUFFING) or (self.haunted.phase == Phase.HELL_TABLE and self.haunted.candles_remaining > 0):
+                if hasattr(self, "accessories_frame"):
+                    self.accessories_frame.grid(row=0, column=2, sticky="ne", padx=0, pady=0)
                 if not getattr(self, "_candles_manifested", False):
                     self.haunted_altar.pack(side="top", pady=0)
                     self.haunted_altar.animate_candle_poof()
@@ -1951,6 +1966,7 @@ class BlackjackApp:
                         lbl.image = img
             else:
                 self.candle_bar_frame.pack_forget()
+        self._sync_accessories_frame_visibility()
 
     def _update_gravestones_display(self):
         """Displays gravestones rising through the felt on deaths / busts with kinetic eruption."""
@@ -1960,6 +1976,8 @@ class BlackjackApp:
                 if not (self.haunted.phase in (Phase.OMEN, Phase.SNUFFING) or (self.haunted.phase == Phase.HELL_TABLE and self.haunted.candles_remaining > 0)):
                     self.haunted_altar.pack_forget()
             else:
+                if hasattr(self, "accessories_frame"):
+                    self.accessories_frame.grid(row=0, column=2, sticky="ne", padx=0, pady=0)
                 self.haunted_altar.pack(side="top", pady=0)
                 try:
                     self.root.update_idletasks()
@@ -1990,6 +2008,7 @@ class BlackjackApp:
                     lbl = tkinter.Label(self.gravestones_frame, image=grave_img, background=PANEL_BACKGROUND_COLOR)
                     lbl.image = grave_img
                     self.gravestone_labels.append(lbl)
+        self._sync_accessories_frame_visibility()
 
     def _update_blessings_tray(self):
         """Renders equipped relic badges in the blessings tray."""
@@ -2324,18 +2343,24 @@ class BlackjackApp:
 
         def on_victory_close():
             self.haunted.reset_after_victory()
-            self._apply_phase_theme(Phase.NORMAL)
             self._candles_manifested = False
-            if hasattr(self, "haunted_altar"):
-                self.haunted_altar.set_gravestone_state(0, visible=False)
-                self.haunted_altar.set_candle_state(0, visible=False)
-                self.haunted_altar.pack_forget()
+            self._last_gravestones_risen = 0
+            self._update_candles_display()
+            self._update_gravestones_display()
+            self._update_blessings_tray()
             if hasattr(self, "pumpkin_label"):
                 self.pumpkin_label.pack_forget()
             if hasattr(self, "soul_meter_canvas"):
                 self.soul_meter_canvas.grid_remove()
             if hasattr(self, "chip_visualizer") and self.chips_mode_var.get():
                 self.chip_visualizer.grid()
+            self._apply_phase_theme(Phase.NORMAL)
+            if hasattr(self, "card_table_frame") and isinstance(self.card_table_frame, TableFeltCanvas):
+                try:
+                    self.card_table_frame.sync_children_felt()
+                except Exception:
+                    pass
+            self._update_bankroll_display()
             self._update_dealer_avatar()
             self.set_dealer_speech("✦ Darkness is banished! Peace returns to the table. ✦", stream=True)
             self.result_var.set("VICTORY! +$6,666 Exorcist Bounty Claimed!")
