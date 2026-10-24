@@ -135,6 +135,9 @@ from dealer_wardrobe_dialog import WardrobeDialog
 from haunted_manager import HauntedManager, Phase, Blessing, BLESSING_REGISTRY
 from card_counter import HiLoCardCounter
 from card_counting_hud import CardCountingHud, CardCountingQuizDialog, FloatingCountBadge
+from event_bus import EventHub, GameEventType, GameEvent
+from game_engine import BlackjackEngine, RoundResult
+from state_machine import GameStateMachine
 
 
 # ============================================================================
@@ -207,12 +210,30 @@ class BlackjackApp:
         self.shoe_needs_reshuffle = False
         self.shoe_info_var = tkinter.StringVar(value="")
 
+        # In-Memory Event Hub & Headless Game Engine Architecture
+        self.event_bus = EventHub()
+        self.engine = BlackjackEngine(
+            bankroll=STARTING_BANKROLL,
+            deck_count=self.deck_count,
+            event_bus=self.event_bus,
+        )
+        self.fsm = self.engine.fsm
+
         # Game State Collections
         self.deck = []
         self.all_cards = []
-        self.player_hands = [[]]
+        self.player_hands = [Hand()]
         self.active_hand_index = 0
-        self.dealer_hand = []
+        self.dealer_hand = Hand()
+        self.engine.player_hands = self.player_hands
+        self.engine.dealer_hand = self.dealer_hand
+
+        # EventHub Subscribers
+        def _on_card_dealt_sync(ev: GameEvent):
+            if hasattr(self, "card_table_frame") and hasattr(self.card_table_frame, "update_shoe_penetration"):
+                total = max(1, len(self.all_cards) * self.deck_count if self.all_cards else self.deck_count * 52)
+                self.card_table_frame.update_shoe_penetration(len(self.deck), total)
+        self.event_bus.subscribe(GameEventType.CARD_DEALT, _on_card_dealt_sync)
 
         # Hi-Lo Card Counting Trainer Subsystem
         self.card_counter = HiLoCardCounter(deck_count=self.deck_count)
@@ -2562,9 +2583,12 @@ class BlackjackApp:
                 self.sound_manager.play_card_shuffle()
 
         self._update_shoe_display()
-        self.player_hands = [[]]
+        self.player_hands = [Hand()]
         self.active_hand_index = 0
-        self.dealer_hand.clear()
+        self.dealer_hand = Hand()
+        if hasattr(self, "engine"):
+            self.engine.player_hands = self.player_hands
+            self.engine.dealer_hand = self.dealer_hand
         self.dealer_hole_card = None
         self.dealer_hole_widget = None
         self.is_hole_card_hidden = False
@@ -2806,6 +2830,11 @@ class BlackjackApp:
         self.bankroll_var.set(bankroll - bet)
         self.hand_bets = [bet]
         self.is_betting_phase = False
+        if hasattr(self, "engine"):
+            self.engine.current_bet = bet
+            self.engine.bankroll = self.bankroll_var.get()
+        if hasattr(self, "event_bus") and self.event_bus:
+            self.event_bus.emit(GameEventType.BET_COMMITTED, {"bet": bet, "bankroll": self.bankroll_var.get()})
         if hasattr(self, "chip_visualizer"):
             self.chip_visualizer.set_bet(bet, animate=False)
         self._update_bankroll_display()
@@ -2961,6 +2990,9 @@ class BlackjackApp:
         total_shoe_cards = len(self.all_cards) * self.deck_count
         if len(self.deck) <= int(total_shoe_cards * CUT_CARD_PENETRATION):
             self.shoe_needs_reshuffle = True
+
+        if hasattr(self, "event_bus") and self.event_bus:
+            self.event_bus.emit(GameEventType.CARD_DEALT, {"card": card, "cards_remaining": len(self.deck)})
 
         self._update_shoe_display()
 
@@ -3358,8 +3390,15 @@ class BlackjackApp:
         # 1. Separate into two hands
         card1 = self.player_hands[0][0]
         card2 = self.player_hands[0][1]
-        self.player_hands = [[card1], [card2]]
+        hand1_bet = self.hand_bets[0] if self.hand_bets else 0
+        h1 = Hand([card1], bet=hand1_bet, is_split=True)
+        h2 = Hand([card2], bet=hand1_bet, is_split=True)
+        self.player_hands = [h1, h2]
         self.active_hand_index = 0
+        if hasattr(self, "engine"):
+            self.engine.player_hands = self.player_hands
+        if hasattr(self, "event_bus") and self.event_bus:
+            self.event_bus.emit(GameEventType.HAND_SPLIT, {"hands": 2})
 
         # 2. Deal second card to both Hand 1 and Hand 2
         self._deal_card_to_player(hand_index=0)
@@ -3396,6 +3435,11 @@ class BlackjackApp:
 
         # Mark double flag for Hell's Table scoring calculations
         self._last_was_double = True
+        active_h = self.player_hands[self.active_hand_index]
+        if isinstance(active_h, Hand):
+            active_h.is_doubled = True
+            if self.hand_bets and self.active_hand_index < len(self.hand_bets):
+                active_h.bet = self.hand_bets[self.active_hand_index]
 
         # Disable double, split, and surrender buttons immediately
         self.double_button.configure(state="disabled")
@@ -3638,6 +3682,18 @@ class BlackjackApp:
                 self.result_var.set(f"Hand 1: {messages[0]} ({p1_str}) | Hand 2: {messages[1]} ({p2_str}){ins_str}")
 
             net_round = total_profit + ins_profit
+            if hasattr(self, "engine"):
+                self.engine.bankroll = self.bankroll_var.get()
+            if hasattr(self, "fsm"):
+                try:
+                    self.fsm.transition_to(RoundPhase.ROUND_OVER, force=True)
+                except Exception:
+                    pass
+            if hasattr(self, "event_bus") and self.event_bus:
+                self.event_bus.emit(
+                    GameEventType.ROUND_RESOLVED,
+                    {"outcomes": outcomes, "payouts": payouts, "bankroll": self.bankroll_var.get()},
+                )
             if hasattr(self, "chip_visualizer"):
                 if net_round > 0:
                     self.chip_visualizer.animate_win(net_round)

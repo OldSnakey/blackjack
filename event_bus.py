@@ -24,6 +24,9 @@ class GameEventType(Enum):
     ROUND_RESOLVED = "round_resolved"
     CANDLE_SNUFFED = "candle_snuffed"
     PHASE_CHANGED = "phase_changed"
+    INSURANCE_TAKEN = "insurance_taken"
+    INSURANCE_DECLINED = "insurance_declined"
+    SHOE_RESHUFFLED = "shoe_reshuffled"
 
 
 @dataclass(frozen=True)

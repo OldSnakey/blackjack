@@ -334,7 +334,7 @@ The card counting trainer (`card_counter.py`, `card_counting_hud.py`) models the
 
 ## Automated Testing
 
-The project includes an exhaustive automated test suite with **300+ unit tests** written with Python's built-in `unittest` framework, validating domain logic, Tkinter GUI widgets, audio fallbacks, and rendering geometry.
+The project includes an exhaustive automated test suite with **350+ unit tests** written with Python's built-in `unittest` framework, validating domain logic, Tkinter GUI widgets, audio fallbacks, and rendering geometry.
 
 ### Running the Tests
 To run all tests with verbose output:
@@ -346,6 +346,7 @@ python -m unittest discover tests -v
 ### Test Coverage Summary
 | Test File | Description |
 | :--- | :--- |
+| [`tests/test_architectural_integration.py`](tests/test_architectural_integration.py) | Full integration tests validating end-to-end domain wiring between `BlackjackApp`, `BlackjackEngine`, `GameStateMachine`, `EventHub`, and `Hand` abstractions across real game lifecycles. |
 | [`tests/test_basic_strategy.py`](tests/test_basic_strategy.py) | Unit tests for pure Basic Strategy domain decision math: pair splits (A-A, 8-8, 5-5 double, 4-4, 9-9), late surrender (16 vs 9/10/A, 15 vs 10), soft hands (A-2 through A-9 vs dealer upcards), and hard hand hit/stand/double thresholds. |
 | [`tests/test_betting.py`](tests/test_betting.py) | Tests pure payout calculations (3:2, 1:1, push, loss, surrender), 2:1 insurance payouts with odd-bet breakeven guarantees, chip denomination breakdowns, ChipVisualizer state sync/animations, default Chips Mode, and bankroll tracking. |
 | [`tests/test_card_counter.py`](tests/test_card_counter.py) | Unit tests for pure Hi-Lo card counting logic: tag values (+1, 0, -1), Running Count accumulation, cut-card penetration shoe resets, decks remaining calculation with 0.5 minimum clamp, True Count estimation, bet spread sizing, and quiz verification. |
@@ -358,9 +359,11 @@ python -m unittest discover tests -v
 | [`tests/test_dialogue_voice_engine.py`](tests/test_dialogue_voice_engine.py) | Validates procedural 16-bit mono 44.1 kHz PCM WAV byte buffer generation, 1:1 deterministic viseme-to-sound phonetic consistency, voice profile registration, volume/mute handling, and question/period/exclamation pitch inflection. |
 | [`tests/test_double_down.py`](tests/test_double_down.py) | Tests Double Down eligibility (2 cards only, bankroll checks), wager doubling, single card draw, auto-stand, and bust resolution. |
 | [`tests/test_event_bus.py`](tests/test_event_bus.py) | Validates synchronous pub-sub event dispatch, subscriber registration, unsubscription, and payload propagation across `EventHub`. |
+| [`tests/test_game_engine.py`](tests/test_game_engine.py) | Modular headless unit tests for `BlackjackEngine`: round initialization, dealing, player actions, dealer drawing, outcome evaluation, insurance side bets, and cut-card penetration triggers. |
 | [`tests/test_game_rules.py`](tests/test_game_rules.py) | Tests win/loss/push evaluations, dealer AI hit/stand rules, Natural Blackjack vs split 21s (1:1 payout), and surrender payouts. |
 | [`tests/test_gui_state.py`](tests/test_gui_state.py) | Validates actual `BlackjackApp` widget states (Hit, Stand, Double, Split, Surrender, New Game buttons, ties, timer cleanup) across real game lifecycle transitions. |
 | [`tests/test_hall_of_fame_and_achievements.py`](tests/test_hall_of_fame_and_achievements.py) | Tests Hall of Fame modal GUI, badge rendering, stats aggregation, and achievement unlock triggers. |
+| [`tests/test_hand.py`](tests/test_hand.py) | Modular domain unit tests for the pure `Hand` class: card accumulation, soft/hard scoring, sequence protocol (`len`, `getitem`, `iter`), equality, and string formatting. |
 | [`tests/test_haunted_mode.py`](tests/test_haunted_mode.py) | Validates Haunted Halloween phase transitions, Card 13 manifestation & immediate deal bust handling, candle snuffing, gravestone rising, Pit Fiend composite, Soul Meter animations, and relic mechanics. |
 | [`tests/test_living_animations.py`](tests/test_living_animations.py) | Validates DealerActor autonomous idle breathing, blinking cadence, typewriter speech timers, and gesture transitions. |
 | [`tests/test_puppet_multi_layer_actor.py`](tests/test_puppet_multi_layer_actor.py) | Tests discrete multi-layer puppet rigging (shadow, torso, neck, head, eyes, mouth, arms), high-contrast dummy asset integrity, Tiffany 2.0 puppet integration, phonetic viseme mapping ('a', 'o', 'e', 'f', 'talk'), Z-order compositing, and backward-compatible costume fallback. |
@@ -438,12 +441,14 @@ Blackjack/
 │   ├── capture_universal_puppet_audit.py # Visual contact sheet generator for universal 7-layer dealer puppets & poses
 │   ├── capture_wardrobe_dummy_demo.py # Automation tool for capturing wardrobe dialog with dummy puppet
 │   ├── capture_welcome_splash_verification.py # Automation tool for capturing WelcomeSplashDialog and table mode verifications
-│   └── deocclude_dealer_faceplates.py # Pipeline tool for de-occluding mannequin faceplates, isolating eye sockets, and building articulated arm poses
+│   ├── deocclude_dealer_faceplates.py # Pipeline tool for de-occluding mannequin faceplates, isolating eye sockets, and building articulated arm poses
+│   └── test_counting_simulation.py # Monte Carlo simulation runner validating Hi-Lo card counting invariants across 10,000 deals
 ├── docs/
 │   ├── ARCHITECTURE_CRC.md         # Class-Responsibility-Collaboration (CRC) architecture & review
 │   └── ITCH_IO_GUIDE.md            # itch.io deployment, store copy, and release guide
-└── tests/                          # Automated test suite (300+ unit tests)
+└── tests/                          # Automated test suite (350+ unit tests)
     ├── __init__.py
+    ├── test_architectural_integration.py
     ├── test_basic_strategy.py
     ├── test_betting.py
     ├── test_card_counter.py
@@ -456,9 +461,11 @@ Blackjack/
     ├── test_dialogue_voice_engine.py
     ├── test_double_down.py
     ├── test_event_bus.py
+    ├── test_game_engine.py
     ├── test_game_rules.py
     ├── test_gui_state.py
     ├── test_hall_of_fame_and_achievements.py
+    ├── test_hand.py
     ├── test_haunted_mode.py
     ├── test_living_animations.py
     ├── test_puppet_multi_layer_actor.py

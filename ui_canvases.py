@@ -1960,3 +1960,81 @@ class TableFeltCanvas(tkinter.Canvas):
                     _sync(child, cx, cy)
 
         _sync(self, 0, 0)
+
+    # ------------------------------------------------------------------------
+    # Layer 1: Visual Shoe Tray & Discard Rack
+    # ------------------------------------------------------------------------
+    def draw_shoe_tray(self, remaining: int = 208, total: int = 208):
+        """Renders 2.5D acrylic card shoe in upper right table rail with stack depth."""
+        self.delete("shoe_tray")
+        if self.canvas_width < 400:
+            return
+        s = self.scale_factor
+        w = self.canvas_width
+        sx = w - int(95 * s)
+        sy = int(8 * s)
+        sw = int(80 * s)
+        sh = int(45 * s)
+
+        # Acrylic shoe housing (clear polycarbonate with subtle bevel highlight)
+        self.create_rectangle(sx, sy, sx + sw, sy + sh, fill="#0a1812", outline="#2e543e", width=max(1, int(1.5 * s)), tags="shoe_tray")
+        self.create_rectangle(sx + 2, sy + 2, sx + sw - 2, sy + sh - 2, fill="#0d2419", outline="", tags="shoe_tray")
+
+        # Stack depth based on remaining cards
+        ratio = max(0.0, min(1.0, remaining / max(1, total)))
+        stack_w = max(4, int((sw - 12) * ratio))
+
+        # Cards remaining block
+        self.create_rectangle(sx + 6, sy + 6, sx + 6 + stack_w, sy + sh - 6, fill="#f5f5f0", outline="#b0bec5", tags="shoe_tray")
+        # Card edge lines for tactile 3D effect
+        if stack_w > 12:
+            for step in range(sx + 10, sx + 6 + stack_w, max(4, int(6 * s))):
+                self.create_line(step, sy + 6, step, sy + sh - 6, fill="#cfd8dc", tags="shoe_tray")
+
+        # Red plastic cut-card penetration indicator
+        cut_x = sx + 6 + int((sw - 12) * 0.25)
+        self.create_line(cut_x, sy + 4, cut_x, sy + sh - 4, fill="#ff1744", width=max(1, int(2 * s)), tags="shoe_tray")
+
+        # Front roller / brass exit mouth
+        self.create_rectangle(sx + 2, sy + sh - int(8 * s), sx + sw - 2, sy + sh, fill="#b58830", outline="#ffd700", tags="shoe_tray")
+
+    def draw_discard_rack(self, discarded: int = 0, total: int = 208):
+        """Renders acrylic discard rack adjacent to the shoe tray."""
+        self.delete("discard_rack")
+        if self.canvas_width < 500:
+            return
+        s = self.scale_factor
+        w = self.canvas_width
+        dx = w - int(190 * s)
+        dy = int(8 * s)
+        dw = int(80 * s)
+        dh = int(45 * s)
+
+        # Clear acrylic discard holder
+        self.create_rectangle(dx, dy, dx + dw, dy + dh, fill="#0a1812", outline="#2e543e", width=max(1, int(1.5 * s)), tags="discard_rack")
+
+        # Discarded stack depth
+        ratio = max(0.0, min(1.0, discarded / max(1, total)))
+        if ratio > 0.05:
+            d_stack_w = max(3, int((dw - 12) * ratio))
+            self.create_rectangle(dx + 6, dy + 6, dx + 6 + d_stack_w, dy + dh - 6, fill="#e0e0dc", outline="#9e9e9e", tags="discard_rack")
+
+    def update_shoe_penetration(self, remaining: int, total: int):
+        """Updates both shoe tray and discard rack to reflect live card penetration."""
+        self.draw_shoe_tray(remaining, total)
+        self.draw_discard_rack(max(0, total - remaining), total)
+
+    # ------------------------------------------------------------------------
+    # Layer 3: Canvas Card Sprites
+    # ------------------------------------------------------------------------
+    def draw_card_sprite(self, image: Any, x: int, y: int, tags: str = "card_sprite") -> int:
+        """Renders a card image item directly onto the felt canvas."""
+        return self.create_image(x, y, image=image, anchor="nw", tags=tags)
+
+    def move_card_sprite(self, item_id: int, target_x: int, target_y: int):
+        """Reposition a card sprite on the felt canvas."""
+        self.coords(item_id, target_x, target_y)
+
+    def clear_card_sprites(self, tag: str = "card_sprite"):
+        """Removes canvas card sprites matching the specified tag."""
+        self.delete(tag)

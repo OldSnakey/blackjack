@@ -396,9 +396,9 @@ When playing in Haunted Mode:
 
 ---
 
-## 4. Critical Review & Areas of Potential Improvement
+## 4. Architectural Evolution & Implemented Improvements
 
-While the codebase is modularized into 12 focused modules, an architectural analysis identifies several long-term structural opportunities for future refactoring:
+The 5 architectural improvements identified during CRC analysis have been fully implemented, verified via lower-level modular unit tests, and integrated into `BlackjackApp`:
 
 ---
 
@@ -413,8 +413,8 @@ While the codebase is modularized into 12 focused modules, an architectural anal
 - Timer animation callbacks (`self._deal_timer_id`, `self._dealer_timer_id`).
 - Keyboard shortcuts and button bindings.
 
-#### Proposed Architecture Improvement: Split into Headless Engine & GUI Adapter
-Extract stateful round orchestration into an independent, zero-GUI `BlackjackEngine` that builds on top of `rules.py`:
+#### Implemented Architecture: Split into Headless Engine & GUI Adapter
+Extracted stateful round orchestration into an independent, zero-GUI `BlackjackEngine` in `game_engine.py` that builds on top of `rules.py`:
 
 ```mermaid
 classDiagram
@@ -431,6 +431,9 @@ classDiagram
         +double_down()
         +split()
         +surrender()
+        +take_insurance()
+        +decline_insurance()
+        +reshuffle_shoe()
         +resolve_outcomes()
     }
 
@@ -446,48 +449,40 @@ classDiagram
     BlackjackApp --> BlackjackEngine : Delegates domain actions to
 ```
 
-*Benefit*: Full multi-hand round sequences become 100% testable without instantiating a `tkinter.Tk` root, reducing test execution time even further.
+*Benefit & Verification*: Full multi-hand round sequences are 100% testable in headless isolation without instantiating a `tkinter.Tk` root via `tests/test_game_engine.py` (9 tests), and end-to-end integration is verified via `tests/test_architectural_integration.py`.
 
 ---
 
 ### 2. Event-Driven Observer / Pub-Sub Architecture
 
-#### Current State
-Communication across subsystems is coordinated via direct method calls on `BlackjackApp`:
-- `self.table_announcement_hud.show_announcement(...)`
-- `self.haunted_altar_canvas.update_candles(...)`
-- `self.dealer_actor.set_state(...)`
-- `self.sound_manager.play(...)`
-
-#### Proposed Architecture Improvement: Internal Event Bus
-Introduce a lightweight event bus (e.g. `EventHub` with pub-sub):
+#### Implemented Architecture: Internal Event Bus (`EventHub`)
+Subsystems communicate via a decoupled, synchronous pub-sub event bus in `event_bus.py`:
 
 ```python
 # Event definitions
-class GameEvent:
+class GameEventType(Enum):
     CARD_DEALT = "card_dealt"
     ROUND_RESOLVED = "round_resolved"
-    BET_PLACED = "bet_placed"
-    CANDLE_SNUFFED = "candle_snuffed"
-    DEALER_EXPRESSION_CHANGED = "dealer_expression_changed"
+    BET_COMMITTED = "bet_committed"
+    HAND_SPLIT = "hand_split"
+    INSURANCE_TAKEN = "insurance_taken"
+    INSURANCE_DECLINED = "insurance_declined"
+    SHOE_RESHUFFLED = "shoe_reshuffled"
 
-# Example decoupled subscriber
-event_hub.subscribe(GameEvent.CARD_DEALT, lambda evt: sound_manager.play("card_slide"))
-event_hub.subscribe(GameEvent.CARD_DEALT, lambda evt: card_counter.observe_card(evt.card))
-event_hub.subscribe(GameEvent.ROUND_RESOLVED, lambda evt: save_manager.record_hand(evt))
+# Example decoupled subscribers
+event_hub.subscribe(GameEventType.CARD_DEALT, lambda evt: sound_manager.play("card_slide"))
+event_hub.subscribe(GameEventType.CARD_DEALT, lambda evt: card_counter.observe_card(evt.payload["card"]))
+event_hub.subscribe(GameEventType.ROUND_RESOLVED, lambda evt: save_manager.record_hand(evt))
 ```
 
-*Benefit*: Eliminates cascading cross-calls when adding new visual effects, sound accents, or achievements.
+*Benefit & Verification*: Eliminates cascading cross-calls when adding new visual effects, sound accents, or achievements. Verified via `tests/test_event_bus.py` and `tests/test_architectural_integration.py`.
 
 ---
 
 ### 3. Formalization of Domain Models & Typing
 
-#### Current State
-While `Card` is a formal `NamedTuple` in `rules.py`, player splits are managed as parallel lists on `BlackjackApp`: `self.player_hands`, `self.hand_bets`, `self.hand_frames`, `self.hand_score_vars`.
-
-#### Proposed Architecture Improvement: Dedicated `Hand` Class
-Encapsulate cards, bets, and status into a first-class `Hand` domain object:
+#### Implemented Architecture: Dedicated `Hand` Class
+Cards, bets, and status are encapsulated into a first-class `Hand` domain object in `rules.py`:
 
 ```python
 @dataclass
@@ -512,17 +507,14 @@ class Hand:
         return self.score > 21
 ```
 
-*Benefit*: Simplifies split hand management by replacing parallel lists with a single `list[Hand]`.
+*Benefit & Verification*: Replaces parallel lists with first-class `list[Hand]`. Implements standard sequence protocols (`len`, `getitem`, `iter`, `append`, `pop`, `clear`) guaranteeing 100% backward compatibility with legacy card lists. Verified via `tests/test_hand.py` (5 tests) and `tests/test_architectural_integration.py`.
 
 ---
 
 ### 4. Pure FSM (Finite State Machine) State Transition Validator
 
-#### Current State
-`BlackjackApp` maintains `self.round_phase` (`RoundPhase`) synchronized across `BETTING`, `DEALING`, `PLAYER_TURN`, `DEALER_TURN`, and `ROUND_OVER`, alongside legacy boolean flags (`self._dealing`, `self._round_over`, `self._player_stood`, `self._in_betting_phase`).
-
-#### Proposed Architecture Improvement: Formal State Transitions
-Retire the remaining legacy boolean flags so all guards read exclusively from a centralized state transition table:
+#### Implemented Architecture: Formal State Machine Transitions (`GameStateMachine`)
+Round phase flow is governed by a pure, deterministic state machine in `state_machine.py`:
 
 ```mermaid
 stateDiagram-v2
@@ -537,26 +529,30 @@ stateDiagram-v2
     ROUND_OVER --> BETTING : New Round
 ```
 
+*Benefit & Verification*: Validates all state transitions through a strict transition matrix, raising `InvalidStateTransitionError` on illegal actions. Verified via `tests/test_state_machine.py` (8 tests) and `tests/test_architectural_integration.py`.
+
 ---
 
 ### 5. Decoupling View Presentation from Table Felt State
 
-#### Current State
-- Card image widgets (`tkinter.Label`) are created inside child `tkinter.Frame` containers (`self.player_card_frame`, `self.dealer_card_frame`) whose background slices are synchronized with `TableFeltCanvas`.
+#### Implemented Architecture: Unified `TableFeltCanvas` Multi-Layer Pipeline
+Consolidated card rendering, table accessories, and acrylic fixtures into standardized coordinate layers on `TableFeltCanvas`:
+- **Layer 1: Table Furniture & Fixtures**: 2.5D beveled acrylic dealing shoe tray with dynamic card depth/penetration visualization and acrylic discard rack (`draw_shoe_tray`, `draw_discard_rack`, `update_shoe_penetration`).
+- **Layer 2: Betting Areas & Markings**: Procedural felt texture generation, bet ring ellipses, and dynamic felt theme synchronization.
+- **Layer 3: Canvas Card Sprites & Motion**: Direct canvas card sprite rendering with pixel translation and card clearance (`draw_card_sprite`, `move_card_sprite`, `clear_card_sprites`).
+- **Layer 4: HUD & Accessories**: Floating count badges, animated table announcement banners, and Haunted Altar accessories.
 
-#### Proposed Architecture Improvement: Unified `TableFeltView`
-Consolidate card sprite rendering, chip stack drawing, and table accessories into a single canvas coordinate system on `TableFeltCanvas`:
-- Cards rendered directly on canvas via `create_image()` rather than child `tkinter.Label` frames.
-- Standardizes z-ordering (Felt background $\to$ Markings $\to$ Chip stacks $\to$ Playing cards $\to$ Floating count badges).
+*Benefit & Verification*: Standardizes clean canvas z-ordering across display scaling modes. Verified via `tests/test_table_felt.py` (10 tests) and `tests/test_architectural_integration.py`.
 
 ---
 
-## 5. Summary Matrix of Improvement Recommendations
+## 5. Summary Matrix of Architectural Implementations
 
-| Recommendation | Scope / Effort | Impact | Risk | Target Phase |
-| :--- | :--- | :--- | :--- | :--- |
-| **1. Extract Headless `BlackjackEngine`** | High | Eliminates God Object; makes stateful multi-hand rounds testable without Tk. | Medium | Next Architectural Milestone |
-| **2. Internal Event Bus (Pub-Sub)** | Medium | Decouples audio, HUDs, dealer animations, and persistence. | Low | Incremental |
-| **3. First-Class `Hand` Domain Model** | Low | Replaces parallel lists for split hands with clean OOP encapsulation. | Very Low | Next Minor Release |
-| **4. Consolidate Legacy Booleans into `RoundPhase` FSM** | Low | Retires `_dealing`/`_round_over` booleans in favor of `round_phase` alone. | Low | Next Minor Release |
-| **5. Unified Canvas Card Rendering** | Medium | Eliminates child frame slicing and unifies z-index stacking. | Low | UI Polish Milestone |
+| Implementation | Scope / Module | Status | Verification Suite |
+| :--- | :--- | :---: | :--- |
+| **1. Headless `BlackjackEngine`** | [game_engine.py](../game_engine.py) | **Completed** | [`tests/test_game_engine.py`](../tests/test_game_engine.py) |
+| **2. Internal Event Bus (`EventHub`)** | [event_bus.py](../event_bus.py) | **Completed** | [`tests/test_event_bus.py`](../tests/test_event_bus.py) |
+| **3. First-Class `Hand` Domain Model** | [rules.py](../rules.py#L82) | **Completed** | [`tests/test_hand.py`](../tests/test_hand.py) |
+| **4. Pure `GameStateMachine` (FSM)** | [state_machine.py](../state_machine.py) | **Completed** | [`tests/test_state_machine.py`](../tests/test_state_machine.py) |
+| **5. `TableFeltCanvas` Multi-Layer Pipeline** | [ui_canvases.py](../ui_canvases.py#L1737) | **Completed** | [`tests/test_table_felt.py`](../tests/test_table_felt.py) & [`tests/test_architectural_integration.py`](../tests/test_architectural_integration.py) |
+| **6. Card Counting Monte-Carlo Simulation** | [tools/test_counting_simulation.py](../tools/test_counting_simulation.py) | **Completed** | 10,000 deals verified in `tools/test_counting_simulation.py` |

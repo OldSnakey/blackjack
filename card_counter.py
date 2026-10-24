@@ -82,6 +82,7 @@ class HiLoCardCounter:
         self.running_count = 0
         self.observed_cards_count = 0
 
+
     def decks_remaining(self, cards_remaining: int) -> float:
         """
         Calculates estimated decks remaining in the shoe with 0.5-deck minimum clamp.
@@ -147,3 +148,10 @@ class HiLoCardCounter:
                 return False
 
         return True
+
+    # Method aliases for compatibility
+    tag_card = get_card_tag
+    on_card_revealed = observe_card
+    on_shuffle = reset_shoe
+    get_true_count = true_count
+    get_decks_remaining = decks_remaining
