@@ -84,15 +84,22 @@ class CardCountingHud(tkinter.Frame):
         grid_row: int = 2,
         **kwargs,
     ):
+        # Determine background matching master if available
+        bg_col = kwargs.pop("background", None) or kwargs.pop("bg", None)
+        if not bg_col:
+            try:
+                bg_col = master.cget("background")
+            except Exception:
+                bg_col = "#082210"
+
         super().__init__(
             master,
-            background="#0d231b",
-            relief="ridge",
-            borderwidth=2,
-            highlightbackground="#1de9b6",
-            highlightthickness=1,
-            padx=8,
-            pady=4,
+            background=bg_col,
+            relief="flat",
+            borderwidth=0,
+            highlightthickness=0,
+            padx=0,
+            pady=0,
             **kwargs,
         )
         self.counter = counter
@@ -108,106 +115,59 @@ class CardCountingHud(tkinter.Frame):
         self._build_ui()
 
     def _build_ui(self):
-        # Header Badge
-        self.title_lbl = tkinter.Label(
+        # 1. Top Tab Header Frame (sits on top of the HUD bar on the far left)
+        self.tab_frame = tkinter.Frame(
             self,
+            background="#0d231b",
+            relief="ridge",
+            borderwidth=1,
+            highlightbackground="#1de9b6",
+            highlightthickness=1,
+            padx=6,
+            pady=1,
+        )
+        self.tab_frame.pack(side="top", anchor="w", padx=(6, 0), pady=(0, 0))
+
+        self.title_lbl = tkinter.Label(
+            self.tab_frame,
             text="🧮 Hi-Lo Trainer",
-            font=("Arial", 9, "bold"),
+            font=("Arial", 8, "bold"),
             fg="#1de9b6",
             background="#0d231b",
         )
-        self.title_lbl.pack(side="left", padx=(4, 8))
+        self.title_lbl.pack(side="left")
 
-        # Running Count (RC)
-        self.rc_frame = tkinter.Frame(self, background="#0d231b")
-        self.rc_frame.pack(side="left", padx=5)
-        tkinter.Label(
-            self.rc_frame, text="RC:", font=("Arial", 8, "bold"), fg="#80cbc4", background="#0d231b"
-        ).pack(side="left")
-        self.rc_label = tkinter.Label(
-            self.rc_frame, text="+0", font=("Arial", 9, "bold"), fg="#ffffff", background="#0d231b"
-        )
-        self.rc_label.pack(side="left", padx=(2, 0))
-
-        # Decks Remaining
-        self.decks_frame = tkinter.Frame(self, background="#0d231b")
-        self.decks_frame.pack(side="left", padx=5)
-        tkinter.Label(
-            self.decks_frame, text="Decks:", font=("Arial", 8, "bold"), fg="#80cbc4", background="#0d231b"
-        ).pack(side="left")
-        default_decks_text = f"{float(getattr(self.counter, 'deck_count', 4)):.1f}"
-        self.decks_label = tkinter.Label(
-            self.decks_frame, text=default_decks_text, font=("Arial", 9, "bold"), fg="#ffffff", background="#0d231b"
-        )
-        self.decks_label.pack(side="left", padx=(2, 0))
-
-        # True Count (TC)
-        self.tc_frame = tkinter.Frame(self, background="#0d231b")
-        self.tc_frame.pack(side="left", padx=5)
-        tkinter.Label(
-            self.tc_frame, text="TC:", font=("Arial", 8, "bold"), fg="#80cbc4", background="#0d231b"
-        ).pack(side="left")
-        self.tc_label = tkinter.Label(
-            self.tc_frame, text="+0.0", font=("Arial", 9, "bold"), fg="#ffffff", background="#0d231b"
-        )
-        self.tc_label.pack(side="left", padx=(2, 0))
-
-        # Player Advantage (Edge %)
-        self.edge_frame = tkinter.Frame(self, background="#0d231b")
-        self.edge_frame.pack(side="left", padx=5)
-        tkinter.Label(
-            self.edge_frame, text="Edge:", font=("Arial", 8, "bold"), fg="#80cbc4", background="#0d231b"
-        ).pack(side="left")
-        self.edge_label = tkinter.Label(
-            self.edge_frame, text="-0.5%", font=("Arial", 9, "bold"), fg="#38bdf8", background="#0d231b"
-        )
-        self.edge_label.pack(side="left", padx=(2, 0))
-
-        # Bet Sizing Guide
-        self.bet_guide_frame = tkinter.Frame(self, background="#0d231b")
-        self.bet_guide_frame.pack(side="left", padx=5)
-        tkinter.Label(
-            self.bet_guide_frame, text="Bet Guide:", font=("Arial", 8, "bold"), fg="#ffd54f", background="#0d231b"
-        ).pack(side="left")
-        self.bet_guide_label = tkinter.Label(
-            self.bet_guide_frame, text="1u ($25)", font=("Arial", 9, "bold"), fg="#fff59d", background="#0d231b",
-            cursor="hand2"
-        )
-        self.bet_guide_label.pack(side="left", padx=(2, 0))
-        self.bet_guide_label.bind("<Button-1>", lambda e: self._on_stage_bet_click())
-
-        # Basic Strategy Advisor Hint
-        self.strategy_frame = tkinter.Frame(self, background="#0d231b")
-        self.strategy_frame.pack(side="left", padx=5)
-        tkinter.Label(
-            self.strategy_frame, text="Strategy:", font=("Arial", 8, "bold"), fg="#80cbc4", background="#0d231b"
-        ).pack(side="left")
-        self.strategy_label = tkinter.Label(
-            self.strategy_frame, text="-", font=("Arial", 9, "bold"), fg="#b0bec5", background="#0d231b"
-        )
-        self.strategy_label.pack(side="left", padx=(2, 0))
-
-        # Assisted vs Drill Challenge Mode Toggle Button
-        self.mode_btn = tkinter.Button(
+        # 2. Main HUD Statistics Bar Frame
+        self.bar_frame = tkinter.Frame(
             self,
-            text="👁️ Assisted",
-            font=("Arial", 8, "bold"),
-            background="#1b382d",
+            background="#0d231b",
+            relief="ridge",
+            borderwidth=2,
+            highlightbackground="#1de9b6",
+            highlightthickness=1,
+            padx=6,
+            pady=3,
+        )
+        self.bar_frame.pack(side="top", fill="x", expand=True, padx=0, pady=(0, 0))
+
+        # Action Buttons (Packed side="right" first to guarantee they are never clipped)
+        self.close_btn = tkinter.Button(
+            self.bar_frame,
+            text="✖",
+            font=("Arial", 8),
+            background="#0d231b",
             foreground="#80cbc4",
-            activebackground="#2e5441",
+            activebackground="#1b382d",
             activeforeground="#ffffff",
             relief="flat",
-            padx=5,
-            pady=1,
             cursor="hand2",
             takefocus=False,
-            command=lambda: self.toggle_drill_mode(self._last_cards_remaining),
+            command=self.toggle_visibility,
         )
-        self.mode_btn.pack(side="left", padx=(4, 2))
+        self.close_btn.pack(side="right", padx=(2, 4))
 
-        # Quiz Drill Challenge Button
         self.quiz_btn = tkinter.Button(
-            self,
+            self.bar_frame,
             text="🎯 Quiz",
             font=("Arial", 8, "bold"),
             background="#004d40",
@@ -221,23 +181,94 @@ class CardCountingHud(tkinter.Frame):
             takefocus=False,
             command=self._on_quiz_click,
         )
-        self.quiz_btn.pack(side="left", padx=(4, 4))
+        self.quiz_btn.pack(side="right", padx=3)
 
-        # Hide toggle button
-        self.close_btn = tkinter.Button(
-            self,
-            text="✖",
-            font=("Arial", 8),
-            background="#0d231b",
+        self.mode_btn = tkinter.Button(
+            self.bar_frame,
+            text="👁️ Assisted",
+            font=("Arial", 8, "bold"),
+            background="#1b382d",
             foreground="#80cbc4",
-            activebackground="#1b382d",
+            activebackground="#2e5441",
             activeforeground="#ffffff",
             relief="flat",
+            padx=5,
+            pady=1,
             cursor="hand2",
             takefocus=False,
-            command=self.toggle_visibility,
+            command=lambda: self.toggle_drill_mode(self._last_cards_remaining),
         )
-        self.close_btn.pack(side="right", padx=(4, 0))
+        self.mode_btn.pack(side="right", padx=3)
+
+        # Statistics & Guidance (Packed side="left" with compact padding)
+        # Running Count (RC)
+        self.rc_frame = tkinter.Frame(self.bar_frame, background="#0d231b")
+        self.rc_frame.pack(side="left", padx=3)
+        tkinter.Label(
+            self.rc_frame, text="RC:", font=("Arial", 8, "bold"), fg="#80cbc4", background="#0d231b"
+        ).pack(side="left")
+        self.rc_label = tkinter.Label(
+            self.rc_frame, text="+0", font=("Arial", 9, "bold"), fg="#ffffff", background="#0d231b"
+        )
+        self.rc_label.pack(side="left", padx=(2, 0))
+
+        # Decks Remaining
+        self.decks_frame = tkinter.Frame(self.bar_frame, background="#0d231b")
+        self.decks_frame.pack(side="left", padx=3)
+        tkinter.Label(
+            self.decks_frame, text="Decks:", font=("Arial", 8, "bold"), fg="#80cbc4", background="#0d231b"
+        ).pack(side="left")
+        default_decks_text = f"{float(getattr(self.counter, 'deck_count', 4)):.1f}"
+        self.decks_label = tkinter.Label(
+            self.decks_frame, text=default_decks_text, font=("Arial", 9, "bold"), fg="#ffffff", background="#0d231b"
+        )
+        self.decks_label.pack(side="left", padx=(2, 0))
+
+        # True Count (TC)
+        self.tc_frame = tkinter.Frame(self.bar_frame, background="#0d231b")
+        self.tc_frame.pack(side="left", padx=3)
+        tkinter.Label(
+            self.tc_frame, text="TC:", font=("Arial", 8, "bold"), fg="#80cbc4", background="#0d231b"
+        ).pack(side="left")
+        self.tc_label = tkinter.Label(
+            self.tc_frame, text="+0.0", font=("Arial", 9, "bold"), fg="#ffffff", background="#0d231b"
+        )
+        self.tc_label.pack(side="left", padx=(2, 0))
+
+        # Player Advantage (Edge %)
+        self.edge_frame = tkinter.Frame(self.bar_frame, background="#0d231b")
+        self.edge_frame.pack(side="left", padx=3)
+        tkinter.Label(
+            self.edge_frame, text="Edge:", font=("Arial", 8, "bold"), fg="#80cbc4", background="#0d231b"
+        ).pack(side="left")
+        self.edge_label = tkinter.Label(
+            self.edge_frame, text="-0.5%", font=("Arial", 9, "bold"), fg="#38bdf8", background="#0d231b"
+        )
+        self.edge_label.pack(side="left", padx=(2, 0))
+
+        # Bet Sizing Guide
+        self.bet_guide_frame = tkinter.Frame(self.bar_frame, background="#0d231b")
+        self.bet_guide_frame.pack(side="left", padx=3)
+        tkinter.Label(
+            self.bet_guide_frame, text="Bet Guide:", font=("Arial", 8, "bold"), fg="#ffd54f", background="#0d231b"
+        ).pack(side="left")
+        self.bet_guide_label = tkinter.Label(
+            self.bet_guide_frame, text="1u ($25)", font=("Arial", 9, "bold"), fg="#fff59d", background="#0d231b",
+            cursor="hand2"
+        )
+        self.bet_guide_label.pack(side="left", padx=(2, 0))
+        self.bet_guide_label.bind("<Button-1>", lambda e: self._on_stage_bet_click())
+
+        # Basic Strategy Advisor Hint
+        self.strategy_frame = tkinter.Frame(self.bar_frame, background="#0d231b")
+        self.strategy_frame.pack(side="left", padx=3)
+        tkinter.Label(
+            self.strategy_frame, text="Strategy:", font=("Arial", 8, "bold"), fg="#80cbc4", background="#0d231b"
+        ).pack(side="left")
+        self.strategy_label = tkinter.Label(
+            self.strategy_frame, text="-", font=("Arial", 9, "bold"), fg="#b0bec5", background="#0d231b"
+        )
+        self.strategy_label.pack(side="left", padx=(2, 0))
 
     def _on_quiz_click(self):
         if self.on_quiz_request:
@@ -278,7 +309,8 @@ class CardCountingHud(tkinter.Frame):
         if not hasattr(self, "strategy_label") or not self.strategy_label.winfo_exists():
             return
         if text:
-            self.strategy_label.configure(text=text, fg="#ffffff")
+            display_text = text if len(text) <= 28 else text[:26] + "…"
+            self.strategy_label.configure(text=display_text, fg="#ffffff")
             return
         if hint is None:
             self.strategy_label.configure(text="-", fg="#78909c")
@@ -298,6 +330,8 @@ class CardCountingHud(tkinter.Frame):
         fg_col = color_palette.get(action_name, "#ffffff")
         reason = getattr(hint, "reason", "")
         display_text = f"{action_name} ({reason})" if reason else action_name
+        if len(display_text) > 28:
+            display_text = display_text[:26] + "…"
         self.strategy_label.configure(text=display_text, fg=fg_col)
 
     def set_drill_mode(self, enabled: bool, cards_remaining: int = 208, base_bet: int = 25) -> bool:

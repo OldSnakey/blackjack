@@ -648,7 +648,8 @@ class BlackjackApp:
         card_table_frame.columnconfigure(1, weight=1)
         card_table_frame.columnconfigure(2, weight=0)
         card_table_frame.rowconfigure(0, weight=1, minsize=118)
-        card_table_frame.rowconfigure(1, weight=1, minsize=118)
+        card_table_frame.rowconfigure(1, weight=1, minsize=140)
+        card_table_frame.rowconfigure(2, weight=0, minsize=58)
         self.scoreboard_frame = scoreboard_frame
         self.card_table_frame = card_table_frame
 
@@ -1214,6 +1215,15 @@ class BlackjackApp:
             if hasattr(self, "card_counting_hud") and self.card_counting_hud:
                 if not self.card_counting_hud.is_visible:
                     self.card_counting_hud.toggle_visibility()
+                if not getattr(self, "is_fullscreen", False):
+                    try:
+                        cur_w = self.root.winfo_width()
+                        cur_h = self.root.winfo_height()
+                        if cur_h < DEFAULT_WINDOW_HEIGHT:
+                            target_h = min(DEFAULT_WINDOW_HEIGHT, self.root.winfo_screenheight() - 80)
+                            self.root.geometry(f"{cur_w}x{target_h}")
+                    except Exception:
+                        pass
                 cards_rem = len(self.deck) if hasattr(self, "deck") else 0
                 base_bet = self.hand_bets[0] if (hasattr(self, "hand_bets") and self.hand_bets and self.hand_bets[0] > 0) else 25
                 self.card_counting_hud.update_counts(cards_remaining=cards_rem, base_bet=base_bet)
@@ -1283,7 +1293,8 @@ class BlackjackApp:
             cards_rem = len(self.deck) if hasattr(self, "deck") else 0
             tc = self.card_counter.true_count(cards_rem)
             rec_bet = self.card_counter.get_recommended_bet(25, tc)
-            self.card_counting_hud.update_strategy_hint(text=f"Place Bet (Ideal: ${rec_bet})")
+            rec_units = max(1, rec_bet // 25)
+            self.card_counting_hud.update_strategy_hint(text=f"Bet ${rec_bet} ({rec_units}u)")
             return
         hint = self.get_current_strategy_hint()
         self.card_counting_hud.update_strategy_hint(hint=hint)
@@ -3327,6 +3338,15 @@ class BlackjackApp:
         if hasattr(self, "card_counting_hud") and self.card_counting_hud:
             is_vis = self.card_counting_hud.toggle_visibility()
             if is_vis:
+                if not getattr(self, "is_fullscreen", False):
+                    try:
+                        cur_w = self.root.winfo_width()
+                        cur_h = self.root.winfo_height()
+                        if cur_h < DEFAULT_WINDOW_HEIGHT:
+                            target_h = min(DEFAULT_WINDOW_HEIGHT, self.root.winfo_screenheight() - 80)
+                            self.root.geometry(f"{cur_w}x{target_h}")
+                    except Exception:
+                        pass
                 cards_rem = len(self.deck) if hasattr(self, "deck") else 0
                 base_bet = self.hand_bets[0] if (hasattr(self, "hand_bets") and self.hand_bets and self.hand_bets[0] > 0) else 25
                 self.card_counting_hud.update_counts(cards_remaining=cards_rem, base_bet=base_bet)

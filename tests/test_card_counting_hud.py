@@ -97,6 +97,45 @@ class TestCardCountingHud(unittest.TestCase):
         badge_neg.destroy()
         badge_zero.destroy()
 
+    def test_hud_top_tab_and_bar_hierarchy(self):
+        """CardCountingHud embeds title in a top-left tab_frame perched above bar_frame."""
+        self.assertTrue(hasattr(self.hud, "tab_frame"), "tab_frame missing on CardCountingHud")
+        self.assertTrue(hasattr(self.hud, "bar_frame"), "bar_frame missing on CardCountingHud")
+        # Title label is child of tab_frame
+        self.assertEqual(self.hud.title_lbl.master, self.hud.tab_frame)
+        self.assertIn("Hi-Lo Trainer", self.hud.title_lbl.cget("text"))
+        # Stat frames are children of bar_frame
+        self.assertEqual(self.hud.rc_frame.master, self.hud.bar_frame)
+        self.assertEqual(self.hud.decks_frame.master, self.hud.bar_frame)
+
+    def test_hud_action_buttons_right_anchored(self):
+        """Action buttons (close, quiz, mode) are packed side='right' in bar_frame."""
+        close_info = self.hud.close_btn.pack_info()
+        quiz_info = self.hud.quiz_btn.pack_info()
+        mode_info = self.hud.mode_btn.pack_info()
+        self.assertEqual(close_info.get("side"), "right")
+        self.assertEqual(quiz_info.get("side"), "right")
+        self.assertEqual(mode_info.get("side"), "right")
+
+    def test_strategy_hint_shorthand_length(self):
+        """Strategy decisions produce concise shorthand notation under 22 characters."""
+        from rules import Card, get_basic_strategy_decision
+        # 8,8 split
+        dec_88 = get_basic_strategy_decision([Card(8), Card(8)], Card(10), can_split=True)
+        self.hud.update_strategy_hint(hint=dec_88)
+        text_88 = self.hud.strategy_label.cget("text")
+        self.assertIn("SPLIT", text_88)
+        self.assertIn("8,8", text_88)
+        self.assertLessEqual(len(text_88), 22, f"Strategy text too long: {text_88}")
+
+        # Hard 16 surrender
+        dec_16 = get_basic_strategy_decision([Card(10), Card(6)], Card(10), can_surrender=True)
+        self.hud.update_strategy_hint(hint=dec_16)
+        text_16 = self.hud.strategy_label.cget("text")
+        self.assertIn("SURRENDER", text_16)
+        self.assertIn("16 vs 10", text_16)
+        self.assertLessEqual(len(text_16), 22, f"Strategy text too long: {text_16}")
+
 
 class TestCardCountingIntegration(unittest.TestCase):
     """Verifies BlackjackApp integration with CardCountingHud and game loop hooks."""

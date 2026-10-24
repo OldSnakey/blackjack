@@ -21,6 +21,7 @@ from PIL import Image
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
+import config
 from blackjack import BlackjackApp
 from save_manager import SaveManager
 from ui_dialogs import WelcomeSplashDialog
@@ -90,7 +91,7 @@ def main():
     temp_save = Path(tempfile.mkdtemp()) / "capture_splash_save.json"
 
     root = tkinter.Tk()
-    root.geometry("900x720")
+    root.geometry(f"{config.DEFAULT_WINDOW_WIDTH}x{config.DEFAULT_WINDOW_HEIGHT}")
     root.title("Blackjack Verification Runner")
     app = BlackjackApp(root, sound_enabled=False, save_path=temp_save, chips_mode=True, skip_splash=True)
     root.update()

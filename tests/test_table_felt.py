@@ -45,10 +45,13 @@ class TestTableFeltCanvas(unittest.TestCase):
         table = self.app.card_table_frame
         r0 = table.rowconfigure(0)
         r1 = table.rowconfigure(1)
+        r2 = table.rowconfigure(2)
         self.assertGreaterEqual(r0["minsize"], 118)
         self.assertGreaterEqual(r0["weight"], 1)
-        self.assertGreaterEqual(r1["minsize"], 118)
+        self.assertGreaterEqual(r1["minsize"], 140)
         self.assertGreaterEqual(r1["weight"], 1)
+        self.assertGreaterEqual(r2["minsize"], 55)
+        self.assertEqual(r2["weight"], 0)
 
         c1 = table.columnconfigure(1)
         self.assertGreaterEqual(c1["weight"], 1)
@@ -175,6 +178,55 @@ class TestTableFeltCanvas(unittest.TestCase):
         # bbox is (x1, y1, x2, y2)
         # y1 must be >= 5 (never clipped off the top of the canvas)
         self.assertGreaterEqual(bbox[1], 5, f"Dealer sprite clipped above canvas: y1={bbox[1]}")
+
+    def test_shoe_tray_perched_at_horizon_and_moves_on_resize(self):
+        """Shoe tray is perched at the horizon rail (y <= 5) and dynamically repositions on window resize."""
+        table = self.app.card_table_frame
+        table.update_shoe_penetration(remaining=180, total=208)
+        self.root.update_idletasks()
+
+        items = table.find_withtag("shoe_tray")
+        self.assertGreater(len(items), 0, "shoe_tray items not found on felt canvas")
+        bbox_initial = table.bbox("shoe_tray")
+        # y1 must be at the top horizon rail (<= 5)
+        self.assertLessEqual(bbox_initial[1], 5, f"Shoe tray not at horizon rail: y1={bbox_initial[1]}")
+
+        # Simulate window stretch resize event from 900 to 1300
+        old_x2 = bbox_initial[2]
+        new_width = 1300
+        event = type("ResizeEvent", (), {"width": new_width, "height": table.canvas_height})()
+        table._on_resize(event)
+        self.root.update_idletasks()
+
+        bbox_resized = table.bbox("shoe_tray")
+        # x2 must have shifted rightward to track the new window width
+        self.assertGreater(bbox_resized[2], old_x2 + 200, "Shoe tray did not move rightward with window resize")
+        self.assertLessEqual(bbox_resized[1], 5, "Shoe tray shifted away from horizon rail on resize")
+
+    def test_discard_rack_has_no_opaque_black_box(self):
+        """Discard rack does not draw an opaque black box on the felt."""
+        table = self.app.card_table_frame
+        table.draw_discard_rack(discarded=0, total=208)
+        # Empty discard rack should render zero items
+        self.assertEqual(len(table.find_withtag("discard_rack")), 0)
+
+        # Non-empty discard rack should have empty fill on container (no opaque black)
+        table.draw_discard_rack(discarded=50, total=208)
+        items = table.find_withtag("discard_rack")
+        self.assertGreater(len(items), 0)
+        container_fill = table.itemcget(items[0], "fill")
+        self.assertNotEqual(container_fill, "#0a1812", "Discard rack should not have opaque black fill")
+
+    def test_trainer_hud_window_expansion_and_row_clearance(self):
+        """Toggling Trainer HUD expands window height if less than DEFAULT_WINDOW_HEIGHT."""
+        import config
+        from unittest.mock import patch
+
+        with patch.object(self.root, "winfo_height", return_value=700), \
+             patch.object(self.root, "geometry") as mock_geom:
+            self.app.apply_play_mode("training")
+            expected_h = min(config.DEFAULT_WINDOW_HEIGHT, self.root.winfo_screenheight() - 80)
+            mock_geom.assert_called_with(f"900x{expected_h}")
 
 
 if __name__ == "__main__":

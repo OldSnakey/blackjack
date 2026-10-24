@@ -1798,6 +1798,9 @@ class TableFeltCanvas(tkinter.Canvas):
         self._felt_photo: Optional[Any] = None
         self._felt_img: Optional[Any] = None
         self._felt_cache: dict[tuple[str, int, int, float], Any] = {}
+        self._shoe_visible: bool = False
+        self._shoe_remaining: int = 208
+        self._shoe_total: int = 208
 
         self.bind("<Configure>", self._on_resize)
         self._redraw_felt()
@@ -1807,6 +1810,8 @@ class TableFeltCanvas(tkinter.Canvas):
             self.canvas_width = event.width
             self.canvas_height = event.height
             self._redraw_felt()
+            if getattr(self, "_shoe_visible", False):
+                self.draw_shoe_tray(self._shoe_remaining, self._shoe_total)
 
     def set_theme(self, theme: str):
         t = (theme or "casino").lower()
@@ -1818,11 +1823,15 @@ class TableFeltCanvas(tkinter.Canvas):
             self._bg_hex = theme_cfg["bg_hex"]
             self.configure(background=self._bg_hex)
             self._redraw_felt()
+            if getattr(self, "_shoe_visible", False):
+                self.draw_shoe_tray(self._shoe_remaining, self._shoe_total)
 
     def set_scale(self, scale_factor: float):
         if self.scale_factor != scale_factor:
             self.scale_factor = scale_factor
             self._redraw_felt()
+            if getattr(self, "_shoe_visible", False):
+                self.draw_shoe_tray(self._shoe_remaining, self._shoe_total)
 
     def _generate_felt_image(self, w: int, h: int) -> Optional[Any]:
         if not PIL_AVAILABLE or Image is None or ImageDraw is None:
@@ -1965,64 +1974,69 @@ class TableFeltCanvas(tkinter.Canvas):
     # Layer 1: Visual Shoe Tray & Discard Rack
     # ------------------------------------------------------------------------
     def draw_shoe_tray(self, remaining: int = 208, total: int = 208):
-        """Renders 2.5D acrylic card shoe in upper right table rail with stack depth."""
+        """Renders 2.5D acrylic card shoe perched at the far right of the table horizon rail."""
+        self._shoe_visible = True
+        self._shoe_remaining = remaining
+        self._shoe_total = total
         self.delete("shoe_tray")
-        if self.canvas_width < 400:
+        if self.canvas_width < 350:
             return
         s = self.scale_factor
         w = self.canvas_width
-        sx = w - int(95 * s)
-        sy = int(8 * s)
-        sw = int(80 * s)
-        sh = int(45 * s)
+        sw = int(82 * s)
+        sh = int(28 * s)  # Compact, sleek profile sitting right at the horizon rail
+        sx = w - sw - int(12 * s)
+        sy = int(2 * s)   # Flush with the top horizon rail
 
-        # Acrylic shoe housing (clear polycarbonate with subtle bevel highlight)
-        self.create_rectangle(sx, sy, sx + sw, sy + sh, fill="#0a1812", outline="#2e543e", width=max(1, int(1.5 * s)), tags="shoe_tray")
-        self.create_rectangle(sx + 2, sy + 2, sx + sw - 2, sy + sh - 2, fill="#0d2419", outline="", tags="shoe_tray")
+        # Clear acrylic shoe housing with subtle metallic bevel
+        self.create_rectangle(sx, sy, sx + sw, sy + sh, fill="#0d2419", outline="#2e543e", width=max(1, int(1.5 * s)), tags="shoe_tray")
+        self.create_rectangle(sx + 1, sy + 1, sx + sw - 1, sy + sh - 1, fill="", outline="#3a684c", width=1, tags="shoe_tray")
 
         # Stack depth based on remaining cards
         ratio = max(0.0, min(1.0, remaining / max(1, total)))
-        stack_w = max(4, int((sw - 12) * ratio))
+        stack_w = max(4, int((sw - 14) * ratio))
 
         # Cards remaining block
-        self.create_rectangle(sx + 6, sy + 6, sx + 6 + stack_w, sy + sh - 6, fill="#f5f5f0", outline="#b0bec5", tags="shoe_tray")
-        # Card edge lines for tactile 3D effect
-        if stack_w > 12:
-            for step in range(sx + 10, sx + 6 + stack_w, max(4, int(6 * s))):
-                self.create_line(step, sy + 6, step, sy + sh - 6, fill="#cfd8dc", tags="shoe_tray")
+        self.create_rectangle(sx + 4, sy + 4, sx + 4 + stack_w, sy + sh - 4, fill="#f5f5f0", outline="#b0bec5", tags="shoe_tray")
+        if stack_w > 10:
+            for step in range(sx + 8, sx + 4 + stack_w, max(4, int(5 * s))):
+                self.create_line(step, sy + 4, step, sy + sh - 4, fill="#cfd8dc", tags="shoe_tray")
 
         # Red plastic cut-card penetration indicator
-        cut_x = sx + 6 + int((sw - 12) * 0.25)
-        self.create_line(cut_x, sy + 4, cut_x, sy + sh - 4, fill="#ff1744", width=max(1, int(2 * s)), tags="shoe_tray")
+        cut_x = sx + 4 + int((sw - 14) * 0.25)
+        self.create_line(cut_x, sy + 2, cut_x, sy + sh - 2, fill="#ff1744", width=max(1, int(2 * s)), tags="shoe_tray")
 
-        # Front roller / brass exit mouth
-        self.create_rectangle(sx + 2, sy + sh - int(8 * s), sx + sw - 2, sy + sh, fill="#b58830", outline="#ffd700", tags="shoe_tray")
+        # Front roller / brass exit mouth on the left
+        self.create_rectangle(sx + 1, sy + 2, sx + int(5 * s), sy + sh - 2, fill="#b58830", outline="#ffd700", tags="shoe_tray")
 
     def draw_discard_rack(self, discarded: int = 0, total: int = 208):
-        """Renders acrylic discard rack adjacent to the shoe tray."""
+        """Optional discard rack - renders without opaque black box so table felt is not obscured."""
         self.delete("discard_rack")
-        if self.canvas_width < 500:
+        if discarded <= 0 or self.canvas_width < 500:
             return
         s = self.scale_factor
         w = self.canvas_width
-        dx = w - int(190 * s)
-        dy = int(8 * s)
-        dw = int(80 * s)
-        dh = int(45 * s)
-
-        # Clear acrylic discard holder
-        self.create_rectangle(dx, dy, dx + dw, dy + dh, fill="#0a1812", outline="#2e543e", width=max(1, int(1.5 * s)), tags="discard_rack")
-
-        # Discarded stack depth
+        dw = int(60 * s)
+        dh = int(24 * s)
+        dx = w - int(160 * s)
+        dy = int(2 * s)
         ratio = max(0.0, min(1.0, discarded / max(1, total)))
-        if ratio > 0.05:
-            d_stack_w = max(3, int((dw - 12) * ratio))
-            self.create_rectangle(dx + 6, dy + 6, dx + 6 + d_stack_w, dy + dh - 6, fill="#e0e0dc", outline="#9e9e9e", tags="discard_rack")
+        d_stack_w = max(3, int((dw - 8) * ratio))
+        self.create_rectangle(dx, dy, dx + dw, dy + dh, fill="", outline="#2e543e", width=max(1, int(1.5 * s)), tags="discard_rack")
+        self.create_rectangle(dx + 4, dy + 3, dx + 4 + d_stack_w, dy + dh - 3, fill="#e0e0dc", outline="#9e9e9e", tags="discard_rack")
 
     def update_shoe_penetration(self, remaining: int, total: int):
-        """Updates both shoe tray and discard rack to reflect live card penetration."""
+        """Updates shoe tray to reflect live card penetration at the horizon rail."""
+        self._shoe_visible = True
+        self._shoe_remaining = remaining
+        self._shoe_total = total
         self.draw_shoe_tray(remaining, total)
-        self.draw_discard_rack(max(0, total - remaining), total)
+
+    def clear_shoe_overlay(self):
+        """Cleans up shoe tray and discard rack canvas items."""
+        self._shoe_visible = False
+        self.delete("shoe_tray")
+        self.delete("discard_rack")
 
     # ------------------------------------------------------------------------
     # Layer 3: Canvas Card Sprites
