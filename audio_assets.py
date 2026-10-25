@@ -18,6 +18,7 @@ import sys
 import tkinter
 from pathlib import Path
 from typing import Any, Optional
+from PIL import Image, ImageTk
 
 from config import (
     ASSETS_DIR,
@@ -69,9 +70,9 @@ class AssetScaler:
     def __init__(self, master=None):
         self.master = master
         self._source_pil_cache: dict[Path, Image.Image] = {}
-        self._tk_cache: dict[tuple[Path, int, int], ImageTk.PhotoImage] = {}
+        self._tk_cache: dict[tuple[Path, int, int, str], ImageTk.PhotoImage] = {}
 
-    def get_scaled_image(self, file_path: Path, width: int, height: int):
+    def get_scaled_image(self, file_path: Path, width: int, height: int, element_type: str = "cards"):
         """Returns a scaled PhotoImage (or ImageTk.PhotoImage) resized in memory."""
         file_path = Path(file_path)
         if not PIL_AVAILABLE or Image is None or ImageTk is None:
@@ -81,7 +82,7 @@ class AssetScaler:
             except Exception:
                 return None
 
-        key = (file_path, width, height)
+        key = (file_path, width, height, element_type)
         if key in self._tk_cache:
             return self._tk_cache[key]
 
@@ -94,8 +95,19 @@ class AssetScaler:
                 return None
 
         src = self._source_pil_cache[file_path]
-        resized = src.resize((width, height), Image.Resampling.LANCZOS)
-        tk_img = ImageTk.PhotoImage(resized, master=self.master)
+        try:
+            from ui_layout import resolve_pil_resample
+            is_pass, resample_filter = resolve_pil_resample(element_type, src.size, (width, height))
+        except Exception:
+            is_pass = (src.size == (width, height))
+            resample_filter = getattr(Image, "Resampling", Image).LANCZOS
+
+        if is_pass:
+            final_img = src
+        else:
+            final_img = src.resize((width, height), resample_filter)
+
+        tk_img = ImageTk.PhotoImage(final_img, master=self.master)
         self._tk_cache[key] = tk_img
         return tk_img
 
@@ -118,7 +130,7 @@ def load_images(card_images, master=None, scale: float = 1.0, asset_scaler: Asse
         for card in range(1, 11):
             name = ASSETS_DIR / f"{card}_{suit}.png"
             if scaler:
-                image = scaler.get_scaled_image(name, w, h)
+                image = scaler.get_scaled_image(name, w, h, element_type="cards")
             else:
                 image = tkinter.PhotoImage(file=str(name), master=master)
             rank = "ace" if card == 1 else str(card)
@@ -128,7 +140,7 @@ def load_images(card_images, master=None, scale: float = 1.0, asset_scaler: Asse
         for card in face_cards:
             name = ASSETS_DIR / f"{card}_{suit}.png"
             if scaler:
-                image = scaler.get_scaled_image(name, w, h)
+                image = scaler.get_scaled_image(name, w, h, element_type="cards")
             else:
                 image = tkinter.PhotoImage(file=str(name), master=master)
             card_images.append(Card(value=10, image=image, rank=card, suit=suit))
@@ -382,12 +394,106 @@ class KeyboardIconLoader:
         for path in candidates:
             if path.exists():
                 try:
-                    img = tkinter.PhotoImage(file=str(path), **kw)
+                    pil_img = Image.open(path).convert("RGBA")
                     if scale_div > 1:
-                        img = img.subsample(scale_div, scale_div)
+                        w, h = pil_img.size
+                        target_w = max(1, (w + scale_div - 1) // scale_div)
+                        target_h = max(1, (h + scale_div - 1) // scale_div)
+                        pil_img = pil_img.resize(
+                            (target_w, target_h),
+                            Image.Resampling.NEAREST
+                        )
+                    img = ImageTk.PhotoImage(pil_img, **kw)
                     self._cache[key] = img
                     return img
                 except Exception:
                     continue
 
         return None
+
+    def get_clean_glyph_icon(
+        self,
+        icon_name: str,
+        scale_div: int = 3,
+        target_height: int | None = None,
+        color: str = "#ffd700",
+    ) -> tkinter.PhotoImage | None:
+        """
+        Extracts only the interior keycap glyph cutout (e.g. '?' question mark) onto a 100% transparent background,
+        preventing opaque white square keycaps from clipping on dark theme buttons.
+        """
+        cache_key = (f"clean_{icon_name}", scale_div, target_height, color)
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
+        candidates = []
+        if self.icons_dir:
+            candidates.append(self.icons_dir / f"{icon_name}.png")
+            if not icon_name.startswith("keyboard_") and not icon_name.startswith("mouse_"):
+                candidates.append(self.icons_dir / f"keyboard_{icon_name}.png")
+
+        raw_fallback = BASE_DIR / "Keyboard & Mouse" / "Default"
+        candidates.append(raw_fallback / f"{icon_name}.png")
+        if not icon_name.startswith("keyboard_") and not icon_name.startswith("mouse_"):
+            candidates.append(raw_fallback / f"keyboard_{icon_name}.png")
+
+        kw = {"master": self.master} if self.master is not None else {}
+        for path in candidates:
+            if path.exists():
+                try:
+                    pil_img = Image.open(path).convert("RGBA")
+                    w, h = pil_img.size
+
+                    # Flood fill from border (0,0) to find all exterior transparent pixels
+                    visited = set([(0, 0)])
+                    queue = [(0, 0)]
+                    while queue:
+                        cx, cy = queue.pop()
+                        for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                            nx, ny = cx + dx, cy + dy
+                            if 0 <= nx < w and 0 <= ny < h and (nx, ny) not in visited:
+                                if pil_img.getpixel((nx, ny))[3] < 50:
+                                    visited.add((nx, ny))
+                                    queue.append((nx, ny))
+
+                    # Any transparent pixel not visited is part of the interior glyph hole!
+                    glyph_pixels = [
+                        (x, y) for y in range(h) for x in range(w)
+                        if pil_img.getpixel((x, y))[3] < 50 and (x, y) not in visited
+                    ]
+
+                    if not glyph_pixels:
+                        return self.get_icon(icon_name, scale_div=scale_div)
+
+                    min_x = min(p[0] for p in glyph_pixels)
+                    max_x = max(p[0] for p in glyph_pixels)
+                    min_y = min(p[1] for p in glyph_pixels)
+                    max_y = max(p[1] for p in glyph_pixels)
+                    gw, gh = max_x - min_x + 1, max_y - min_y + 1
+
+                    c_rgb = (255, 215, 0, 255)
+                    if color.startswith("#") and len(color) == 7:
+                        c_rgb = (int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16), 255)
+
+                    pad = 2
+                    glyph_img = Image.new("RGBA", (gw + pad * 2, gh + pad * 2), (0, 0, 0, 0))
+                    for x, y in glyph_pixels:
+                        glyph_img.putpixel((x - min_x + pad, y - min_y + pad), c_rgb)
+
+                    if target_height is not None:
+                        th = max(1, target_height)
+                        scale = th / (gh + pad * 2)
+                        tw = max(1, int((gw + pad * 2) * scale))
+                    else:
+                        div = max(1, scale_div)
+                        tw = max(1, (gw + pad * 2 + div - 1) // div)
+                        th = max(1, (gh + pad * 2 + div - 1) // div)
+
+                    resized = glyph_img.resize((tw, th), Image.Resampling.BILINEAR)
+                    img = ImageTk.PhotoImage(resized, **kw)
+                    self._cache[cache_key] = img
+                    return img
+                except Exception:
+                    continue
+
+        return self.get_icon(icon_name, scale_div=scale_div)

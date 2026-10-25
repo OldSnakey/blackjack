@@ -17,6 +17,16 @@ from typing import Any, Callable, List, Optional
 from audio_assets import KeyboardIconLoader
 from config import ASSETS_EXTRA_DIR, PANEL_BACKGROUND_COLOR, TABLE_BACKGROUND_COLOR
 from haunted_manager import BLESSING_REGISTRY, Blessing
+from pixel_ui import (
+    get_element_font,
+    get_title_font,
+    get_header_font,
+    get_body_font,
+    get_button_font,
+    get_badge_font,
+    get_display_font,
+    get_digital_font,
+)
 
 try:
     from PIL import Image, ImageTk
@@ -66,10 +76,10 @@ class StoryDialogueDialog(tkinter.Toplevel):
 
         port_w = portrait_img.width() if portrait_img is not None else 0
         is_hi_dpi = port_w > 140
-        speaker_font_sz = 12 if is_hi_dpi else 11
-        body_font_sz = 10 if is_hi_dpi else 9
-        btn_font_sz = 11 if is_hi_dpi else 10
-        wrap_w = 480 if is_hi_dpi else 400
+        speaker_font = get_element_font("story_dialog_speaker", scale=2.0 if is_hi_dpi else 1.0)
+        body_font = get_element_font("story_dialog_body", scale=2.0 if is_hi_dpi else 1.0)
+        btn_font = get_element_font("story_dialog_button", scale=2.0 if is_hi_dpi else 1.0)
+        wrap_w = 540 if is_hi_dpi else 500
 
         frame = tkinter.Frame(
             self, background=bg_col, relief="ridge", borderwidth=2,
@@ -82,37 +92,37 @@ class StoryDialogueDialog(tkinter.Toplevel):
         if portrait_img:
             port_lbl = tkinter.Label(frame, image=portrait_img, background=bg_col)
             port_lbl.image = portrait_img
-            port_lbl.pack(side="left", padx=12, pady=10)
+            port_lbl.pack(side="left", padx=14, pady=12)
             self.portrait_label = port_lbl
 
         # Content container
         self.content_box = tkinter.Frame(frame, background=bg_col)
-        self.content_box.pack(side="left", fill="both", expand=True, padx=(8, 14), pady=10)
+        self.content_box.pack(side="left", fill="both", expand=True, padx=(10, 16), pady=12)
 
         self.speaker_label = tkinter.Label(
-            self.content_box, text=speaker, font=("Arial", speaker_font_sz, "bold"),
+            self.content_box, text=speaker, font=speaker_font,
             fg=header_col, background=bg_col, anchor="w", justify="left"
         )
         self.speaker_label.pack(side="top", anchor="w", fill="x")
 
         self.action_button = tkinter.Button(
-            self.content_box, text=button_text, font=("Arial", btn_font_sz, "bold"),
+            self.content_box, text=button_text, font=btn_font,
             background=btn_bg, foreground="#ffffff", activebackground=btn_active,
             activeforeground="#ffffff", relief="flat", borderwidth=0,
-            highlightthickness=0, cursor="hand2", padx=16, pady=6,
+            highlightthickness=0, cursor="hand2", padx=20, pady=8,
             takefocus=False, command=self._dismiss
         )
         self.action_button.pack(side="bottom", anchor="e", pady=(8, 0))
 
         self.message_label = tkinter.Label(
-            self.content_box, text=text_content, font=("Arial", body_font_sz),
+            self.content_box, text=text_content, font=body_font,
             fg="#eceff1", background=bg_col, anchor="w", justify="left", wraplength=wrap_w
         )
-        self.message_label.pack(side="top", anchor="w", fill="x", expand=True, pady=(6, 10))
+        self.message_label.pack(side="top", anchor="w", fill="x", expand=True, pady=(8, 12))
 
         def _on_content_configure(event):
             if event.width > 120:
-                new_wrap = max(200, event.width - 12)
+                new_wrap = max(240, event.width - 16)
                 if abs(int(self.message_label.cget("wraplength")) - new_wrap) > 4:
                     self.message_label.configure(wraplength=new_wrap)
 
@@ -122,8 +132,8 @@ class StoryDialogueDialog(tkinter.Toplevel):
             self.update_idletasks()
             req_w = self.winfo_reqwidth()
             req_h = self.winfo_reqheight()
-            min_w = 740 if is_hi_dpi else 590
-            min_h = 310 if is_hi_dpi else 245
+            min_w = 820 if is_hi_dpi else 720
+            min_h = 360 if is_hi_dpi else 290
             screen_w = max(800, parent.winfo_screenwidth())
             screen_h = max(600, parent.winfo_screenheight())
             w = min(max(min_w, req_w + 16), screen_w - 80)
@@ -137,9 +147,9 @@ class StoryDialogueDialog(tkinter.Toplevel):
             self.geometry(f"{w}x{h}+{max(0, rx + (rw - w) // 2)}+{max(0, ry + (rh - h) // 2)}")
             self.update_idletasks()
         except Exception:
-            self.dialog_width = 600
-            self.dialog_height = 260
-            self.geometry("600x260")
+            self.dialog_width = 720
+            self.dialog_height = 290
+            self.geometry("720x290")
 
         self.bind("<Return>", lambda e: self._dismiss())
         self.bind("<space>", lambda e: self._dismiss())
@@ -173,10 +183,14 @@ class AngelicDraftDialog(tkinter.Toplevel):
         self.title("✦ CELESTIAL BLESSINGS - DRAFT A SACRED RELIC ✦")
         self.transient(parent)
         self.resizable(False, False)
-        self.configure(background="#03101c", padx=16, pady=14)
+        self.configure(background="#03101c", padx=18, pady=16)
 
-        w, h = 680, 360
+        w, h = 780, 420
         try:
+            screen_w = max(800, parent.winfo_screenwidth())
+            screen_h = max(600, parent.winfo_screenheight())
+            w = min(w, screen_w - 80)
+            h = min(h, screen_h - 80)
             rx = parent.winfo_rootx()
             ry = parent.winfo_rooty()
             rw = parent.winfo_width()
@@ -187,13 +201,13 @@ class AngelicDraftDialog(tkinter.Toplevel):
 
         tkinter.Label(
             self, text="✦ CHOOSE YOUR CELESTIAL BLESSING ✦",
-            font=("Arial", 13, "bold"), fg="#ffd700", background="#03101c"
-        ).pack(pady=(0, 2))
+            font=get_element_font("dialog_title"), fg="#ffd700", background="#03101c"
+        ).pack(pady=(0, 4))
 
         tkinter.Label(
             self, text="The Angel intervenes! Draft one divine relic to aid in the struggle for your soul.",
-            font=("Arial", 9, "italic"), fg="#80cbc4", background="#03101c"
-        ).pack(pady=(0, 12))
+            font=get_element_font("angelic_draft_subtitle"), fg="#80cbc4", background="#03101c"
+        ).pack(pady=(0, 14))
 
         cards_frame = tkinter.Frame(self, background="#03101c")
         cards_frame.pack(fill="both", expand=True)
@@ -202,35 +216,36 @@ class AngelicDraftDialog(tkinter.Toplevel):
             details = BLESSING_REGISTRY[blessing]
             card_f = tkinter.Frame(
                 cards_frame, background="#051f38", relief="ridge", borderwidth=2,
-                highlightbackground="#00e5ff", highlightthickness=1, padx=10, pady=8
+                highlightbackground="#00e5ff", highlightthickness=1, padx=12, pady=10
             )
-            card_f.pack(side="left", fill="both", expand=True, padx=5)
+            card_f.pack(side="left", fill="both", expand=True, padx=6)
 
             icon = relic_icons.get(blessing.value)
             if icon:
                 ilbl = tkinter.Label(card_f, image=icon, background="#051f38")
                 ilbl.image = icon
-                ilbl.pack(pady=(2, 4))
+                ilbl.pack(pady=(2, 6))
 
             tkinter.Label(
-                card_f, text=details.title, font=("Arial", 10, "bold"),
+                card_f, text=details.title, font=get_element_font("angelic_draft_title"),
                 fg="#ffd700", background="#051f38"
-            ).pack()
+            ).pack(pady=(0, 2))
 
             tkinter.Label(
-                card_f, text=details.tagline, font=("Arial", 8, "italic"),
+                card_f, text=details.tagline, font=get_element_font("angelic_draft_tagline"),
                 fg="#80cbc4", background="#051f38"
-            ).pack(pady=(0, 4))
+            ).pack(pady=(0, 6))
 
             tkinter.Label(
-                card_f, text=details.description, font=("Arial", 8),
-                fg="#eceff1", background="#051f38", justify="center", wraplength=170
-            ).pack(fill="both", expand=True, pady=(0, 8))
+                card_f, text=details.description, font=get_element_font("angelic_draft_description"),
+                fg="#eceff1", background="#051f38", justify="center", wraplength=205
+            ).pack(fill="both", expand=True, pady=(0, 10))
 
             btn = tkinter.Button(
-                card_f, text="Equip Relic", font=("Arial", 9, "bold"),
+                card_f, text="Equip Relic", font=get_element_font("angelic_draft_button"),
                 background="#00838f", foreground="#ffffff", activebackground="#00acc1",
                 activeforeground="#ffffff", relief="raised", borderwidth=2, cursor="hand2",
+                padx=14, pady=4,
                 command=lambda b=blessing: self._pick(b)
             )
             btn.pack(side="bottom", pady=4)
@@ -239,8 +254,8 @@ class AngelicDraftDialog(tkinter.Toplevel):
             self.update_idletasks()
             screen_w = max(800, parent.winfo_screenwidth())
             screen_h = max(600, parent.winfo_screenheight())
-            w = min(max(680, self.winfo_reqwidth() + 16), screen_w - 80)
-            h = min(max(360, self.winfo_reqheight() + 16), screen_h - 80)
+            w = min(max(780, self.winfo_reqwidth() + 16), screen_w - 80)
+            h = min(max(420, self.winfo_reqheight() + 16), screen_h - 80)
             rx = parent.winfo_rootx()
             ry = parent.winfo_rooty()
             rw = parent.winfo_width()
@@ -353,20 +368,20 @@ class SettingsDialog(tkinter.Toplevel):
         # Header title
         header = tkinter.Label(
             self.scroll_content, text="⚙ CASINO SETTINGS & RECORDS",
-            font=("Arial", 12, "bold"), fg="#ffd700", background=PANEL_BACKGROUND_COLOR
+            font=get_element_font("dialog_title"), fg="#ffd700", background=PANEL_BACKGROUND_COLOR
         )
         header.pack(pady=(0, 8))
 
         # Audio & Display Controls Frame (Two-Tier Layout)
         ctrl_frame = tkinter.LabelFrame(
-            self.scroll_content, text=" Table Preferences ", font=("Arial", 10, "bold"),
+            self.scroll_content, text=" Table Preferences ", font=get_header_font(12),
             fg="#80cbc4", background=PANEL_BACKGROUND_COLOR, padx=12, pady=8
         )
         ctrl_frame.pack(fill="x", pady=(0, 10))
 
         # Tier 1: Audio & Dialogue
         tier1_lbl = tkinter.Label(
-            ctrl_frame, text="Audio & Dialogue:", font=("Arial", 8, "italic"),
+            ctrl_frame, text="Audio & Dialogue:", font=get_badge_font(11),
             fg="#b2dfdb", background=PANEL_BACKGROUND_COLOR
         )
         tier1_lbl.pack(anchor="w", pady=(0, 2))
@@ -377,7 +392,7 @@ class SettingsDialog(tkinter.Toplevel):
         audio_row.columnconfigure(1, weight=1)
 
         self.sound_btn = tkinter.Button(
-            audio_row, textvariable=self.app.sound_status_var, font=("Arial", 9, "bold"),
+            audio_row, textvariable=self.app.sound_status_var, font=get_button_font(11),
             background="#004d40", fg="white", activebackground="#00695c", activeforeground="white",
             relief="ridge", borderwidth=1, cursor="hand2", command=self.app._on_toggle_sound,
             padx=10, pady=4
@@ -386,7 +401,7 @@ class SettingsDialog(tkinter.Toplevel):
 
         if hasattr(self.app, "voice_status_var"):
             self.voice_btn = tkinter.Button(
-                audio_row, textvariable=self.app.voice_status_var, font=("Arial", 9, "bold"),
+                audio_row, textvariable=self.app.voice_status_var, font=get_button_font(11),
                 background="#004d40", fg="white", activebackground="#00695c", activeforeground="white",
                 relief="ridge", borderwidth=1, cursor="hand2", command=self.app._on_toggle_voice,
                 padx=10, pady=4
@@ -395,7 +410,7 @@ class SettingsDialog(tkinter.Toplevel):
 
         # Tier 2: Display & Customization
         tier2_lbl = tkinter.Label(
-            ctrl_frame, text="Display & Customization:", font=("Arial", 8, "italic"),
+            ctrl_frame, text="Display & Customization:", font=get_badge_font(11),
             fg="#b2dfdb", background=PANEL_BACKGROUND_COLOR
         )
         tier2_lbl.pack(anchor="w", pady=(2, 2))
@@ -407,7 +422,7 @@ class SettingsDialog(tkinter.Toplevel):
         disp_row.columnconfigure(2, weight=1)
 
         self.scale_btn = tkinter.Button(
-            disp_row, textvariable=self.app.scale_status_var, font=("Arial", 9, "bold"),
+            disp_row, textvariable=self.app.scale_status_var, font=get_button_font(11),
             background="#004d40", fg="white", activebackground="#00695c", activeforeground="white",
             relief="ridge", borderwidth=1, cursor="hand2", command=self.app.toggle_scale_mode,
             padx=8, pady=4
@@ -415,7 +430,7 @@ class SettingsDialog(tkinter.Toplevel):
         self.scale_btn.grid(row=0, column=0, sticky="ew", padx=(0, 3))
 
         self.dealer_btn = tkinter.Button(
-            disp_row, textvariable=self.app.dealer_view_status_var, font=("Arial", 9, "bold"),
+            disp_row, textvariable=self.app.dealer_view_status_var, font=get_button_font(11),
             background="#004d40", fg="white", activebackground="#00695c", activeforeground="white",
             relief="ridge", borderwidth=1, cursor="hand2", command=self.app._on_toggle_dealer_view,
             padx=8, pady=4
@@ -423,7 +438,7 @@ class SettingsDialog(tkinter.Toplevel):
         self.dealer_btn.grid(row=0, column=1, sticky="ew", padx=3)
 
         self.wardrobe_btn = tkinter.Button(
-            disp_row, text="🎩 Wardrobe", font=("Arial", 9, "bold"),
+            disp_row, text="🎩 Wardrobe", font=get_button_font(11),
             background="#1b5e20", fg="white", activebackground="#2e7d32", activeforeground="white",
             relief="ridge", borderwidth=1, cursor="hand2", command=self.app._open_wardrobe_dialog,
             padx=8, pady=4
@@ -432,7 +447,7 @@ class SettingsDialog(tkinter.Toplevel):
 
         # Tier 3: Play Mode & Onboarding Controls
         tier3_lbl = tkinter.Label(
-            ctrl_frame, text="Play Mode & Onboarding:", font=("Arial", 8, "italic"),
+            ctrl_frame, text="Play Mode & Onboarding:", font=get_badge_font(11),
             fg="#b2dfdb", background=PANEL_BACKGROUND_COLOR
         )
         tier3_lbl.pack(anchor="w", pady=(4, 2))
@@ -444,7 +459,7 @@ class SettingsDialog(tkinter.Toplevel):
 
         mode_name = getattr(self.app, "play_mode", "betting").capitalize()
         self.mode_btn = tkinter.Button(
-            mode_row, text=f"🎮 Mode: {mode_name}", font=("Arial", 9, "bold"),
+            mode_row, text=f"🎮 Mode: {mode_name}", font=get_button_font(11),
             background="#004d40", fg="white", activebackground="#00695c", activeforeground="white",
             relief="ridge", borderwidth=1, cursor="hand2", command=self._on_cycle_play_mode,
             padx=8, pady=4
@@ -452,7 +467,7 @@ class SettingsDialog(tkinter.Toplevel):
         self.mode_btn.grid(row=0, column=0, sticky="ew", padx=(0, 3))
 
         self.welcome_btn = tkinter.Button(
-            mode_row, text="🌟 Welcome Screen...", font=("Arial", 9, "bold"),
+            mode_row, text="🌟 Welcome Screen...", font=get_button_font(11),
             background="#1b5e20", fg="white", activebackground="#2e7d32", activeforeground="white",
             relief="ridge", borderwidth=1, cursor="hand2", command=self._on_open_welcome_screen,
             padx=8, pady=4
@@ -461,7 +476,7 @@ class SettingsDialog(tkinter.Toplevel):
 
         # Save Data Management Frame
         save_frame = tkinter.LabelFrame(
-            self.scroll_content, text=" Save Data & Hall of Fame Records ", font=("Arial", 10, "bold"),
+            self.scroll_content, text=" Save Data & Hall of Fame Records ", font=get_header_font(12),
             fg="#ffd700", background=PANEL_BACKGROUND_COLOR, padx=12, pady=8
         )
         save_frame.pack(fill="x", pady=(0, 8))
@@ -471,25 +486,25 @@ class SettingsDialog(tkinter.Toplevel):
         self.stats_frame.pack(fill="x", pady=(0, 6))
 
         self.lbl_peak = tkinter.Label(
-            self.stats_frame, text="", font=("Arial", 9),
+            self.stats_frame, text="", font=get_body_font(11),
             fg="#e0e0e0", background=PANEL_BACKGROUND_COLOR, anchor="w"
         )
         self.lbl_peak.pack(fill="x", pady=1)
 
         self.lbl_hands = tkinter.Label(
-            self.stats_frame, text="", font=("Arial", 9),
+            self.stats_frame, text="", font=get_body_font(11),
             fg="#e0e0e0", background=PANEL_BACKGROUND_COLOR, anchor="w"
         )
         self.lbl_hands.pack(fill="x", pady=1)
 
         self.lbl_counting = tkinter.Label(
-            self.stats_frame, text="", font=("Arial", 9),
+            self.stats_frame, text="", font=get_body_font(11),
             fg="#e0e0e0", background=PANEL_BACKGROUND_COLOR, anchor="w"
         )
         self.lbl_counting.pack(fill="x", pady=1)
 
         self.lbl_exorcist = tkinter.Label(
-            self.stats_frame, text="", font=("Arial", 9),
+            self.stats_frame, text="", font=get_body_font(11),
             fg="#e0e0e0", background=PANEL_BACKGROUND_COLOR, anchor="w"
         )
         self.lbl_exorcist.pack(fill="x", pady=1)
@@ -498,7 +513,7 @@ class SettingsDialog(tkinter.Toplevel):
 
         # Status feedback label
         lbl_status = tkinter.Label(
-            save_frame, textvariable=self.status_msg_var, font=("Arial", 9, "italic"),
+            save_frame, textvariable=self.status_msg_var, font=get_body_font(11),
             fg="#ffeb3b", background=PANEL_BACKGROUND_COLOR
         )
         lbl_status.pack(pady=(2, 6))
@@ -506,7 +521,7 @@ class SettingsDialog(tkinter.Toplevel):
         # Clear Save File Button
         self.clear_save_btn = tkinter.Button(
             save_frame, text="🗑 Clear Save File (Reset to Blank Slate)",
-            font=("Arial", 10, "bold"), background="#b71c1c", fg="#ffffff",
+            font=get_button_font(12), background="#b71c1c", fg="#ffffff",
             activebackground="#d32f2f", activeforeground="#ffffff",
             relief="raised", borderwidth=2, cursor="hand2",
             command=self._on_click_clear_save
@@ -515,7 +530,7 @@ class SettingsDialog(tkinter.Toplevel):
 
         # Close Button
         close_btn = tkinter.Button(
-            self.scroll_content, text="Close", font=("Arial", 10, "bold"),
+            self.scroll_content, text="Close", font=get_button_font(12),
             background="#37474f", fg="white", activebackground="#455a64",
             activeforeground="white", relief="ridge", borderwidth=1, cursor="hand2",
             command=self._on_close
@@ -694,16 +709,16 @@ class ShortcutsDialog(tkinter.Toplevel):
 
         tkinter.Label(
             title_box, text="KEYBOARD SHORTCUTS & CONTROLS",
-            font=("Arial", 12, "bold"), fg="#ffd700", background=PANEL_BACKGROUND_COLOR
+            font=get_element_font("dialog_title"), fg="#ffd700", background=PANEL_BACKGROUND_COLOR
         ).pack(anchor="w")
 
         tkinter.Label(
             title_box, text="Full hands-free keyboard accessibility for authentic casino gameplay",
-            font=("Arial", 8, "italic"), fg="#80cbc4", background=PANEL_BACKGROUND_COLOR
+            font=get_element_font("dialog_body"), fg="#80cbc4", background=PANEL_BACKGROUND_COLOR
         ).pack(anchor="w")
 
         close_btn = tkinter.Button(
-            header_frame, text="✕ Close (Esc)", font=("Arial", 9, "bold"),
+            header_frame, text="✕ Close (Esc)", font=get_button_font(11),
             background="#c62828", foreground="#ffffff", activebackground="#e53935",
             activeforeground="#ffffff", relief="raised", borderwidth=1, cursor="hand2",
             takefocus=False, command=self._on_close
@@ -715,7 +730,7 @@ class ShortcutsDialog(tkinter.Toplevel):
         tab_nav.pack(fill="x", padx=14, pady=(2, 3))
 
         self.btn_tab_gameplay = tkinter.Button(
-            tab_nav, text="🃏 Gameplay & Betting", font=("Arial", 9, "bold"),
+            tab_nav, text="🃏 Gameplay & Betting", font=get_button_font(12),
             background="#2e7d32", fg="white", activebackground="#388e3c",
             activeforeground="white", relief="raised", borderwidth=2, cursor="hand2",
             padx=14, pady=3, command=lambda: self._switch_tab(0)
@@ -723,7 +738,7 @@ class ShortcutsDialog(tkinter.Toplevel):
         self.btn_tab_gameplay.pack(side="left", padx=(0, 8))
 
         self.btn_tab_system = tkinter.Button(
-            tab_nav, text="⚙️ System & Controls", font=("Arial", 9, "bold"),
+            tab_nav, text="⚙️ System & Controls", font=get_button_font(12),
             background="#1e382b", fg="#cfd8dc", activebackground="#2e5441",
             activeforeground="white", relief="raised", borderwidth=1, cursor="hand2",
             padx=14, pady=3, command=lambda: self._switch_tab(1)
@@ -755,7 +770,7 @@ class ShortcutsDialog(tkinter.Toplevel):
             )
             panel.pack(fill="both", expand=True, padx=4, pady=2)
             tkinter.Label(
-                panel, text=title_text, font=("Arial", 9, "bold"),
+                panel, text=title_text, font=get_header_font(12),
                 fg="#ffeb3b", background="#053612"
             ).pack(anchor="w", pady=(0, 2))
             return panel
@@ -770,7 +785,7 @@ class ShortcutsDialog(tkinter.Toplevel):
             for i, name in enumerate(icon_names):
                 if i > 0:
                     tkinter.Label(
-                        badges, text="or", font=("Arial", 8, "bold"),
+                        badges, text="or", font=get_badge_font(10),
                         fg="#80cbc4", background="#053612"
                     ).pack(side="left", padx=2)
 
@@ -782,19 +797,19 @@ class ShortcutsDialog(tkinter.Toplevel):
                 else:
                     disp = name.replace("keyboard_", "").replace("mouse_", "").upper()
                     tkinter.Label(
-                        badges, text=f"[{disp}]", font=("Consolas", 8, "bold"),
+                        badges, text=f"[{disp}]", font=get_badge_font(11),
                         background="#ffffff", foreground="#000000",
                         padx=3, pady=1, relief="raised", bd=1
                     ).pack(side="left", padx=1)
 
             tkinter.Label(
-                r, text=action_text, font=("Arial", 9, "bold"),
+                r, text=action_text, font=get_body_font(12, "bold"),
                 fg="#ffffff", background="#053612"
             ).pack(side="left", padx=(6, 2))
 
             if hint_text:
                 tkinter.Label(
-                    r, text=hint_text, font=("Arial", 8),
+                    r, text=hint_text, font=get_body_font(11),
                     fg="#a5d6a7", background="#053612"
                 ).pack(side="left")
 
@@ -882,7 +897,7 @@ class ShortcutsDialog(tkinter.Toplevel):
         tkinter.Label(
             footer_frame,
             text="💡 Tip: Switch tabs with [Left] / [Right] arrow keys or [1] / [2]. Shortcuts activate when controls are enabled.",
-            font=("Arial", 8, "italic"), fg="#ffe082", background=PANEL_BACKGROUND_COLOR
+            font=get_body_font(11), fg="#ffe082", background=PANEL_BACKGROUND_COLOR
         ).pack(anchor="center")
 
         # Initial tab presentation
@@ -1059,7 +1074,7 @@ class WelcomeSplashDialog(tkinter.Toplevel):
             tkinter.Label(
                 self.scroll_content,
                 text="♠  B L A C K J A C K  ♥",
-                font=("Courier", 18, "bold"),
+                font=get_element_font("dialog_title"),
                 fg="#ffd700",
                 background=PANEL_BACKGROUND_COLOR,
             ).pack(pady=(0, 6))
@@ -1096,7 +1111,7 @@ class WelcomeSplashDialog(tkinter.Toplevel):
 
         name_lbl = tkinter.Label(
             text_box, text=f"♠ {dealer_name} — {dealer_title}",
-            font=("Arial", 10, "bold"), fg="#ffd700", background="#072b17", anchor="w"
+            font=get_header_font(18), fg="#ffd700", background="#072b17", anchor="w"
         )
         name_lbl.pack(anchor="w", pady=(0, 2))
 
@@ -1107,8 +1122,8 @@ class WelcomeSplashDialog(tkinter.Toplevel):
                 "Select your preferred table experience below — you can change your mode "
                 "anytime in Settings (F2) or with Shift+M."
             ),
-            font=("Arial", 9), fg="#e0f2f1", background="#072b17", justify="left",
-            anchor="w", wraplength=520
+            font=get_body_font(16), fg="#e0f2f1", background="#072b17", justify="left",
+            anchor="w", wraplength=560
         )
         speech_lbl.pack(anchor="w")
 
@@ -1171,26 +1186,26 @@ class WelcomeSplashDialog(tkinter.Toplevel):
             hdr_row.pack(fill="x")
 
             key_lbl = tkinter.Label(
-                hdr_row, text=f"[{key_str}]", font=("Arial", 9, "bold"),
+                hdr_row, text=f"[{key_str}]", font=get_button_font(14),
                 fg="#b0bec5", background="#1b382b", padx=6, pady=1, relief="ridge", borderwidth=1
             )
             key_lbl.pack(side="left", padx=(0, 6))
 
             title_lbl = tkinter.Label(
-                hdr_row, text=title_text, font=("Arial", 10, "bold"),
+                hdr_row, text=title_text, font=get_header_font(18),
                 fg=accent_col, background="#081f14", cursor="hand2"
             )
             title_lbl.pack(side="left")
 
             badge_lbl = tkinter.Label(
-                hdr_row, text=f"Press [{key_str}] or Click", font=("Arial", 8),
+                hdr_row, text=f"Press [{key_str}] or Click", font=get_badge_font(15),
                 fg="#78909c", background="#081f14", cursor="hand2"
             )
             badge_lbl.pack(side="right")
 
             # Subtitle
             sub_lbl = tkinter.Label(
-                card_f, text=subtitle_text, font=("Arial", 8, "italic"),
+                card_f, text=subtitle_text, font=get_body_font(16),
                 fg="#b2dfdb", background="#081f14", anchor="w", cursor="hand2"
             )
             sub_lbl.pack(fill="x", pady=(1, 2))
@@ -1199,7 +1214,7 @@ class WelcomeSplashDialog(tkinter.Toplevel):
             bullet_labels = []
             for bp in bullets:
                 b_lbl = tkinter.Label(
-                    card_f, text=bp, font=("Arial", 8),
+                    card_f, text=bp, font=get_body_font(16),
                     fg="#cfd8dc", background="#081f14", anchor="w", cursor="hand2"
                 )
                 b_lbl.pack(fill="x", pady=0)
@@ -1227,7 +1242,7 @@ class WelcomeSplashDialog(tkinter.Toplevel):
             self.scroll_content,
             text="Remember my preference (don't show again on startup; can reopen anytime in Settings)",
             variable=self.remember_var,
-            font=("Arial", 9),
+            font=get_body_font(15),
             fg="#cfd8dc",
             background=PANEL_BACKGROUND_COLOR,
             selectcolor="#004d40",
@@ -1246,7 +1261,7 @@ class WelcomeSplashDialog(tkinter.Toplevel):
         self.confirm_btn = tkinter.Button(
             action_row,
             text="Take My Seat & Play (Enter)",
-            font=("Arial", 11, "bold"),
+            font=get_button_font(16),
             background="#2e7d32",
             fg="#ffffff",
             activebackground="#388e3c",
@@ -1263,7 +1278,7 @@ class WelcomeSplashDialog(tkinter.Toplevel):
         self.cancel_btn = tkinter.Button(
             action_row,
             text="Skip (Current Settings)",
-            font=("Arial", 10, "bold"),
+            font=get_button_font(16),
             background="#37474f",
             fg="#cfd8dc",
             activebackground="#455a64",
@@ -1290,10 +1305,10 @@ class WelcomeSplashDialog(tkinter.Toplevel):
             for w in card["sync_widgets"]:
                 w.configure(background=bg_col)
             if is_sel:
-                card["badge"].configure(text="✓ SELECTED", fg="#00e676", font=("Arial", 9, "bold"))
+                card["badge"].configure(text="✓ SELECTED", fg="#00e676", font=get_badge_font(15))
                 card["key_btn"].configure(background=card["accent"], fg="#000000")
             else:
-                card["badge"].configure(text=f"Press [{card['key']}] or Click", fg="#78909c", font=("Arial", 8))
+                card["badge"].configure(text=f"Press [{card['key']}] or Click", fg="#78909c", font=get_badge_font(15))
                 card["key_btn"].configure(background="#1b382b", fg="#b0bec5")
 
     def _on_confirm(self):

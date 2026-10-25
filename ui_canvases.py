@@ -35,21 +35,34 @@ except (ImportError, Exception):
 
 from config import (
     CHIP_STYLES,
+    FONTS_DIR,
     HAUNTED_ASSETS_DIR,
     PANEL_BACKGROUND_COLOR,
     TABLE_BACKGROUND_COLOR,
     hex_to_rgb,
 )
 from rules import breakdown_chips, breakdown_bankroll_piles
+from pixel_ui import (
+    get_element_font,
+    get_title_font,
+    get_header_font,
+    get_body_font,
+    get_button_font,
+    get_badge_font,
+    get_display_font,
+    get_digital_font,
+    get_micro_font,
+)
+from ui_layout import get_ui_layout, resolve_origin, resolve_offset
 
 # Parameterized Typography & HUD Constants
-HUD_OUTCOME_FONT_FAMILY = "Georgia"
-HUD_OUTCOME_FONT_SIZE = 14
+HUD_OUTCOME_FONT_FAMILY = "BoldPixels"
+HUD_OUTCOME_FONT_SIZE = 16
 HUD_OUTCOME_FONT_WEIGHT = "bold"
 
-HUD_LORE_FONT_FAMILY = "Georgia"
-HUD_LORE_FONT_SIZE = 11
-HUD_LORE_FONT_SLANT = "italic"
+HUD_LORE_FONT_FAMILY = "m5x7"
+HUD_LORE_FONT_SIZE = 14
+HUD_LORE_FONT_SLANT = "roman"
 HUD_DEFAULT_WRAPLENGTH = 600
 
 
@@ -67,27 +80,34 @@ class ChipVisualizer(tkinter.Canvas):
     def __init__(
         self,
         master,
-        width=200,
-        height=135,
+        width: Optional[int] = None,
+        height: Optional[int] = None,
         background=PANEL_BACKGROUND_COLOR,
         on_chip_click: Optional[Callable[[int], None]] = None,
+        on_chip_deduct: Optional[Callable[[int], None]] = None,
+        on_spot_click: Optional[Callable[[], None]] = None,
         **kwargs,
     ):
+        cv_cfg = get_ui_layout("chip_visualizer")
+        base_w = width if width is not None else cv_cfg.get("base_width", 200)
+        base_h = height if height is not None else cv_cfg.get("base_height", 140)
         super().__init__(
-            master, width=width, height=height, background=background,
+            master, width=base_w, height=base_h, background=background,
             highlightthickness=0, borderwidth=0, relief="flat", **kwargs
         )
         self.scale = 1.0
-        self.base_width = width
-        self.base_height = height
-        self.canvas_width = width
-        self.canvas_height = height
-        self.cx = width // 2
-        self.cy = int(height * 0.28)
+        self.base_width = base_w
+        self.base_height = base_h
+        self.canvas_width = base_w
+        self.canvas_height = base_h
+        self.cx, self.cy = resolve_origin(get_ui_layout("chip_visualizer", "betting_spot"), base_w, base_h)
         self.current_bet = 0
         self.available_bankroll = 1000
         self.interactive_bankroll = True
         self.on_chip_click = on_chip_click
+        self.on_chip_deduct = on_chip_deduct
+        self.on_spot_click = on_spot_click
+        self._hovered_denom: Optional[int] = None
         self._active_timers: set[str] = set()
         self._felt_slice_photo: Optional[Any] = None
         self._felt_slice_img: Optional[Any] = None
@@ -131,10 +151,12 @@ class ChipVisualizer(tkinter.Canvas):
         """Scales visualizer canvas and re-renders base spot proportionally without table overflow."""
         self.scale = scale
         self.canvas_width = int(getattr(self, "base_width", 200) * scale)
-        self.canvas_height = int(getattr(self, "base_height", 135) * (1.0 if scale <= 1.0 else 1.25))
+        scale_h = 1.0 if scale <= 1.0 else (1.0 + (scale - 1.0) * 0.35)
+        self.canvas_height = int(getattr(self, "base_height", 140) * scale_h)
         self.configure(width=self.canvas_width, height=self.canvas_height)
-        self.cx = self.canvas_width // 2
-        self.cy = int(self.canvas_height * 0.28)
+        self.cx, self.cy = resolve_origin(
+            get_ui_layout("chip_visualizer", "betting_spot"), self.canvas_width, self.canvas_height
+        )
         if self._felt_source_img and self._felt_coords:
             self.sync_felt_background(self._felt_source_img, self._felt_coords[0], self._felt_coords[1])
         self._draw_base_spot()
@@ -142,51 +164,91 @@ class ChipVisualizer(tkinter.Canvas):
             self.render_stacks(self.current_bet)
         self.render_bankroll_piles()
 
+    def _get_content_offset(self) -> tuple[int, int]:
+        off = get_ui_layout("chip_visualizer").get("content_offset", {})
+        return (off.get("x", 0), off.get("y", 0))
+
     def _draw_base_spot(self):
         """Draws the felt betting spot: outer dashed gold ellipse, inner accent ring, watermark, and badge."""
         self.delete("all")
-        cx, cy = self.cx, self.cy
-        s = getattr(self, "scale", 1.0)
+        w, h = self.canvas_width, self.canvas_height
+        sx = w / float(getattr(self, "base_width", 200))
+        sy = h / float(getattr(self, "base_height", 140))
+        s_font = min(sx, sy)
 
         # 0. Underlying felt slice background
         if getattr(self, "_felt_slice_photo", None):
             self.create_image(0, 0, image=self._felt_slice_photo, anchor="nw", tags="felt_bg")
 
+        # Layout resolution for betting spot grouping with content_offset
+        content_offset = self._get_content_offset()
+        spot_cfg = get_ui_layout("chip_visualizer", "betting_spot")
+        cx, cy = resolve_origin(spot_cfg, w, h, sx, sy, content_offset=content_offset)
+        self.cx, self.cy = cx, cy
+
         # 1. Outer betting circle felt background and golden dashed ring
+        outer_cfg = spot_cfg.get("outer_oval", {"rx": 72, "ry": 22})
+        rx = int(outer_cfg["rx"] * sx)
+        ry = int(outer_cfg["ry"] * sy)
         self.create_oval(
-            cx - int(72 * s), cy - int(25 * s), cx + int(72 * s), cy + int(25 * s),
-            outline="#d4af37", width=max(1, int(2 * s)), dash=(4, 3), fill="", tags="spot_base"
+            cx - rx, cy - ry, cx + rx, cy + ry,
+            outline="#d4af37", width=max(1, int(2 * s_font)), dash=(4, 3), fill="", tags=("spot_base", "spot_interactive")
         )
         # 2. Inner subtle gold accent ring
+        inner_cfg = spot_cfg.get("inner_oval", {"rx": 65, "ry": 18})
+        rx_inner = int(inner_cfg["rx"] * sx)
+        ry_inner = int(inner_cfg["ry"] * sy)
         self.create_oval(
-            cx - int(65 * s), cy - int(20 * s), cx + int(65 * s), cy + int(20 * s),
-            outline="#8a6d1b", width=1, dash=(2, 3), tags="spot_ring"
+            cx - rx_inner, cy - ry_inner, cx + rx_inner, cy + ry_inner,
+            outline="#8a6d1b", width=1, dash=(2, 3), tags=("spot_ring", "spot_interactive")
         )
         # 3. Felt watermark
+        wm_cfg = spot_cfg.get("watermark", {"offset_x": 0, "offset_y": 1})
+        wm_x, wm_y = resolve_offset(wm_cfg, (cx, cy), sx, sy)
         self.create_text(
-            cx, cy + int(1 * s), text="BETTING SPOT", fill="#8a6d1b",
-            font=("Arial", max(6, int(7 * s)), "bold"), tags="watermark"
+            wm_x, wm_y, text="BETTING SPOT", fill="#8a6d1b",
+            font=get_element_font("betting_spot_watermark", scale=s_font), tags=("watermark", "spot_interactive")
         )
         # 4. Top badge for bet amount
+        badge_cfg = spot_cfg.get("bet_badge", {"offset_x": 0, "offset_y": -34})
+        bet_badge_x, bet_badge_y = resolve_offset(badge_cfg, (cx, cy), sx, sy)
         self.create_text(
-            cx, int(9 * s), text="", fill="#ffd700",
-            font=("Arial", max(7, int(8 * s)), "bold"), tags="badge"
+            bet_badge_x, max(int(6 * sy), bet_badge_y), text="", fill="#ffd700",
+            font=get_element_font("chip_bet_badge", scale=s_font), tags="badge"
         )
-        # 5. Divider & Bankroll Tray Header
-        tray_top_y = int(68 * s)
+        # 5. Divider (strictly above reserve chip piles)
+        divider_cfg = get_ui_layout("chip_visualizer", "tray_divider")
+        tray_top_y = int(h * divider_cfg.get("y_ratio", 0.46)) + int(content_offset[1] * sy)
+        margin_div = int(divider_cfg.get("margin_x", 10) * sx)
         self.create_line(
-            int(10 * s), tray_top_y, self.canvas_width - int(10 * s), tray_top_y,
+            margin_div, tray_top_y, w - margin_div, tray_top_y,
             fill="#8a6d1b", width=1, dash=(2, 2), tags="tray_divider"
         )
+        # 6. Bankroll badge (at bottom)
+        bankroll_badge_cfg = get_ui_layout("chip_visualizer", "bankroll_badge")
+        badge_font = get_element_font("chip_bankroll_badge", scale=s_font)
+        f_sz_bdg = abs(badge_font[1]) if isinstance(badge_font, tuple) and len(badge_font) > 1 else int(10 * s_font)
+        bdg_x, bdg_y = resolve_origin(bankroll_badge_cfg, w, h, sx, sy, content_offset=content_offset)
+        badge_y = min(h - int(f_sz_bdg / 2) - 3, bdg_y)
         self.create_text(
-            cx, int(77 * s), text="", fill="#ffd54f",
-            font=("Arial", max(6, int(7 * s)), "bold"), tags="bankroll_badge"
+            bdg_x, badge_y, text="", fill="#ffd54f",
+            font=badge_font, tags="bankroll_badge"
         )
+
+        self.tag_bind("spot_interactive", "<Button-1>", lambda e: self.after(0, self.trigger_spot_click))
+        self.tag_bind("spot_interactive", "<Enter>", lambda e: self.configure(cursor="hand2") if (self.interactive_bankroll and self.current_bet > 0) else None)
+        self.tag_bind("spot_interactive", "<Leave>", lambda e: self.configure(cursor=""))
 
     def set_bankroll(self, available_bankroll: int, interactive: bool = True):
         """Updates the player's available bankroll chip piles in the bottom reserve tray."""
-        self.available_bankroll = max(0, int(available_bankroll))
-        self.interactive_bankroll = bool(interactive)
+        avail = max(0, int(available_bankroll))
+        inter = bool(interactive)
+        if getattr(self, "available_bankroll", None) == avail and getattr(self, "interactive_bankroll", None) == inter:
+            return
+        self.available_bankroll = avail
+        self.interactive_bankroll = inter
+        if not self.interactive_bankroll:
+            self._hovered_denom = None
         self.render_bankroll_piles()
 
     def trigger_pile_click(self, denom: int):
@@ -194,21 +256,72 @@ class ChipVisualizer(tkinter.Canvas):
         if self.interactive_bankroll and self.available_bankroll >= denom and callable(self.on_chip_click):
             self.on_chip_click(denom)
 
+    def trigger_pile_deduct(self, denom: int):
+        """Invokes chip bet deduction when a denomination pile is right-clicked."""
+        if self.interactive_bankroll and callable(self.on_chip_deduct):
+            self.on_chip_deduct(denom)
+
+    def trigger_spot_click(self):
+        """Clears the staged bet when the center betting spot is clicked."""
+        if self.interactive_bankroll and callable(self.on_spot_click):
+            self.on_spot_click()
+
+    def _on_pile_enter(self, _event, denom: int):
+        if not self.interactive_bankroll:
+            return
+        try:
+            self.configure(cursor="hand2")
+        except Exception:
+            pass
+        if self._hovered_denom == denom:
+            return
+        sy = self.canvas_height / float(getattr(self, "base_height", 140))
+        lift = max(2, int(3 * sy))
+        if self._hovered_denom is not None:
+            self.move(f"bank_pile_{self._hovered_denom}", 0, lift)
+        self._hovered_denom = denom
+        self.move(f"bank_pile_{denom}", 0, -lift)
+
+    def _on_pile_leave(self, _event, denom: int):
+        try:
+            self.configure(cursor="")
+        except Exception:
+            pass
+        if self._hovered_denom == denom:
+            sy = self.canvas_height / float(getattr(self, "base_height", 140))
+            lift = max(2, int(3 * sy))
+            self.move(f"bank_pile_{denom}", 0, lift)
+            self._hovered_denom = None
+
     def render_bankroll_piles(self):
         """Draws the 5 interactive denomination piles ($5, $25, $100, $500, $1,000) in the bottom reserve tray."""
         self.delete("bankroll_chip")
-        s = getattr(self, "scale", 1.0)
+        w, h = self.canvas_width, self.canvas_height
+        sx = w / float(getattr(self, "base_width", 200))
+        sy = h / float(getattr(self, "base_height", 140))
+        s_font = min(sx, sy)
+
         avail = getattr(self, "available_bankroll", 0)
-        hint_suffix = " (Click Pile)" if getattr(self, "interactive_bankroll", False) and avail >= 5 else ""
+        hint_suffix = " (L:+ | R:-)" if getattr(self, "interactive_bankroll", False) and avail >= 5 else ""
+        if w >= 250 and hint_suffix:
+            hint_suffix = " (L-Click + | R-Click -)"
         self.itemconfigure("bankroll_badge", text=f"CHIPS: ${avail:,}{hint_suffix}")
 
         piles = breakdown_bankroll_piles(avail)
         denoms = (5, 25, 100, 500, 1000)
         num_cols = len(denoms)
-        margin_x = int(24 * s)
-        usable_w = max(40, self.canvas_width - 2 * margin_x)
+
+        content_offset = self._get_content_offset()
+        piles_cfg = get_ui_layout("chip_visualizer", "bankroll_piles")
+        margin_x = int(piles_cfg.get("margin_x", 24) * sx)
+        usable_w = max(40, w - 2 * margin_x)
         spacing = usable_w / max(1, num_cols - 1)
-        base_y = int(self.canvas_height - int(22 * s))
+        _, base_y = resolve_origin(piles_cfg, w, h, sx, sy, content_offset=content_offset)
+        lbl_font = get_element_font("chip_denomination_label", scale=s_font)
+        f_sz = abs(lbl_font[1]) if isinstance(lbl_font, tuple) and len(lbl_font) > 1 else int(11 * s_font)
+        denom_lbl_cfg = piles_cfg.get("denomination_label", {"offset_x": 0, "offset_y": 15})
+        _, lbl_y = resolve_offset(denom_lbl_cfg, (0, base_y), sx, sy)
+        step_y = int(piles_cfg.get("chip_vertical_step", 3) * sy)
 
         for idx, denom in enumerate(denoms):
             col_x = int(margin_x + idx * spacing)
@@ -221,7 +334,7 @@ class ChipVisualizer(tkinter.Canvas):
             if count > 0:
                 visible_count = min(count, 5)
                 for c_idx in range(visible_count):
-                    chip_y = base_y - int(c_idx * 3 * s)
+                    chip_y = base_y - (c_idx * step_y)
                     is_top = (c_idx == visible_count - 1)
                     self._draw_single_chip(
                         col_x, chip_y, denom, style, is_top=is_top,
@@ -230,7 +343,7 @@ class ChipVisualizer(tkinter.Canvas):
                     )
                 lbl_color = "#ffffff" if self.interactive_bankroll else "#b0bec5"
             else:
-                rx, ry = int(12 * s), int(6 * s)
+                rx, ry = int(12 * s_font), int(6 * s_font)
                 self.create_oval(
                     col_x - rx, base_y - ry, col_x + rx, base_y + ry,
                     outline="#5d4a18", width=1, dash=(2, 2), fill="", tags=combined_tags
@@ -238,16 +351,38 @@ class ChipVisualizer(tkinter.Canvas):
                 lbl_color = "#6e6e6e"
 
             self.create_text(
-                col_x, base_y + int(11 * s), text=short_lbl, fill=lbl_color,
-                font=("Arial", max(6, int(6 * s)), "bold"), tags=combined_tags
+                col_x, lbl_y, text=short_lbl, fill=lbl_color,
+                font=lbl_font, tags=combined_tags
             )
 
-            self.tag_bind(pile_tag, "<Button-1>", lambda e, d=denom: self.trigger_pile_click(d))
+            hit_tag = f"bank_hit_{denom}"
+            rx, ry = int(14 * s_font), int(7 * s_font)
+            hitbox_cfg = piles_cfg.get("hitbox", {"pad_x": 4, "top_offset": -18, "bottom_offset": 7})
+            pad_x = int(hitbox_cfg.get("pad_x", 4) * sx)
+            top_y = base_y + int(hitbox_cfg.get("top_offset", -18) * sy)
+            bot_y = lbl_y + int(hitbox_cfg.get("bottom_offset", 7) * sy)
+            # Fixed, non-moving hitbox encompassing the whole pile column and label
+            self.create_rectangle(
+                col_x - rx - pad_x, top_y, col_x + rx + pad_x, bot_y,
+                fill="", outline="", tags=("bankroll_chip", hit_tag)
+            )
+
+            # Bind clicks deferred by 0ms so Tkinter completes ButtonPress event cycle before bankroll re-renders
+            self.tag_bind(hit_tag, "<Button-1>", lambda e, d=denom: self.after(0, lambda: self.trigger_pile_click(d)))
+            self.tag_bind(hit_tag, "<Button-3>", lambda e, d=denom: self.after(0, lambda: self.trigger_pile_deduct(d)))
+            self.tag_bind(pile_tag, "<Button-1>", lambda e, d=denom: self.after(0, lambda: self.trigger_pile_click(d)))
+            self.tag_bind(pile_tag, "<Button-3>", lambda e, d=denom: self.after(0, lambda: self.trigger_pile_deduct(d)))
+
+            # Bind hover events STRICTLY to the fixed hitbox so moving visual chips NEVER causes false Leave/Enter oscillation
             if self.interactive_bankroll and count > 0:
-                self.tag_bind(pile_tag, "<Enter>", lambda e: self.configure(cursor="hand2"))
-                self.tag_bind(pile_tag, "<Leave>", lambda e: self.configure(cursor=""))
+                self.tag_bind(hit_tag, "<Enter>", lambda e, d=denom: self._on_pile_enter(e, d))
+                self.tag_bind(hit_tag, "<Leave>", lambda e, d=denom: self._on_pile_leave(e, d))
             else:
-                self.tag_bind(pile_tag, "<Enter>", lambda e: self.configure(cursor=""))
+                self.tag_bind(hit_tag, "<Enter>", lambda e: None)
+
+        if self._hovered_denom is not None and self.interactive_bankroll:
+            lift = max(2, int(3 * sy))
+            self.move(f"bank_pile_{self._hovered_denom}", 0, -lift)
 
     def _is_animation_enabled(self) -> bool:
         """Determines if animations should run (only when window is actively mapped)."""
@@ -302,11 +437,15 @@ class ChipVisualizer(tkinter.Canvas):
         if not breakdown:
             return
 
+        w, h = self.canvas_width, self.canvas_height
+        sx = w / float(getattr(self, "base_width", 200))
+        sy = h / float(getattr(self, "base_height", 140))
+
         num_stacks = len(breakdown)
-        spacing = 26 if num_stacks >= 4 else 30
+        spacing = int((26 if num_stacks >= 4 else 30) * sx)
         total_span = (num_stacks - 1) * spacing
         start_x = self.cx - (total_span // 2)
-        base_y = self.cy + 10
+        base_y = self.cy + int(8 * sy)
 
         for s_idx, (denom, count) in enumerate(breakdown):
             stack_x = start_x + (s_idx * spacing)
@@ -314,11 +453,11 @@ class ChipVisualizer(tkinter.Canvas):
 
             offset_y = 0
             if num_stacks >= 3 and s_idx % 2 == 1:
-                offset_y = -3
+                offset_y = -int(3 * sy)
 
             visible_count = min(count, 6)
             for c_idx in range(visible_count):
-                chip_y = (base_y + offset_y) - (c_idx * 3)
+                chip_y = (base_y + offset_y) - int(c_idx * 3 * sy)
                 is_top = (c_idx == visible_count - 1)
                 self._draw_single_chip(
                     stack_x, chip_y, denom, style, is_top=is_top,
@@ -327,11 +466,17 @@ class ChipVisualizer(tkinter.Canvas):
 
     def _draw_single_chip(self, x: int, y: int, denom: int, style: dict, is_top: bool = False, count: int = None, tags="chip", compact: bool = False):
         """Draws one 2.5D chip with rim thickness, edge stripes, top face, and denomination."""
-        s = getattr(self, "scale", 1.0)
-        if compact:
-            rx, ry, depth = int(12 * s), int(6 * s), int(3 * s)
-        else:
-            rx, ry, depth = int(14 * s), int(7 * s), int(4 * s)
+        w, h = self.canvas_width, self.canvas_height
+        sx = w / float(getattr(self, "base_width", 200))
+        sy = h / float(getattr(self, "base_height", 140))
+        s_chip = min(sx, sy)
+
+        chips_cfg = get_ui_layout("chip_visualizer", "chips")
+        geom = chips_cfg.get("compact" if compact else "standard", {})
+        rx = int(geom.get("rx", 12 if compact else 14) * s_chip)
+        ry = int(geom.get("ry", 6 if compact else 7) * s_chip)
+        depth = int(geom.get("depth", 3 if compact else 4) * s_chip)
+        stripe_x = int(geom.get("stripe_x", 6 if compact else 8) * s_chip)
 
         # 1. Shadow / bottom rim
         self.create_oval(
@@ -344,9 +489,8 @@ class ChipVisualizer(tkinter.Canvas):
         )
 
         # 2. Edge stripes
-        stripe_x = int((6 if compact else 8) * s)
-        self.create_line(x - stripe_x, y + 1, x - stripe_x, y + depth, fill=style["stripe"], width=max(1, int(2 * s)), tags=tags)
-        self.create_line(x + stripe_x, y + 1, x + stripe_x, y + depth, fill=style["stripe"], width=max(1, int(2 * s)), tags=tags)
+        self.create_line(x - stripe_x, y + 1, x - stripe_x, y + depth, fill=style["stripe"], width=max(1, int(2 * s_chip)), tags=tags)
+        self.create_line(x + stripe_x, y + 1, x + stripe_x, y + depth, fill=style["stripe"], width=max(1, int(2 * s_chip)), tags=tags)
 
         # 3. Top face
         self.create_oval(
@@ -355,7 +499,7 @@ class ChipVisualizer(tkinter.Canvas):
         )
         # Inner dashed circle
         self.create_oval(
-            x - rx + int(3 * s), y - ry + int(2 * s), x + rx - int(3 * s), y + ry - int(2 * s),
+            x - rx + int(3 * s_chip), y - ry + int(2 * s_chip), x + rx - int(3 * s_chip), y + ry - int(2 * s_chip),
             outline=style["fg"], dash=(2, 2), tags=tags
         )
 
@@ -365,23 +509,27 @@ class ChipVisualizer(tkinter.Canvas):
         display_text = f"x{count}" if (count and count > cap_limit) else short_denom
         self.create_text(
             x, y, text=display_text, fill=style["fg"],
-            font=("Arial", 6 if len(display_text) > 3 or compact else 7, "bold"), tags=tags
+            font=get_element_font("chip_face_value", scale=s_chip), tags=tags
         )
 
     def animate_chip_drop(self, added_amount: int, new_total: int, animated: bool = True):
         """Plays a tactile drop-and-bounce animation when a chip is added."""
         self.current_bet = new_total
+        self.itemconfigure("badge", text=f"BET: ${new_total:,}")
+        self.clear_timers()
+        self.delete("anim_chip")
+
         if not animated or not self._is_animation_enabled():
             self.render_stacks(new_total)
             return
 
         style = CHIP_STYLES.get(added_amount, CHIP_STYLES[5])
         drop_x = self.cx
-        target_y = self.cy + 10
-        start_y = target_y - 24
+        sy = self.canvas_height / float(getattr(self, "base_height", 140))
+        target_y = self.cy + int(8 * sy)
+        start_y = target_y - int(24 * sy)
 
         drop_tag = "anim_chip"
-        self.delete(drop_tag)
         self._draw_single_chip(drop_x, start_y, added_amount, style, is_top=True, tags=drop_tag)
 
         def frame1():
@@ -435,14 +583,18 @@ class ChipVisualizer(tkinter.Canvas):
         top_denom = breakdown[0][0] if breakdown else 25
         style = CHIP_STYLES.get(top_denom, CHIP_STYLES[25])
 
+        anim_cfg = get_ui_layout("chip_visualizer", "animations")
+        p_off = anim_cfg.get("payout_offset", {"x": 20, "y": -20})
+        float_y = anim_cfg.get("floating_text_offset_y", -16)
+
         for c in range(min(3, len(breakdown))):
-            self._draw_single_chip(self.cx + 20, -20 - (c * 3), top_denom, style, is_top=(c == 2), tags=payout_tag)
+            self._draw_single_chip(self.cx + p_off.get("x", 20), p_off.get("y", -20) - (c * 3), top_denom, style, is_top=(c == 2), tags=payout_tag)
 
         def slide_payout(frame=0):
             if frame >= 5:
                 self.create_text(
-                    self.cx, self.cy - 16, text=f"+${profit:,}", fill="#ffd700",
-                    font=("Arial", 11, "bold"), tags=text_tag
+                    self.cx, self.cy + float_y, text=f"+${profit:,}", fill="#ffd700",
+                    font=get_element_font("chip_floating_payout"), tags=text_tag
                 )
                 self._schedule(20, float_text)
             else:
@@ -504,7 +656,7 @@ class ChipVisualizer(tkinter.Canvas):
         self.delete(text_tag)
         self.create_text(
             self.cx, self.cy - 16, text="PUSH", fill="#ffffff",
-            font=("Arial", 10, "bold"), tags=text_tag
+            font=get_element_font("chip_push_banner"), tags=text_tag
         )
 
         self.itemconfigure("spot_base", outline="#ffffff")
@@ -526,7 +678,12 @@ class SoulMeterCanvas(tkinter.Canvas):
     Visualizes the struggle between the mortal soul (0% Abyss) and celestial freedom (100% Light).
     """
 
-    def __init__(self, master, width=180, height=135, background="#140508", **kwargs):
+    def __init__(self, master, width=None, height=None, background="#140508", **kwargs):
+        cfg = get_ui_layout("soul_meter")
+        if width is None:
+            width = int(cfg.get("base_width", 250))
+        if height is None:
+            height = int(cfg.get("base_height", 135))
         super().__init__(
             master, width=width, height=height, background=background,
             highlightthickness=0, borderwidth=0, relief="flat", **kwargs
@@ -544,8 +701,11 @@ class SoulMeterCanvas(tkinter.Canvas):
     def set_scale(self, scale: float):
         """Scales soul meter canvas dimensions proportionally."""
         self.scale = scale
-        self.canvas_width = int(180 * scale)
-        self.canvas_height = int(135 * scale)
+        cfg = get_ui_layout("soul_meter")
+        bw = int(cfg.get("base_width", 250))
+        bh = int(cfg.get("base_height", 135))
+        self.canvas_width = int(bw * scale)
+        self.canvas_height = int(bh * scale)
         self.configure(width=self.canvas_width, height=self.canvas_height)
         self.cx = self.canvas_width // 2
         self.cy = self.canvas_height // 2
@@ -582,12 +742,18 @@ class SoulMeterCanvas(tkinter.Canvas):
         # 1. Dark ornate frame with ember trim
         self._draw_rounded_rect(5, 5, self.canvas_width - 5, self.canvas_height - 5, radius=int(8 * s), fill="#0d0204", outline="#8b0000", width=max(1, int(2 * s)))
 
+        sm_cfg = get_ui_layout("soul_meter")
+        hdr_cfg = sm_cfg.get("header", {})
+        hdr_x, hdr_y = resolve_origin(hdr_cfg, self.canvas_width, self.canvas_height, s, s)
+
         # 2. Header
-        self.create_text(cx, int(16 * s), text="☠ SOUL WAGER ☠", fill="#ffd700", font=("Arial", max(7, int(8 * s)), "bold"))
+        self.create_text(hdr_x, hdr_y, text="☠ SOUL WAGER ☠", fill="#ffd700", font=get_element_font("soul_meter_title", scale=s))
 
         # 3. Bar dimensions
-        bx1, by1 = int(16 * s), int(42 * s)
-        bx2, by2 = self.canvas_width - int(16 * s), int(62 * s)
+        bar_cfg = sm_cfg.get("progress_bar", {})
+        margin_bar = int(bar_cfg.get("margin_x", 18) * s)
+        bx1, by1 = margin_bar, int(bar_cfg.get("top_y", 42) * s)
+        bx2, by2 = self.canvas_width - margin_bar, int(bar_cfg.get("bottom_y", 62) * s)
         bar_w = bx2 - bx1
 
         # Background track
@@ -598,8 +764,9 @@ class SoulMeterCanvas(tkinter.Canvas):
         m75_x = bx1 + int(bar_w * 0.75)
         self.create_line(m50_x, by1 - 3, m50_x, by2 + 3, fill="#80cbc4", width=1, dash=(2, 2))
         self.create_line(m75_x, by1 - 3, m75_x, by2 + 3, fill="#ffd700", width=1, dash=(2, 2))
-        self.create_text(m50_x, by1 - int(7 * s), text="50%", fill="#80cbc4", font=("Arial", max(6, int(6 * s)), "bold"))
-        self.create_text(m75_x, by1 - int(7 * s), text="75%", fill="#ffd700", font=("Arial", max(6, int(6 * s)), "bold"))
+        m_offset_y = int(bar_cfg.get("milestone_label_offset_y", -12) * s)
+        self.create_text(m50_x, by1 + m_offset_y, text="50%", fill="#80cbc4", font=get_element_font("soul_meter_markers", scale=s))
+        self.create_text(m75_x, by1 + m_offset_y, text="75%", fill="#ffd700", font=get_element_font("soul_meter_markers", scale=s))
 
         # Fill segment
         fill_x = bx1 + int(bar_w * self.current_value)
@@ -608,23 +775,29 @@ class SoulMeterCanvas(tkinter.Canvas):
             self.create_rectangle(bx1, by1, fill_x, by2, fill=fill_color, outline="")
 
         # Tug pointer
-        p_w = int(5 * s)
-        p_h = int(6 * s)
+        ptr_cfg = bar_cfg.get("pointer", {"width": 5, "height": 6})
+        p_w = int(ptr_cfg.get("width", 5) * s)
+        p_h = int(ptr_cfg.get("height", 6) * s)
         self.create_polygon([fill_x, by1 - 3, fill_x - p_w, by1 - 3 - p_h, fill_x + p_w, by1 - 3 - p_h], fill="#ffffff", outline="#ffd700")
 
         # 4. Labels
-        self.create_text(bx1 + int(16 * s), by2 + int(10 * s), text="ABYSS 0%", fill="#ff5252", font=("Arial", max(6, int(7 * s)), "bold"))
-        self.create_text(bx2 - int(16 * s), by2 + int(10 * s), text="LIGHT 100%", fill="#69f0ae", font=("Arial", max(6, int(7 * s)), "bold"))
+        b_offset_y = int(bar_cfg.get("bound_label_offset_y", 10) * s)
+        self.create_text(bx1, by2 + b_offset_y, text="ABYSS 0%", fill="#ff5252", font=get_element_font("soul_meter_bounds", scale=s), anchor="w")
+        self.create_text(bx2, by2 + b_offset_y, text="LIGHT 100%", fill="#69f0ae", font=get_element_font("soul_meter_bounds", scale=s), anchor="e")
 
         # 5. Status Text
         pct = int(self.current_value * 100)
         status_txt = f"{pct}% SOUL ESSENCE"
         status_color = "#ff5252" if pct <= 25 else ("#ffeb3b" if pct < 75 else "#00e5ff")
-        self.create_text(cx, int(90 * s), text=status_txt, fill=status_color, font=("Arial", max(8, int(9 * s)), "bold"))
+        stat_cfg = sm_cfg.get("status_text", {})
+        stat_x, stat_y = resolve_origin(stat_cfg, self.canvas_width, self.canvas_height, s, s)
+        self.create_text(stat_x, stat_y, text=status_txt, fill=status_color, font=get_element_font("soul_meter_status", scale=s))
 
         # Tip
         hint = "Win to advance • 21 surges"
-        self.create_text(cx, int(112 * s), text=hint, fill="#cfd8dc", font=("Arial", max(6, int(7 * s)), "italic"))
+        hint_cfg = sm_cfg.get("hint_text", {})
+        hint_x, hint_y = resolve_origin(hint_cfg, self.canvas_width, self.canvas_height, s, s)
+        self.create_text(hint_x, hint_y, text=hint, fill="#cfd8dc", font=get_element_font("soul_meter_hint", scale=s))
 
     def _draw_rounded_rect(self, x1, y1, x2, y2, radius=8, **kwargs):
         points = [x1+radius, y1, x1+radius, y1, x2-radius, y1, x2, y1,
@@ -903,13 +1076,16 @@ class HauntedAltarCanvas(tkinter.Canvas):
         self.canvas_height = height
         self.assets = assets or {}
 
-        # 5 Candle positions along top row (y = 28)
-        self.candle_y = 28
-        self.candle_x_positions = [26 + i * 52 for i in range(5)]
+        altar_cfg = get_ui_layout("haunted_altar")
+        candles_cfg = altar_cfg.get("candles", {})
+        self.candle_y = candles_cfg.get("origin_y", 28)
+        start_c = candles_cfg.get("start_x", 26)
+        step_c = candles_cfg.get("step_x", 52)
+        self.candle_x_positions = [start_c + i * step_c for i in range(5)]
 
-        # Gravestone positions along bottom row (y = 80)
-        self.gravestone_y = 80
-        self.gravestone_x_positions = [36, 83, 130, 177, 224]
+        graves_cfg = altar_cfg.get("gravestones", {})
+        self.gravestone_y = graves_cfg.get("origin_y", 80)
+        self.gravestone_x_positions = list(graves_cfg.get("x_positions", [36, 83, 130, 177, 224]))
 
         # Altar state
         self.candles_remaining = 5
@@ -1266,6 +1442,7 @@ class HauntedAltarCanvas(tkinter.Canvas):
 
         # 1. Candles & Glow Pools
         if self.candles_visible:
+            candles_cfg = get_ui_layout("haunted_altar", "candles")
             lit_img = self.assets.get("candle_lit")
             unlit_img = self.assets.get("candle_unlit")
 
@@ -1289,16 +1466,21 @@ class HauntedAltarCanvas(tkinter.Canvas):
                         glow_inner = "#d4b830"
 
                     s = getattr(self, "scale", 1.0)
+                    glow_cfg = candles_cfg.get("glow", {})
+                    out_g = glow_cfg.get("outer", {"rx": 24, "ry_top": -6, "ry_bottom": 30})
+                    mid_g = glow_cfg.get("mid", {"rx": 16, "ry_top": 0, "ry_bottom": 24})
+                    inn_g = glow_cfg.get("inner", {"rx": 8, "ry_top": 6, "ry_bottom": 18})
+
                     self.create_oval(
-                        cx - int(24 * s), cy - int(6 * s), cx + int(24 * s), cy + int(30 * s),
+                        cx - int(out_g["rx"] * s), cy + int(out_g["ry_top"] * s), cx + int(out_g["rx"] * s), cy + int(out_g["ry_bottom"] * s),
                         fill=glow_outer, outline="", tags="glow"
                     )
                     self.create_oval(
-                        cx - int(16 * s), cy, cx + int(16 * s), cy + int(24 * s),
+                        cx - int(mid_g["rx"] * s), cy + int(mid_g["ry_top"] * s), cx + int(mid_g["rx"] * s), cy + int(mid_g["ry_bottom"] * s),
                         fill=glow_mid, outline="", tags="glow"
                     )
                     self.create_oval(
-                        cx - int(8 * s), cy + int(6 * s), cx + int(8 * s), cy + int(18 * s),
+                        cx - int(inn_g["rx"] * s), cy + int(inn_g["ry_top"] * s), cx + int(inn_g["rx"] * s), cy + int(inn_g["ry_bottom"] * s),
                         fill=glow_inner, outline="", tags="glow"
                     )
                     if lit_img:
@@ -1430,7 +1612,7 @@ class DealerStageCanvas(tkinter.Canvas):
 
         self._redraw_stage()
 
-    def draw_speech_tail(self, fill_col: str = "#141014", border_col: str = "#c8a038"):
+    def draw_speech_tail(self, fill_col: str = "#1c110b", border_col: str = "#d4af37"):
         """Draws directional callout tail from speech bubble pointing toward dealer avatar."""
         self._active_speech_tail = (fill_col, border_col)
         if not self.find_withtag("dialogue_win"):
@@ -1438,13 +1620,21 @@ class DealerStageCanvas(tkinter.Canvas):
         s = self.scale_factor
         w = max(10, self.canvas_width)
         h = max(10, self.canvas_height)
-        bubble_x = w // 2 - int(76 * s)
-        bubble_y = h - int(90 * s)
+
+        stage_cfg = get_ui_layout("dealer_stage")
+        bubble_cfg = stage_cfg.get("speech_bubble", {})
+        anchor = bubble_cfg.get("anchor_offset", {"x": -76, "y": -90})
+        bubble_x = w // 2 + int(anchor.get("x", -76) * s)
+        bubble_y = h + int(anchor.get("y", -90) * s)
+
+        p1_off = bubble_cfg.get("tail_top_offset", {"x": -4, "y": -44})
+        p2_off = bubble_cfg.get("tail_mid_offset", {"x": -4, "y": -30})
+        p3_off = bubble_cfg.get("tail_target_offset", {"x": -44, "y": -127})
 
         # Directional pointer tail projecting toward dealer avatar mouth at head level
-        p1 = (bubble_x - int(4 * s), bubble_y - int(44 * s))
-        p2 = (bubble_x - int(4 * s), bubble_y - int(30 * s))
-        p3 = (w // 2 - int(44 * s), h - int(127 * s))
+        p1 = (bubble_x + int(p1_off.get("x", -4) * s), bubble_y + int(p1_off.get("y", -44) * s))
+        p2 = (bubble_x + int(p2_off.get("x", -4) * s), bubble_y + int(p2_off.get("y", -30) * s))
+        p3 = (w // 2 + int(p3_off.get("x", -44) * s), h + int(p3_off.get("y", -127) * s))
 
         self.delete("speech_tail")
         self.create_polygon(
@@ -1811,7 +2001,7 @@ class TableFeltCanvas(tkinter.Canvas):
             self.canvas_height = event.height
             self._redraw_felt()
             if getattr(self, "_shoe_visible", False):
-                self.draw_shoe_tray(self._shoe_remaining, self._shoe_total)
+                self.draw_shoe_tray(self._shoe_remaining, self._shoe_total, getattr(self, "_shoe_cut_notice", False))
 
     def set_theme(self, theme: str):
         t = (theme or "casino").lower()
@@ -1824,14 +2014,14 @@ class TableFeltCanvas(tkinter.Canvas):
             self.configure(background=self._bg_hex)
             self._redraw_felt()
             if getattr(self, "_shoe_visible", False):
-                self.draw_shoe_tray(self._shoe_remaining, self._shoe_total)
+                self.draw_shoe_tray(self._shoe_remaining, self._shoe_total, getattr(self, "_shoe_cut_notice", False))
 
     def set_scale(self, scale_factor: float):
         if self.scale_factor != scale_factor:
             self.scale_factor = scale_factor
             self._redraw_felt()
             if getattr(self, "_shoe_visible", False):
-                self.draw_shoe_tray(self._shoe_remaining, self._shoe_total)
+                self.draw_shoe_tray(self._shoe_remaining, self._shoe_total, getattr(self, "_shoe_cut_notice", False))
 
     def _generate_felt_image(self, w: int, h: int) -> Optional[Any]:
         if not PIL_AVAILABLE or Image is None or ImageDraw is None:
@@ -1860,22 +2050,29 @@ class TableFeltCanvas(tkinter.Canvas):
         s = self.scale_factor
         gold = cfg["gold"]
 
-        ribbon_y = int(h * 0.36)
+        ribbon_y = int(h * 0.36) - int(8 * s)
         rx = int(w * 0.38)
         ry = int(h * 0.28)
         draw.arc([cx - rx, ribbon_y - int(10 * s), cx + rx, ribbon_y + ry], start=22, end=158, fill=gold, width=max(1, int(2 * s)))
 
+        scale_mult = max(1.0, min(1.6, (w / 900.0) * s))
         try:
             from PIL import ImageFont
-            font_large = ImageFont.truetype("arial.ttf", int(12 * (1.0 if s <= 1.0 else 1.4)))
-            font_small = ImageFont.truetype("arial.ttf", int(9 * (1.0 if s <= 1.0 else 1.3)))
+            bold_font_path = FONTS_DIR / "BoldPixels.ttf"
+            m5_font_path = FONTS_DIR / "m5x7.ttf"
+            if bold_font_path.exists() and m5_font_path.exists():
+                font_large = ImageFont.truetype(str(bold_font_path), max(20, int(22 * scale_mult)))
+                font_small = ImageFont.truetype(str(m5_font_path), max(16, int(17 * scale_mult)))
+            else:
+                font_large = ImageFont.load_default()
+                font_small = ImageFont.load_default()
         except Exception:
             font_large = font_small = None
 
         if font_large and font_small:
-            draw.text((cx, ribbon_y + int(10 * s)), "BLACKJACK PAYS 3 TO 2", fill=gold, font=font_large, anchor="mm")
-            draw.text((cx, ribbon_y + int(24 * s)), "Dealer must stand on 17 and must draw to 16", fill=cfg["rules_fg"], font=font_small, anchor="mm")
-            draw.text((cx, ribbon_y + int(36 * s)), "INSURANCE PAYS 2 TO 1", fill=gold, font=font_small, anchor="mm")
+            draw.text((cx, ribbon_y + int(8 * scale_mult)), "BLACKJACK PAYS 3 TO 2", fill=gold, font=font_large, anchor="mm")
+            draw.text((cx, ribbon_y + int(24 * scale_mult)), "Dealer must stand on 17 and must draw to 16", fill=cfg["rules_fg"], font=font_small, anchor="mm")
+            draw.text((cx, ribbon_y + int(38 * scale_mult)), "INSURANCE PAYS 2 TO 1", fill=gold, font=font_small, anchor="mm")
 
         return felt_img
 
@@ -1973,20 +2170,23 @@ class TableFeltCanvas(tkinter.Canvas):
     # ------------------------------------------------------------------------
     # Layer 1: Visual Shoe Tray & Discard Rack
     # ------------------------------------------------------------------------
-    def draw_shoe_tray(self, remaining: int = 208, total: int = 208):
-        """Renders 2.5D acrylic card shoe perched at the far right of the table horizon rail."""
+    def draw_shoe_tray(self, remaining: int = 208, total: int = 208, cut_notice: bool = False):
+        """Renders 2.5D acrylic card shoe perched at the far right of the table horizon rail with counter plaque."""
         self._shoe_visible = True
         self._shoe_remaining = remaining
         self._shoe_total = total
+        self._shoe_cut_notice = cut_notice
         self.delete("shoe_tray")
         if self.canvas_width < 350:
             return
         s = self.scale_factor
         w = self.canvas_width
-        sw = int(82 * s)
-        sh = int(28 * s)  # Compact, sleek profile sitting right at the horizon rail
-        sx = w - sw - int(12 * s)
-        sy = int(2 * s)   # Flush with the top horizon rail
+
+        shoe_cfg = get_ui_layout("table_felt", "shoe_tray")
+        sw = int(shoe_cfg.get("width", 82) * s)
+        sh = int(shoe_cfg.get("height", 28) * s)  # Compact, sleek profile sitting right at the horizon rail
+        sx = w - sw - int(shoe_cfg.get("offset_right", 12) * s)
+        sy = int(shoe_cfg.get("offset_top", 2) * s)   # Flush with the top horizon rail
 
         # Clear acrylic shoe housing with subtle metallic bevel
         self.create_rectangle(sx, sy, sx + sw, sy + sh, fill="#0d2419", outline="#2e543e", width=max(1, int(1.5 * s)), tags="shoe_tray")
@@ -2009,6 +2209,41 @@ class TableFeltCanvas(tkinter.Canvas):
         # Front roller / brass exit mouth on the left
         self.create_rectangle(sx + 1, sy + 2, sx + int(5 * s), sy + sh - 2, fill="#b58830", outline="#ffd700", tags="shoe_tray")
 
+        # --------------------------------------------------------------------
+        # Plaque: Cardstock shoe count readout directly beneath the shoe tray
+        # --------------------------------------------------------------------
+        plaque_cfg = shoe_cfg.get("plaque", {})
+        ph = int(plaque_cfg.get("height", 20) * s)
+        py1 = sy + sh + int(plaque_cfg.get("offset_y", 3) * s)
+        py2 = py1 + ph
+        bx1 = sx
+        bx2 = sx + sw
+
+        bg_col = plaque_cfg.get("background", "")
+        if bg_col in ("transparent", "none", None):
+            bg_col = ""
+        border_col = plaque_cfg.get("cut_border" if cut_notice else "border", "")
+        if border_col in ("transparent", "none", None):
+            border_col = ""
+        inner_border_col = plaque_cfg.get("inner_border", "")
+        if inner_border_col in ("transparent", "none", None):
+            inner_border_col = ""
+        text_col = plaque_cfg.get("cut_text_color" if cut_notice else "text_color", "#ffd700")
+        font_elem = plaque_cfg.get("font_element", "shoe_counter")
+        f_shoe = get_element_font(font_elem, scale=s)
+
+        # Outer beveled plaque border (only drawn if a fill or outline is configured)
+        if bg_col or border_col:
+            self.create_rectangle(bx1, py1, bx2, py2, fill=bg_col, outline=border_col, width=max(1, int(1.5 * s)), tags="shoe_tray")
+        # Subtle inset cardstock border (only drawn if inner outline is configured)
+        if inner_border_col:
+            self.create_rectangle(bx1 + 1, py1 + 1, bx2 - 1, py2 - 1, fill="", outline=inner_border_col, width=1, tags="shoe_tray")
+
+        # Text label (e.g. "Shoe: 196/208" or "Shoe: 32/208 [Cut]")
+        cut_text = " [Cut]" if cut_notice else ""
+        label_text = f"Shoe: {remaining}/{total}{cut_text}"
+        self.create_text((bx1 + bx2) // 2, (py1 + py2) // 2, text=label_text, fill=text_col, font=f_shoe, tags="shoe_tray")
+
     def draw_discard_rack(self, discarded: int = 0, total: int = 208):
         """Optional discard rack - renders without opaque black box so table felt is not obscured."""
         self.delete("discard_rack")
@@ -2025,12 +2260,13 @@ class TableFeltCanvas(tkinter.Canvas):
         self.create_rectangle(dx, dy, dx + dw, dy + dh, fill="", outline="#2e543e", width=max(1, int(1.5 * s)), tags="discard_rack")
         self.create_rectangle(dx + 4, dy + 3, dx + 4 + d_stack_w, dy + dh - 3, fill="#e0e0dc", outline="#9e9e9e", tags="discard_rack")
 
-    def update_shoe_penetration(self, remaining: int, total: int):
-        """Updates shoe tray to reflect live card penetration at the horizon rail."""
+    def update_shoe_penetration(self, remaining: int, total: int, cut_notice: bool = False):
+        """Updates shoe tray to reflect live card penetration and count plaque at the horizon rail."""
         self._shoe_visible = True
         self._shoe_remaining = remaining
         self._shoe_total = total
-        self.draw_shoe_tray(remaining, total)
+        self._shoe_cut_notice = cut_notice
+        self.draw_shoe_tray(remaining, total, cut_notice)
 
     def clear_shoe_overlay(self):
         """Cleans up shoe tray and discard rack canvas items."""
@@ -2052,3 +2288,56 @@ class TableFeltCanvas(tkinter.Canvas):
     def clear_card_sprites(self, tag: str = "card_sprite"):
         """Removes canvas card sprites matching the specified tag."""
         self.delete(tag)
+
+
+class MahoganyRailCanvas(tkinter.Canvas):
+    """
+    Renders the bottom mahogany wood and leather armrest rail framing the card table.
+    Houses the contextual player control docks (Betting Phase vs In-Play Phase) with brass rivets and gold trim.
+    """
+
+    def __init__(self, master, height: int = 70, background: str = "#140a05", **kwargs):
+        super().__init__(
+            master, height=height, background=background,
+            highlightthickness=0, borderwidth=0, relief="flat", **kwargs
+        )
+        self.grid_propagate(False)
+        self.pack_propagate(False)
+        self.rail_height = height
+        self.scale_factor: float = 1.0
+        self._panel: Optional[Any] = None
+        self.bind("<Configure>", self._on_resize)
+        self._draw_rail()
+
+    def _draw_rail(self):
+        w = max(100, self.winfo_width() if self.winfo_width() > 1 else 900)
+        h = self.rail_height
+        s = getattr(self, "scale_factor", 1.0)
+        self.delete("rail_bg")
+
+        try:
+            from pixel_ui import CanvasPixelPanel
+            self._panel = CanvasPixelPanel(
+                self, x=0, y=0, width=w, height=h,
+                bg="#2b170e", border="#140a05", inner_hi="#593322", inner_sh="#1a0d07",
+                rivet_color="#d4af37", recessed=False, scale=max(1, int(s * 2)), tag="rail_bg"
+            )
+        except Exception:
+            self.create_rectangle(0, 0, w, h, fill="#2b170e", outline="#140a05", tags="rail_bg")
+
+        self.tag_lower("rail_bg")
+        # Top brass gold trim line
+        rail_cfg = get_ui_layout("mahogany_rail")
+        trim_y = int(rail_cfg.get("trim_line_y", 0) * s)
+        accent_y = int(rail_cfg.get("accent_line_y", 2) * s)
+        self.create_line(0, trim_y, w, trim_y, fill="#d4af37", width=max(1, int(2 * s)), tags="rail_bg")
+        self.create_line(0, accent_y, w, accent_y, fill="#7d5b10", width=1, tags="rail_bg")
+
+    def _on_resize(self, event):
+        if event.width > 20:
+            self._draw_rail()
+
+    def set_scale(self, scale: float):
+        self.scale_factor = scale
+        self._draw_rail()
+

@@ -23,6 +23,16 @@ from typing import Any, Dict
 from PIL import ImageTk
 
 from dealer_actor import CHARACTERS, CharacterProfile
+from pixel_ui import (
+    get_element_font,
+    get_title_font,
+    get_header_font,
+    get_body_font,
+    get_button_font,
+    get_badge_font,
+    get_display_font,
+    get_digital_font,
+)
 
 
 class WardrobeDialog(tkinter.Toplevel):
@@ -218,15 +228,16 @@ class WardrobeDialog(tkinter.Toplevel):
 
         tkinter.Label(
             header_frame, text="🎩 CASINO WARDROBE & HALL OF FAME",
-            font=("Arial", 12, "bold"), fg="#ffd700", background="#0d1f14"
+            font=get_element_font("dialog_title"), fg="#ffd700", background="#0d1f14"
         ).pack(anchor="center")
 
         # Tab Navigation Bar
         tab_nav_frame = tkinter.Frame(self, background="#0d1f14")
         tab_nav_frame.pack(fill="x", pady=(2, 6))
 
+        tab_font = get_element_font("dialog_tab")
         self.btn_tab_wardrobe = tkinter.Button(
-            tab_nav_frame, text="🎩 Wardrobe Closet", font=("Arial", 9, "bold"),
+            tab_nav_frame, text="🎩 Wardrobe Closet", font=tab_font,
             background="#2e7d32", fg="white", activebackground="#388e3c",
             activeforeground="white", relief="raised", borderwidth=2, cursor="hand2",
             padx=16, pady=3, command=lambda: self._switch_tab(0)
@@ -234,7 +245,7 @@ class WardrobeDialog(tkinter.Toplevel):
         self.btn_tab_wardrobe.pack(side="left", padx=(0, 8))
 
         self.btn_tab_hof = tkinter.Button(
-            tab_nav_frame, text="🏆 Hall of Fame & Trophy Shelf", font=("Arial", 9, "bold"),
+            tab_nav_frame, text="🏆 Hall of Fame & Trophy Shelf", font=tab_font,
             background="#1e382b", fg="#cfd8dc", activebackground="#2e5441",
             activeforeground="white", relief="raised", borderwidth=1, cursor="hand2",
             padx=16, pady=3, command=lambda: self._switch_tab(1)
@@ -259,7 +270,7 @@ class WardrobeDialog(tkinter.Toplevel):
         footer_frame.pack(fill="x", pady=(6, 0))
 
         close_btn = tkinter.Button(
-            footer_frame, text="Close Dialog", font=("Arial", 10, "bold"),
+            footer_frame, text="Close Dialog", font=get_button_font(12),
             background="#37474f", fg="white", activebackground="#455a64",
             activeforeground="white", relief="ridge", borderwidth=1, cursor="hand2",
             command=self._on_close
@@ -297,7 +308,7 @@ class WardrobeDialog(tkinter.Toplevel):
         nav_frame.pack(fill="x", pady=(0, 4))
 
         self.prev_btn = tkinter.Button(
-            nav_frame, text="◀ Previous", font=("Arial", 9, "bold"),
+            nav_frame, text="◀ Previous", font=get_button_font(11),
             background="#1e382b", fg="#e0e0e0", activebackground="#2e5441",
             activeforeground="white", relief="raised", borderwidth=1, cursor="hand2",
             padx=10, command=self._prev_page
@@ -305,13 +316,13 @@ class WardrobeDialog(tkinter.Toplevel):
         self.prev_btn.pack(side="left")
 
         self.page_lbl = tkinter.Label(
-            nav_frame, text="", font=("Arial", 10, "bold"),
+            nav_frame, text="", font=get_header_font(12),
             fg="#ffd700", background="#0d1f14"
         )
         self.page_lbl.pack(side="left", expand=True)
 
         self.next_btn = tkinter.Button(
-            nav_frame, text="Next ▶", font=("Arial", 9, "bold"),
+            nav_frame, text="Next ▶", font=get_button_font(11),
             background="#1e382b", fg="#e0e0e0", activebackground="#2e5441",
             activeforeground="white", relief="raised", borderwidth=1, cursor="hand2",
             padx=10, command=self._next_page
@@ -333,7 +344,7 @@ class WardrobeDialog(tkinter.Toplevel):
                 is_equipped = (self.app.dealer_actor.current_character == char_id)
 
                 card_frame = tkinter.LabelFrame(
-                    p_frame, text=f" {profile.name} ", font=("Arial", 10, "bold"),
+                    p_frame, text=f" {profile.name} ", font=get_header_font(12),
                     fg=profile.nameplate_fg, background="#12271c", padx=8, pady=6, relief="groove"
                 )
                 card_frame.grid(row=row, column=col, padx=8, pady=6, sticky="nsew")
@@ -355,7 +366,7 @@ class WardrobeDialog(tkinter.Toplevel):
                     portrait_lbl.pack(pady=(2, 4))
 
                 voice_btn = tkinter.Button(
-                    left_col, text="🔊 Voice", font=("Arial", 8, "bold"),
+                    left_col, text="🔊 Voice", font=get_button_font(10),
                     background="#1e382b", fg="#e0e0e0", activebackground="#2e5441",
                     activeforeground="white", relief="raised", borderwidth=1, cursor="hand2",
                     command=lambda cid=char_id: self._play_voice_preview(cid)
@@ -367,7 +378,7 @@ class WardrobeDialog(tkinter.Toplevel):
                 right_col.pack(side="left", fill="both", expand=True)
 
                 title_lbl = tkinter.Label(
-                    right_col, text=profile.title, font=("Arial", 9, "bold"),
+                    right_col, text=profile.title, font=get_badge_font(11),
                     fg=profile.nameplate_fg, background="#12271c", anchor="w"
                 )
                 title_lbl.pack(fill="x")
@@ -381,13 +392,13 @@ class WardrobeDialog(tkinter.Toplevel):
                     status_col = "#ff8a80"
 
                 crit_lbl = tkinter.Label(
-                    right_col, text=status_text, font=("Arial", 8, "bold" if unlocked else "italic"),
+                    right_col, text=status_text, font=get_badge_font(11),
                     fg=status_col, background="#12271c", anchor="w"
                 )
                 crit_lbl.pack(fill="x", pady=(1, 3))
 
                 lore_lbl = tkinter.Label(
-                    right_col, text=profile.lore, font=("Arial", 8),
+                    right_col, text=profile.lore, font=get_body_font(11),
                     fg="#b0bec5", background="#12271c", wraplength=210, justify="left", anchor="w"
                 )
                 lore_lbl.pack(fill="both", expand=True, pady=(0, 4))
@@ -398,13 +409,13 @@ class WardrobeDialog(tkinter.Toplevel):
                 action_widget: Any
                 if is_equipped:
                     action_widget = tkinter.Label(
-                        action_frame, text="✦ EQUIPPED", font=("Arial", 9, "bold"),
+                        action_frame, text="✦ EQUIPPED", font=get_badge_font(11),
                         fg="#ffd700", background="#1a3a2a", relief="ridge", borderwidth=1, padx=6, pady=3
                     )
                     action_widget.pack(fill="x")
                 elif unlocked:
                     action_widget = tkinter.Button(
-                        action_frame, text="Equip Costume", font=("Arial", 9, "bold"),
+                        action_frame, text="Equip Costume", font=get_button_font(11),
                         background="#2e7d32", fg="white", activebackground="#388e3c",
                         activeforeground="white", relief="raised", borderwidth=2, cursor="hand2",
                         command=lambda cid=char_id: self._equip_costume(cid)
@@ -412,7 +423,7 @@ class WardrobeDialog(tkinter.Toplevel):
                     action_widget.pack(fill="x")
                 else:
                     action_widget = tkinter.Button(
-                        action_frame, text="Locked", font=("Arial", 9, "bold"),
+                        action_frame, text="Locked", font=get_button_font(11),
                         background="#263238", fg="#78909c", state="disabled", relief="flat"
                     )
                     action_widget.pack(fill="x")
@@ -483,13 +494,13 @@ class WardrobeDialog(tkinter.Toplevel):
             unlocked = card_data["unlocked"]
             if is_equipped:
                 w = tkinter.Label(
-                    action_frame, text="✦ EQUIPPED", font=("Arial", 9, "bold"),
+                    action_frame, text="✦ EQUIPPED", font=get_badge_font(11),
                     fg="#ffd700", background="#1a3a2a", relief="ridge", borderwidth=1, padx=6, pady=3
                 )
                 w.pack(fill="x")
             elif unlocked:
                 w = tkinter.Button(
-                    action_frame, text="Equip Costume", font=("Arial", 9, "bold"),
+                    action_frame, text="Equip Costume", font=get_button_font(11),
                     background="#2e7d32", fg="white", activebackground="#388e3c",
                     activeforeground="white", relief="raised", borderwidth=2, cursor="hand2",
                     command=lambda cid=char_id: self._equip_costume(cid)
@@ -497,7 +508,7 @@ class WardrobeDialog(tkinter.Toplevel):
                 w.pack(fill="x")
             else:
                 w = tkinter.Button(
-                    action_frame, text="Locked", font=("Arial", 9, "bold"),
+                    action_frame, text="Locked", font=get_button_font(11),
                     background="#263238", fg="#78909c", state="disabled", relief="flat"
                 )
                 w.pack(fill="x")
@@ -512,37 +523,37 @@ class WardrobeDialog(tkinter.Toplevel):
         # 1. Statistics Summary Card
         records_frame = tkinter.LabelFrame(
             self.tab_hof_frame, text=" 📊 All-Time Casino Records ",
-            font=("Arial", 10, "bold"), fg="#ffd700", background="#12271c",
+            font=get_header_font(12), fg="#ffd700", background="#12271c",
             padx=10, pady=6, relief="groove"
         )
         records_frame.pack(fill="x", pady=(0, 8))
 
         self.lbl_peak_record = tkinter.Label(
-            records_frame, text="• Peak Bankroll: $1,000", font=("Arial", 9, "bold"),
+            records_frame, text="• Peak Bankroll: $1,000", font=get_badge_font(11),
             fg="#69f0ae", background="#12271c"
         )
         self.lbl_peak_record.grid(row=0, column=0, sticky="w", padx=(0, 16), pady=2)
 
         self.lbl_streak_record = tkinter.Label(
-            records_frame, text="• Longest Win Streak: 0 hands", font=("Arial", 9, "bold"),
+            records_frame, text="• Longest Win Streak: 0 hands", font=get_badge_font(11),
             fg="#ffd54f", background="#12271c"
         )
         self.lbl_streak_record.grid(row=0, column=1, sticky="w", padx=(0, 16), pady=2)
 
         self.lbl_clears_record = tkinter.Label(
-            records_frame, text="• Hell's Table Clears: 0", font=("Arial", 9, "bold"),
+            records_frame, text="• Hell's Table Clears: 0", font=get_badge_font(11),
             fg="#ff8a80", background="#12271c"
         )
         self.lbl_clears_record.grid(row=0, column=2, sticky="w", pady=2)
 
         self.lbl_hands_record = tkinter.Label(
-            records_frame, text="• Hands Won / Played: 0 / 0 (0.0% Win Rate)", font=("Arial", 9),
+            records_frame, text="• Hands Won / Played: 0 / 0 (0.0% Win Rate)", font=get_body_font(11),
             fg="#e0e0e0", background="#12271c"
         )
         self.lbl_hands_record.grid(row=1, column=0, columnspan=2, sticky="w", pady=2)
 
         self.lbl_bjs_record = tkinter.Label(
-            records_frame, text="• Total Blackjacks: 0", font=("Arial", 9),
+            records_frame, text="• Total Blackjacks: 0", font=get_body_font(11),
             fg="#80d8ff", background="#12271c"
         )
         self.lbl_bjs_record.grid(row=1, column=2, sticky="w", pady=2)
@@ -550,7 +561,7 @@ class WardrobeDialog(tkinter.Toplevel):
         # 2. Scrollable Canvas for 8 Achievement Plaques
         plaques_container = tkinter.LabelFrame(
             self.tab_hof_frame, text=" 🏆 Casino Achievements (8) ",
-            font=("Arial", 10, "bold"), fg="#ffd700", background="#12271c",
+            font=get_header_font(12), fg="#ffd700", background="#12271c",
             padx=4, pady=4, relief="groove"
         )
         plaques_container.pack(fill="both", expand=True)
@@ -594,27 +605,27 @@ class WardrobeDialog(tkinter.Toplevel):
             header_sub.pack(fill="x")
 
             title_lbl = tkinter.Label(
-                header_sub, text=spec["title"], font=("Arial", 9, "bold"),
+                header_sub, text=spec["title"], font=get_header_font(11),
                 fg="#ffd700", background="#0f2218"
             )
             title_lbl.pack(side="left")
 
             reward_lbl = tkinter.Label(
-                header_sub, text=f"[{spec['reward']}]", font=("Arial", 8, "italic"),
+                header_sub, text=f"[{spec['reward']}]", font=get_badge_font(10),
                 fg="#80cbc4", background="#0f2218"
             )
             reward_lbl.pack(side="right")
 
             # Description
             desc_lbl = tkinter.Label(
-                p_frame, text=spec["desc"], font=("Arial", 8),
+                p_frame, text=spec["desc"], font=get_body_font(11),
                 fg="#b0bec5", background="#0f2218", wraplength=290, justify="left"
             )
             desc_lbl.pack(fill="x", pady=(2, 3), anchor="w")
 
             # Status badge
             status_lbl = tkinter.Label(
-                p_frame, text="🔒 LOCKED", font=("Arial", 8, "bold"),
+                p_frame, text="🔒 LOCKED", font=get_badge_font(11),
                 fg="#ff8a80", background="#0f2218", anchor="w"
             )
             status_lbl.pack(fill="x")

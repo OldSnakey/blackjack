@@ -96,16 +96,16 @@ class TestDealerActorAndHorizonStage(unittest.TestCase):
 
         # Speech font and nameplate font scaled
         nameplate_font = str(self.app.dealer_nameplate_label.cget("font"))
-        self.assertTrue("20" in nameplate_font or "18" in nameplate_font)
+        self.assertTrue("32" in nameplate_font or "28" in nameplate_font or "20" in nameplate_font or "18" in nameplate_font)
 
         speech_font = str(self.app.dealer_speech_label.cget("font"))
-        self.assertTrue("18" in speech_font or "16" in speech_font)
+        self.assertTrue("32" in speech_font or "28" in speech_font or "18" in speech_font or "16" in speech_font)
 
         # Toggle back to 1x
         self.app.toggle_scale_mode()
         self.assertEqual(self.app.scale_factor, 1.0)
         nameplate_font_1x = str(self.app.dealer_nameplate_label.cget("font"))
-        self.assertTrue("10" in nameplate_font_1x or "9" in nameplate_font_1x)
+        self.assertTrue("16" in nameplate_font_1x or "14" in nameplate_font_1x or "10" in nameplate_font_1x or "9" in nameplate_font_1x)
 
 
 if __name__ == "__main__":

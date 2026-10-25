@@ -105,8 +105,12 @@ def main():
     app.save_manager.data.achievements.exorcist = True
     app.save_manager.data.achievements.apprentice_counter = True
 
-    artifact_dir = Path(r"C:\Users\wrehm\.gemini\antigravity-ide\brain\961dac34-d1bc-4f26-a9b9-15da0b316e33")
-    artifact_dir.mkdir(parents=True, exist_ok=True)
+    artifact_dirs = [
+        BASE_DIR / "verification",
+        Path(r"C:\Users\wrehm\.gemini\antigravity-ide\brain\4cc8d8d2-c72e-4a67-8d44-37320d173939"),
+    ]
+    for d in artifact_dirs:
+        d.mkdir(parents=True, exist_ok=True)
 
     # 1. Capture Settings Dialog
     app._open_settings_dialog()
@@ -117,9 +121,10 @@ def main():
     settings = app._settings_dialog
     if settings and settings.winfo_exists():
         screenshot = capture_hwnd_to_image(settings.winfo_id())
-        out_path = artifact_dir / "verified_settings_dialog.png"
-        screenshot.convert("RGB").save(str(out_path), "PNG")
-        print(f"SAVED: {out_path}")
+        for d in artifact_dirs:
+            out_path = d / "verified_settings_dialog.png"
+            screenshot.convert("RGB").save(str(out_path), "PNG")
+            print(f"SAVED: {out_path}")
     app._close_settings_dialog()
     root.update()
 
@@ -135,18 +140,20 @@ def main():
         root.update()
         time.sleep(0.05)
         screenshot = capture_hwnd_to_image(shortcuts.winfo_id())
-        out_path = artifact_dir / "verified_shortcuts_dialog_tab0.png"
-        screenshot.convert("RGB").save(str(out_path), "PNG")
-        print(f"SAVED: {out_path}")
+        for d in artifact_dirs:
+            out_path = d / "verified_shortcuts_dialog_tab0.png"
+            screenshot.convert("RGB").save(str(out_path), "PNG")
+            print(f"SAVED: {out_path}")
 
         # 3. Capture Shortcuts Dialog Tab 1 (System & Controls)
         shortcuts._switch_tab(1)
         root.update()
         time.sleep(0.05)
         screenshot = capture_hwnd_to_image(shortcuts.winfo_id())
-        out_path = artifact_dir / "verified_shortcuts_dialog_tab1.png"
-        screenshot.convert("RGB").save(str(out_path), "PNG")
-        print(f"SAVED: {out_path}")
+        for d in artifact_dirs:
+            out_path = d / "verified_shortcuts_dialog_tab1.png"
+            screenshot.convert("RGB").save(str(out_path), "PNG")
+            print(f"SAVED: {out_path}")
 
     app._close_shortcuts_overlay()
     root.update()
@@ -163,9 +170,10 @@ def main():
         root.update()
         time.sleep(0.05)
         screenshot = capture_hwnd_to_image(wardrobe.winfo_id())
-        out_path = artifact_dir / "verified_wardrobe_tab2_hof.png"
-        screenshot.convert("RGB").save(str(out_path), "PNG")
-        print(f"SAVED: {out_path}")
+        for d in artifact_dirs:
+            out_path = d / "verified_wardrobe_tab2_hof.png"
+            screenshot.convert("RGB").save(str(out_path), "PNG")
+            print(f"SAVED: {out_path}")
         wardrobe._on_close()
 
     try:

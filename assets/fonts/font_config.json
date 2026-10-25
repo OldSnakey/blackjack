@@ -1,0 +1,385 @@
+{
+  "version": "1.0",
+  "fonts": {
+    "BoldPixels": {
+      "file": "BoldPixels.ttf",
+      "family": "BoldPixels",
+      "grid": "arcade display",
+      "description": "Chunky punchy arcade display font for titles, modal headers, announcements."
+    },
+    "m5x7": {
+      "file": "m5x7.ttf",
+      "family": "m5x7",
+      "grid": "5x7",
+      "description": "Clean, balanced, condensed pixel workhorse font for body prose, buttons, and dialogue."
+    },
+    "m6x11": {
+      "file": "m6x11.ttf",
+      "family": "m6x11",
+      "grid": "6x11",
+      "description": "Tall, clean, proportional pixel font with full mixed-case support and open numerals."
+    },
+    "m6x11plus": {
+      "file": "m6x11plus.ttf",
+      "family": "m6x11plus",
+      "grid": "6x11 plus",
+      "description": "Enhanced 6x11 pixel font with extended punctuation and symbols."
+    },
+    "Round9x13": {
+      "file": "Round9x13.ttf",
+      "family": "Round9x13",
+      "grid": "9x13 rounded caps",
+      "description": "High-impact bold rounded numerals for score plaques, top bar wins/ties, and bankroll."
+    },
+    "Volt5x5": {
+      "file": "Volt5x5.ttf",
+      "family": "Volt5x5",
+      "grid": "5x5 terminal",
+      "description": "Digital electronic LCD terminal font for Hi-Lo Trainer metrics and telemetry."
+    },
+    "Covenant5x5": {
+      "file": "Covenant5x5.ttf",
+      "family": "Covenant5x5",
+      "grid": "5x5 square terminal",
+      "description": "Futuristic square digital terminal font."
+    },
+    "Mini3x5": {
+      "file": "Mini3x5.ttf",
+      "family": "Mini3x5",
+      "grid": "3x5 tall micro",
+      "description": "Compact micro font for keyboard shortcut badges and tiny HUD pills."
+    },
+    "3x5_Block_Adjusted": {
+      "file": "3x5_Block_Adjusted-Regular.ttf",
+      "family": "3x5_Block_Adjusted",
+      "grid": "3x5 block micro",
+      "description": "Micro block numbers for chip stack denominations."
+    },
+    "3x5_Block_Mono": {
+      "file": "3x5_Block_Mono-Regular.ttf",
+      "family": "3x5_Block_Mono",
+      "grid": "3x5 monospaced micro",
+      "description": "Monospaced micro numbers."
+    },
+    "3x5_Notched_Adjusted": {
+      "file": "3x5_Notched_Adjusted-Regular.ttf",
+      "family": "3x5_Notched_Adjusted",
+      "grid": "3x5 notched micro",
+      "description": "Notched micro font."
+    },
+    "3x5_Notched_Mono": {
+      "file": "3x5_Notched_Mono-Regular.ttf",
+      "family": "3x5_Notched_Mono",
+      "grid": "3x5 notched monospaced micro",
+      "description": "Notched monospaced micro font."
+    },
+    "3x5_Rounded_Adjusted": {
+      "file": "3x5_Rounded_Adjusted-Regular.ttf",
+      "family": "3x5_Rounded_Adjusted",
+      "grid": "3x5 rounded micro",
+      "description": "Rounded micro font."
+    },
+    "3x5_Rounded_Mono": {
+      "file": "3x5_Rounded_Mono-Regular.ttf",
+      "family": "3x5_Rounded_Mono",
+      "grid": "3x5 rounded monospaced micro",
+      "description": "Rounded monospaced micro font."
+    }
+  },
+  "roles": {
+    "title": {
+      "family": "BoldPixels",
+      "base_size": 32,
+      "weight": "normal",
+      "fallback": "m5x7",
+      "description": "Large banners, Table Announcements, Window Titles"
+    },
+    "header": {
+      "family": "m6x11plus",
+      "base_size": 16,
+      "weight": "normal",
+      "fallback": "m5x7",
+      "description": "Dialog Section Headers, Mode Card Titles, Plaque Names"
+    },
+    "display": {
+      "family": "m6x11plus",
+      "base_size": 32,
+      "weight": "normal",
+      "fallback": "m5x7",
+      "description": "Score Plaques, Top Bar Numbers, Bankroll, Bet"
+    },
+    "body": {
+      "family": "m5x7",
+      "base_size": 16,
+      "weight": "normal",
+      "fallback": "Courier",
+      "description": "Dialog Descriptions, Rules Text, Dialogue Speech, Help Guides"
+    },
+    "button": {
+      "family": "m6x11plus",
+      "base_size": 16,
+      "weight": "normal",
+      "fallback": "m5x7",
+      "description": "Mahogany Rail Buttons, Top Bar System Buttons, Modal Buttons"
+    },
+    "digital": {
+      "family": "Volt5x5",
+      "base_size": 15,
+      "weight": "normal",
+      "fallback": "m5x7",
+      "description": "Hi-Lo Trainer count readouts (RC, TC, Edge, Decks)"
+    },
+    "badge": {
+      "family": "Mini3x5",
+      "base_size": 15,
+      "weight": "normal",
+      "fallback": "m5x7",
+      "description": "Keyboard Shortcut Badges ([Space], [Esc], [H], [S]) and Metric Labels"
+    },
+    "micro": {
+      "family": "3x5_Block_Adjusted",
+      "base_size": 10,
+      "weight": "normal",
+      "fallback": "m5x7",
+      "description": "Chip stack face numbers on felt"
+    }
+  },
+  "elements": {
+    "top_bar_button": {
+      "role": "button",
+      "family": "m5x7",
+      "base_size": 16,
+      "description": "System buttons on top bar (Rules, Settings, Shortcuts, Wardrobe, Mute, Scale)"
+    },
+    "top_bar_status": {
+      "role": "button",
+      "family": "m5x7",
+      "base_size": 16,
+      "description": "Scale and status readouts on top bar (e.g. \ud83d\udd0d 1x / 2x)"
+    },
+    "scoreboard_title": {
+      "role": "header",
+      "family": "m6x11plus",
+      "base_size": 22,
+      "description": "Headers for Dealer, Player, Ties in top bar scoreboard"
+    },
+    "scoreboard_value": {
+      "role": "display",
+      "family": "m6x11plus",
+      "base_size": 22,
+      "description": "Win, Loss, and Tie numeric counters in top bar"
+    },
+    "bankroll_label": {
+      "role": "display",
+      "family": "m6x11plus",
+      "base_size": 32,
+      "description": "Player bankroll display on top bar"
+    },
+    "shoe_counter": {
+      "role": "header",
+      "family": "m5x7",
+      "base_size": 16,
+      "description": "Deck shoe card counter plaque under acrylic shoe tray"
+    },
+    "hand_title": {
+      "role": "header",
+      "family": "m6x11plus",
+      "base_size": 16,
+      "description": "Banners for dealer, player, and split hand areas"
+    },
+    "hand_score": {
+      "role": "display",
+      "family": "m6x11plus",
+      "base_size": 32,
+      "description": "Hand score plaques (19, 21, BUST, etc.)"
+    },
+    "action_button": {
+      "role": "button",
+      "family": "m5x7",
+      "base_size": 32,
+      "description": "Primary action rail buttons (Hit, Stand, Double, Split, Surrender, New Game)"
+    },
+    "cursed_stakes_button": {
+      "role": "button",
+      "family": "m5x7",
+      "base_size": 32,
+      "description": "Cursed stakes / High roller toggle button"
+    },
+    "strategy_hint": {
+      "role": "body",
+      "description": "Real-time basic strategy advice banner text"
+    },
+    "betting_button": {
+      "role": "button",
+      "family": "m5x7",
+      "base_size": 32,
+      "description": "Bet staging action buttons (Deal, Clear, Rebet, All-In, Rebuy)"
+    },
+    "betting_chip_button": {
+      "role": "button",
+      "description": "Quick chip increment buttons in casual mode"
+    },
+    "betting_spot_watermark": {
+      "role": "badge",
+      "description": "Felt watermark text inside betting circle"
+    },
+    "chip_bet_badge": {
+      "role": "micro",
+      "base_size": 10,
+      "description": "Current staged bet readout above betting spot"
+    },
+    "chip_bankroll_badge": {
+      "role": "micro",
+      "base_size": 10,
+      "description": "Reserve tray bankroll header (CHIPS: $... L-Click + | R-Click -)"
+    },
+    "chip_denomination_label": {
+      "role": "micro",
+      "base_size": 10,
+      "description": "Denomination label under each reserve pile ($5, $25, $100, $500, $1K)"
+    },
+    "chip_face_value": {
+      "role": "micro",
+      "base_size": 5,
+      "description": "Denomination and multiplier text stamped on individual chip sprites"
+    },
+    "chip_floating_payout": {
+      "role": "digital",
+      "description": "Animated floating payout text (+$150)"
+    },
+    "chip_push_banner": {
+      "role": "header",
+      "description": "Push announcement banner on betting spot"
+    },
+    "insurance_prompt_label": {
+      "role": "header",
+      "base_size": 15,
+      "description": "Insurance inquiry text prompt"
+    },
+    "insurance_prompt_button": {
+      "role": "button",
+      "base_size": 15,
+      "description": "Take / Decline Insurance action buttons"
+    },
+    "dealer_nameplate": {
+      "role": "header",
+      "description": "Dealer character nameplate on narrative dialogue stage"
+    },
+    "dealer_speech": {
+      "role": "body",
+      "description": "Dialogue box typewriter speech and narrative subtitles"
+    },
+    "table_announcement": {
+      "role": "title",
+      "description": "Centered floating banner announcements (BLACKJACK!, DEALER BUSTS, PUSH)"
+    },
+    "hilo_trainer_title": {
+      "role": "header",
+      "description": "Hi-Lo Card Counting Trainer header tab"
+    },
+    "hilo_trainer_label": {
+      "role": "badge",
+      "description": "Trainer HUD metric title badges (RC, TC, DECKS, EDGE, BET)"
+    },
+    "hilo_trainer_value": {
+      "role": "digital",
+      "description": "Trainer HUD numeric readouts"
+    },
+    "hilo_trainer_button": {
+      "role": "button",
+      "description": "Trainer HUD control buttons (Quiz, Assisted, Close)"
+    },
+    "hilo_trainer_advice": {
+      "role": "body",
+      "description": "Trainer drill hint and betting recommendation text"
+    },
+    "hilo_floating_badge": {
+      "role": "display",
+      "description": "Transient floating count particle badges (+1, -1, 0) above cards"
+    },
+    "soul_meter_title": {
+      "role": "title",
+      "description": "Soul Wager Altar HUD banner title"
+    },
+    "soul_meter_markers": {
+      "role": "digital",
+      "description": "Soul Meter threshold percentage markers (50%, 75%)"
+    },
+    "soul_meter_bounds": {
+      "role": "badge",
+      "description": "Soul Meter extremity labels (ABYSS 0%, LIGHT 100%)"
+    },
+    "soul_meter_status": {
+      "role": "header",
+      "description": "Soul Meter dynamic status text"
+    },
+    "soul_meter_hint": {
+      "role": "body",
+      "description": "Soul Meter bottom instruction text"
+    },
+    "dialog_title": {
+      "role": "title",
+      "description": "Modal dialog top window titles"
+    },
+    "dialog_tab": {
+      "role": "header",
+      "description": "Modal dialog tab navigation bar buttons"
+    },
+    "dialog_header": {
+      "role": "header",
+      "description": "Modal dialog section headers and mode card titles"
+    },
+    "dialog_body": {
+      "role": "body",
+      "description": "Modal dialog explanatory body text, rules, and bios"
+    },
+    "dialog_badge": {
+      "role": "badge",
+      "description": "Modal dialog shortcut key badges ([Space], [Esc], etc.)"
+    },
+    "dialog_button": {
+      "role": "button",
+      "description": "Modal dialog action and dismissal buttons"
+    },
+    "story_dialog_speaker": {
+      "role": "header",
+      "base_size": 20,
+      "description": "Speaker name in narrative story dialogue modal"
+    },
+    "story_dialog_body": {
+      "role": "body",
+      "base_size": 18,
+      "description": "Story narrative text in story dialogue modal"
+    },
+    "story_dialog_button": {
+      "role": "button",
+      "base_size": 16,
+      "description": "Dismiss / proceed button in story dialogue modal"
+    },
+    "angelic_draft_subtitle": {
+      "role": "header",
+      "base_size": 15,
+      "description": "Angelic draft dialog subtitle instruction"
+    },
+    "angelic_draft_title": {
+      "role": "header",
+      "base_size": 16,
+      "description": "Relic card title in angelic blessing draft dialog"
+    },
+    "angelic_draft_tagline": {
+      "role": "badge",
+      "base_size": 13,
+      "description": "Relic card tagline in angelic blessing draft dialog"
+    },
+    "angelic_draft_description": {
+      "role": "body",
+      "base_size": 16,
+      "description": "Relic card power description in angelic blessing draft dialog"
+    },
+    "angelic_draft_button": {
+      "role": "button",
+      "base_size": 14,
+      "description": "Equip relic button in angelic blessing draft dialog"
+    }
+  }
+}

@@ -15,6 +15,17 @@ from __future__ import annotations
 import tkinter
 from typing import Any, Callable, Optional
 from card_counter import HiLoCardCounter
+from pixel_ui import (
+    get_element_font,
+    get_pixel_font,
+    get_title_font,
+    get_header_font,
+    get_body_font,
+    get_button_font,
+    get_display_font,
+    get_digital_font,
+    get_badge_font,
+)
 
 
 class FloatingCountBadge(tkinter.Label):
@@ -37,7 +48,7 @@ class FloatingCountBadge(tkinter.Label):
         super().__init__(
             master,
             text=text,
-            font=("Arial", 11, "bold"),
+            font=get_element_font("hilo_floating_badge"),
             fg=fg_col,
             background="#102027",
             padx=6,
@@ -118,10 +129,10 @@ class CardCountingHud(tkinter.Frame):
         # 1. Top Tab Header Frame (sits on top of the HUD bar on the far left)
         self.tab_frame = tkinter.Frame(
             self,
-            background="#0d231b",
+            background="#141a1d",
             relief="ridge",
             borderwidth=1,
-            highlightbackground="#1de9b6",
+            highlightbackground="#2c3940",
             highlightthickness=1,
             padx=6,
             pady=1,
@@ -131,19 +142,19 @@ class CardCountingHud(tkinter.Frame):
         self.title_lbl = tkinter.Label(
             self.tab_frame,
             text="🧮 Hi-Lo Trainer",
-            font=("Arial", 8, "bold"),
-            fg="#1de9b6",
-            background="#0d231b",
+            font=get_element_font("hilo_trainer_title"),
+            fg="#5ce6b5",
+            background="#141a1d",
         )
         self.title_lbl.pack(side="left")
 
-        # 2. Main HUD Statistics Bar Frame
+        # 2. Main HUD Statistics Bar Frame (Dark slate calculator gadget aesthetic)
         self.bar_frame = tkinter.Frame(
             self,
-            background="#0d231b",
+            background="#141a1d",
             relief="ridge",
             borderwidth=2,
-            highlightbackground="#1de9b6",
+            highlightbackground="#2c3940",
             highlightthickness=1,
             padx=6,
             pady=3,
@@ -151,13 +162,14 @@ class CardCountingHud(tkinter.Frame):
         self.bar_frame.pack(side="top", fill="x", expand=True, padx=0, pady=(0, 0))
 
         # Action Buttons (Packed side="right" first to guarantee they are never clipped)
+        btn_font = get_element_font("hilo_trainer_button")
         self.close_btn = tkinter.Button(
             self.bar_frame,
             text="✖",
-            font=("Arial", 8),
-            background="#0d231b",
+            font=btn_font,
+            background="#141a1d",
             foreground="#80cbc4",
-            activebackground="#1b382d",
+            activebackground="#263238",
             activeforeground="#ffffff",
             relief="flat",
             cursor="hand2",
@@ -169,10 +181,10 @@ class CardCountingHud(tkinter.Frame):
         self.quiz_btn = tkinter.Button(
             self.bar_frame,
             text="🎯 Quiz",
-            font=("Arial", 8, "bold"),
-            background="#004d40",
-            foreground="#ffffff",
-            activebackground="#00796b",
+            font=btn_font,
+            background="#1b2e2b",
+            foreground="#ffd54f",
+            activebackground="#263238",
             activeforeground="#ffffff",
             relief="flat",
             padx=5,
@@ -186,10 +198,10 @@ class CardCountingHud(tkinter.Frame):
         self.mode_btn = tkinter.Button(
             self.bar_frame,
             text="👁️ Assisted",
-            font=("Arial", 8, "bold"),
-            background="#1b382d",
-            foreground="#80cbc4",
-            activebackground="#2e5441",
+            font=btn_font,
+            background="#1b2e2b",
+            foreground="#5ce6b5",
+            activebackground="#263238",
             activeforeground="#ffffff",
             relief="flat",
             padx=5,
@@ -201,72 +213,75 @@ class CardCountingHud(tkinter.Frame):
         self.mode_btn.pack(side="right", padx=3)
 
         # Statistics & Guidance (Packed side="left" with compact padding)
+        f_lbl = get_element_font("hilo_trainer_label")
+        f_val = get_element_font("hilo_trainer_value")
+
         # Running Count (RC)
-        self.rc_frame = tkinter.Frame(self.bar_frame, background="#0d231b")
+        self.rc_frame = tkinter.Frame(self.bar_frame, background="#141a1d")
         self.rc_frame.pack(side="left", padx=3)
         tkinter.Label(
-            self.rc_frame, text="RC:", font=("Arial", 8, "bold"), fg="#80cbc4", background="#0d231b"
+            self.rc_frame, text="RC:", font=f_lbl, fg="#80cbc4", background="#141a1d"
         ).pack(side="left")
         self.rc_label = tkinter.Label(
-            self.rc_frame, text="+0", font=("Arial", 9, "bold"), fg="#ffffff", background="#0d231b"
+            self.rc_frame, text="+0", font=f_val, fg="#ffffff", background="#141a1d"
         )
         self.rc_label.pack(side="left", padx=(2, 0))
 
         # Decks Remaining
-        self.decks_frame = tkinter.Frame(self.bar_frame, background="#0d231b")
+        self.decks_frame = tkinter.Frame(self.bar_frame, background="#141a1d")
         self.decks_frame.pack(side="left", padx=3)
         tkinter.Label(
-            self.decks_frame, text="Decks:", font=("Arial", 8, "bold"), fg="#80cbc4", background="#0d231b"
+            self.decks_frame, text="Decks:", font=f_lbl, fg="#80cbc4", background="#141a1d"
         ).pack(side="left")
         default_decks_text = f"{float(getattr(self.counter, 'deck_count', 4)):.1f}"
         self.decks_label = tkinter.Label(
-            self.decks_frame, text=default_decks_text, font=("Arial", 9, "bold"), fg="#ffffff", background="#0d231b"
+            self.decks_frame, text=default_decks_text, font=f_val, fg="#ffffff", background="#141a1d"
         )
         self.decks_label.pack(side="left", padx=(2, 0))
 
         # True Count (TC)
-        self.tc_frame = tkinter.Frame(self.bar_frame, background="#0d231b")
+        self.tc_frame = tkinter.Frame(self.bar_frame, background="#141a1d")
         self.tc_frame.pack(side="left", padx=3)
         tkinter.Label(
-            self.tc_frame, text="TC:", font=("Arial", 8, "bold"), fg="#80cbc4", background="#0d231b"
+            self.tc_frame, text="TC:", font=f_lbl, fg="#80cbc4", background="#141a1d"
         ).pack(side="left")
         self.tc_label = tkinter.Label(
-            self.tc_frame, text="+0.0", font=("Arial", 9, "bold"), fg="#ffffff", background="#0d231b"
+            self.tc_frame, text="+0.0", font=f_val, fg="#ffffff", background="#141a1d"
         )
         self.tc_label.pack(side="left", padx=(2, 0))
 
         # Player Advantage (Edge %)
-        self.edge_frame = tkinter.Frame(self.bar_frame, background="#0d231b")
+        self.edge_frame = tkinter.Frame(self.bar_frame, background="#141a1d")
         self.edge_frame.pack(side="left", padx=3)
         tkinter.Label(
-            self.edge_frame, text="Edge:", font=("Arial", 8, "bold"), fg="#80cbc4", background="#0d231b"
+            self.edge_frame, text="Edge:", font=f_lbl, fg="#80cbc4", background="#141a1d"
         ).pack(side="left")
         self.edge_label = tkinter.Label(
-            self.edge_frame, text="-0.5%", font=("Arial", 9, "bold"), fg="#38bdf8", background="#0d231b"
+            self.edge_frame, text="-0.5%", font=f_val, fg="#38bdf8", background="#141a1d"
         )
         self.edge_label.pack(side="left", padx=(2, 0))
 
         # Bet Sizing Guide
-        self.bet_guide_frame = tkinter.Frame(self.bar_frame, background="#0d231b")
+        self.bet_guide_frame = tkinter.Frame(self.bar_frame, background="#141a1d")
         self.bet_guide_frame.pack(side="left", padx=3)
         tkinter.Label(
-            self.bet_guide_frame, text="Bet Guide:", font=("Arial", 8, "bold"), fg="#ffd54f", background="#0d231b"
+            self.bet_guide_frame, text="Bet Guide:", font=f_lbl, fg="#ffd54f", background="#141a1d"
         ).pack(side="left")
         self.bet_guide_label = tkinter.Label(
-            self.bet_guide_frame, text="1u ($25)", font=("Arial", 9, "bold"), fg="#fff59d", background="#0d231b",
+            self.bet_guide_frame, text="1u ($25)", font=f_val, fg="#fff59d", background="#141a1d",
             cursor="hand2"
         )
         self.bet_guide_label.pack(side="left", padx=(2, 0))
         self.bet_guide_label.bind("<Button-1>", lambda e: self._on_stage_bet_click())
 
         # Basic Strategy Advisor Hint
-        self.strategy_frame = tkinter.Frame(self.bar_frame, background="#0d231b")
+        self.strategy_frame = tkinter.Frame(self.bar_frame, background="#141a1d")
         self.strategy_frame.pack(side="left", padx=3)
         tkinter.Label(
-            self.strategy_frame, text="Strategy:", font=("Arial", 8, "bold"), fg="#80cbc4", background="#0d231b"
+            self.strategy_frame, text="Strategy:", font=f_lbl, fg="#80cbc4", background="#141a1d"
         ).pack(side="left")
         self.strategy_label = tkinter.Label(
-            self.strategy_frame, text="-", font=("Arial", 9, "bold"), fg="#b0bec5", background="#0d231b"
+            self.strategy_frame, text="-", font=f_val, fg="#b0bec5", background="#141a1d"
         )
         self.strategy_label.pack(side="left", padx=(2, 0))
 
@@ -419,7 +434,7 @@ class CardCountingQuizDialog(tkinter.Toplevel):
         self.resizable(False, False)
         self.configure(background="#0a1a15", padx=16, pady=14)
 
-        dialog_w, dialog_h = 380, 290
+        dialog_w, dialog_h = 420, 310
         try:
             rx = parent.winfo_rootx()
             ry = parent.winfo_rooty()
@@ -438,7 +453,7 @@ class CardCountingQuizDialog(tkinter.Toplevel):
         tkinter.Label(
             self,
             text="🎯 TEST YOUR COUNT",
-            font=("Arial", 12, "bold"),
+            font=get_element_font("dialog_title"),
             fg="#ffd700",
             background="#0a1a15",
         ).pack(pady=(0, 8))
@@ -446,10 +461,10 @@ class CardCountingQuizDialog(tkinter.Toplevel):
         tkinter.Label(
             self,
             text="Estimate the current Running Count and True Count from all revealed cards:",
-            font=("Arial", 9),
+            font=get_element_font("dialog_body"),
             fg="#eceff1",
             background="#0a1a15",
-            wraplength=340,
+            wraplength=380,
             justify="center",
         ).pack(pady=(0, 12))
 
@@ -458,23 +473,23 @@ class CardCountingQuizDialog(tkinter.Toplevel):
 
         # Running Count input
         tkinter.Label(
-            input_frame, text="Running Count (RC):", font=("Arial", 9, "bold"), fg="#80cbc4", background="#0a1a15"
+            input_frame, text="Running Count (RC):", font=get_element_font("dialog_badge"), fg="#80cbc4", background="#0a1a15"
         ).grid(row=0, column=0, sticky="e", padx=6, pady=6)
-        self.rc_entry = tkinter.Entry(input_frame, width=8, font=("Arial", 10), justify="center")
+        self.rc_entry = tkinter.Entry(input_frame, width=8, font=get_element_font("hilo_trainer_value"), justify="center")
         self.rc_entry.grid(row=0, column=1, padx=6, pady=6)
         self.rc_entry.focus_set()
 
         # True Count input
         tkinter.Label(
-            input_frame, text="True Count (TC):", font=("Arial", 9, "bold"), fg="#80cbc4", background="#0a1a15"
+            input_frame, text="True Count (TC):", font=get_element_font("dialog_badge"), fg="#80cbc4", background="#0a1a15"
         ).grid(row=1, column=0, sticky="e", padx=6, pady=6)
-        self.tc_entry = tkinter.Entry(input_frame, width=8, font=("Arial", 10), justify="center")
+        self.tc_entry = tkinter.Entry(input_frame, width=8, font=get_element_font("hilo_trainer_value"), justify="center")
         self.tc_entry.grid(row=1, column=1, padx=6, pady=6)
 
         # Feedback label
         self.feedback_var = tkinter.StringVar(value="")
         self.feedback_label = tkinter.Label(
-            self, textvariable=self.feedback_var, font=("Arial", 9, "bold"), background="#0a1a15"
+            self, textvariable=self.feedback_var, font=get_element_font("dialog_body", weight_override="bold"), background="#0a1a15"
         )
         self.feedback_label.pack(pady=6)
 
@@ -485,7 +500,7 @@ class CardCountingQuizDialog(tkinter.Toplevel):
         self.submit_btn = tkinter.Button(
             btn_frame,
             text="Submit Answer",
-            font=("Arial", 9, "bold"),
+            font=get_element_font("dialog_button"),
             background="#00695c",
             foreground="#ffffff",
             activebackground="#00897b",

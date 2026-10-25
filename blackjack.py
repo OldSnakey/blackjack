@@ -110,6 +110,7 @@ from ui_canvases import (
     HauntedAltarCanvas,
     DealerStageCanvas,
     TableFeltCanvas,
+    MahoganyRailCanvas,
     HUD_OUTCOME_FONT_FAMILY,
     HUD_OUTCOME_FONT_SIZE,
     HUD_OUTCOME_FONT_WEIGHT,
@@ -117,6 +118,40 @@ from ui_canvases import (
     HUD_LORE_FONT_SIZE,
     HUD_LORE_FONT_SLANT,
     HUD_DEFAULT_WRAPLENGTH,
+)
+
+from pixel_ui import (
+    load_all_pixel_fonts,
+    load_pixel_font,
+    load_font_config,
+    reload_font_config,
+    get_element_font,
+    get_pixel_font,
+    get_title_font,
+    get_header_font,
+    get_body_font,
+    get_button_font,
+    get_display_font,
+    get_digital_font,
+    get_badge_font,
+    get_micro_font,
+    CanvasPixelPanel,
+    CanvasPixelButton,
+    PixelPlaqueFrame,
+    PixelDialogueFrame,
+    PixelButtonWidget,
+    ChipButtonProxy,
+)
+from ui_layout import (
+    get_grid_options,
+    get_pack_options,
+    get_theme_color,
+    get_widget_style,
+    apply_style,
+    get_ui_layout,
+    get_table_layout,
+    get_rail_button_layout,
+    get_card_layout,
 )
 
 # Re-exported Toplevel modal dialogs
@@ -162,6 +197,7 @@ class BlackjackApp:
         skip_splash: bool = False,
     ):
         self.root = root
+        load_pixel_font(self.root)
         prev_app = getattr(self.root, "_active_blackjack_app", None)
         if prev_app is not None and prev_app is not self:
             try:
@@ -172,7 +208,13 @@ class BlackjackApp:
         self.root.title(f"Blackjack v{__version__}")
         self.root.geometry(f"{DEFAULT_WINDOW_WIDTH}x{DEFAULT_WINDOW_HEIGHT}")
         self.root.minsize(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)
-        self.root.configure(background=TABLE_BACKGROUND_COLOR, padx=10, pady=10)
+        root_layout_cfg = get_ui_layout("root_layout")
+        root_pad = root_layout_cfg.get("padding", {"padx": 10, "pady": 10})
+        self.root.configure(
+            background=TABLE_BACKGROUND_COLOR,
+            padx=root_pad.get("padx", 10),
+            pady=root_pad.get("pady", 10),
+        )
 
         # Window icon configuration (supports .png via PhotoImage and .ico fallback)
         self._icon_photo = None
@@ -188,8 +230,10 @@ class BlackjackApp:
             pass  # Graceful fallback if window icon fails on headless or unsupported display
 
         # Allow responsive centering/scaling on window resize
-        self.root.columnconfigure(0, weight=1)
-        self.root.rowconfigure(3, weight=1)
+        for col_cfg in root_layout_cfg.get("column_weights", [{"column": 0, "weight": 1}]):
+            self.root.columnconfigure(col_cfg["column"], weight=col_cfg["weight"])
+        for row_cfg in root_layout_cfg.get("row_weights", [{"row": 3, "weight": 1}]):
+            self.root.rowconfigure(row_cfg["row"], weight=row_cfg["weight"])
 
         # Async timer management & graceful window destruction
         self._dealer_timer_id = None
@@ -232,7 +276,7 @@ class BlackjackApp:
         def _on_card_dealt_sync(ev: GameEvent):
             if hasattr(self, "card_table_frame") and hasattr(self.card_table_frame, "update_shoe_penetration"):
                 total = max(1, len(self.all_cards) * self.deck_count if self.all_cards else self.deck_count * 52)
-                self.card_table_frame.update_shoe_penetration(len(self.deck), total)
+                self.card_table_frame.update_shoe_penetration(len(self.deck), total, cut_notice=self.shoe_needs_reshuffle)
         self.event_bus.subscribe(GameEventType.CARD_DEALT, _on_card_dealt_sync)
 
         # Hi-Lo Card Counting Trainer Subsystem
@@ -335,6 +379,9 @@ class BlackjackApp:
         # Load card visual assets
         self._load_assets()
 
+        # Register and load all pixel fonts into GDI
+        load_all_pixel_fonts(self.root)
+
         # Build interface layout
         self._build_ui()
 
@@ -381,9 +428,11 @@ class BlackjackApp:
         h = int(CARD_HEIGHT * self.scale_factor)
         load_images(self.all_cards, master=self.root, scale=self.scale_factor, asset_scaler=self._asset_scaler)
         back_path = ASSETS_DIR / "back.png"
-        self.back_image = self._asset_scaler.get_scaled_image(back_path, w, h)
+        self.back_image = self._asset_scaler.get_scaled_image(back_path, w, h, element_type="cards")
         self.icon_loader = KeyboardIconLoader(OVERLAY_ICONS_DIR, master=self.root)
-        self.icon_question_small = self.icon_loader.get_icon("keyboard_question", scale_div=3)
+        self.icon_question_small = self.icon_loader.get_clean_glyph_icon(
+            "keyboard_question", target_height=int(16 * self.scale_factor), color="#ffd700"
+        )
         self._shortcuts_dialog = None
 
         # Load Haunted PNG Assets safely
@@ -392,20 +441,27 @@ class BlackjackApp:
                 stem = p.stem
                 if stem.startswith("card_") or stem == "back_haunted" or ("haunted" in stem and any(f in stem for f in ("jack", "queen", "king"))):
                     img_w, img_h = w, h
+                    elem_type = "cards"
                 elif "avatar" in stem or "dealer" in stem:
                     img_w, img_h = int(96 * self.scale_factor), int(96 * self.scale_factor)
+                    elem_type = "dealer"
                 elif "pumpkin" in stem:
                     img_w, img_h = int(48 * self.scale_factor), int(48 * self.scale_factor)
+                    elem_type = "haunted_accessories"
                 elif "gravestone" in stem:
                     img_w, img_h = int(48 * self.scale_factor), int(56 * self.scale_factor)
+                    elem_type = "haunted_accessories"
                 elif "candle" in stem:
                     img_w, img_h = int(40 * self.scale_factor), int(40 * self.scale_factor)
+                    elem_type = "haunted_accessories"
                 elif "relic" in stem:
                     img_w, img_h = int(48 * self.scale_factor), int(48 * self.scale_factor)
+                    elem_type = "relics"
                 else:
                     img_w, img_h = int(48 * self.scale_factor), int(48 * self.scale_factor)
+                    elem_type = "haunted_accessories"
 
-                scaled = self._asset_scaler.get_scaled_image(p, img_w, img_h)
+                scaled = self._asset_scaler.get_scaled_image(p, img_w, img_h, element_type=elem_type)
                 if scaled:
                     self.haunted_assets[stem] = scaled
 
@@ -416,40 +472,43 @@ class BlackjackApp:
         """Builds all Tkinter frames, scoreboards, card tables, and action buttons."""
         # Top Scoreboard: Win/Tie counters and status message
         scoreboard_frame = tkinter.Frame(self.root, background=TABLE_BACKGROUND_COLOR)
-        scoreboard_frame.grid(row=0, column=0, columnspan=3, pady=(0, 6))
+        scoreboard_frame.grid(**get_grid_options("top_bar"))
+
+        f_sb_t = get_element_font("scoreboard_title", scale=self.scale_factor)
+        f_sb_v = get_element_font("scoreboard_value", scale=self.scale_factor)
 
         lbl_dw_t = tkinter.Label(
-            scoreboard_frame, text="Dealer Wins: ", font=("Arial", 11, "bold"),
+            scoreboard_frame, text="Dealer Wins: ", font=f_sb_t,
             background=TABLE_BACKGROUND_COLOR, fg="white"
         )
-        lbl_dw_t.grid(row=0, column=0)
+        lbl_dw_t.grid(**get_grid_options("top_bar", "dealer_wins_title"))
         lbl_dw_v = tkinter.Label(
-            scoreboard_frame, textvariable=self.dealer_wins_var, font=("Arial", 11),
+            scoreboard_frame, textvariable=self.dealer_wins_var, font=f_sb_v,
             background=TABLE_BACKGROUND_COLOR, fg="white"
         )
-        lbl_dw_v.grid(row=0, column=1, padx=(0, 15))
+        lbl_dw_v.grid(**get_grid_options("top_bar", "dealer_wins_value"))
 
         lbl_pw_t = tkinter.Label(
-            scoreboard_frame, text="Player Wins: ", font=("Arial", 11, "bold"),
+            scoreboard_frame, text="Player Wins: ", font=f_sb_t,
             background=TABLE_BACKGROUND_COLOR, fg="white"
         )
-        lbl_pw_t.grid(row=0, column=2)
+        lbl_pw_t.grid(**get_grid_options("top_bar", "player_wins_title"))
         lbl_pw_v = tkinter.Label(
-            scoreboard_frame, textvariable=self.player_wins_var, font=("Arial", 11),
+            scoreboard_frame, textvariable=self.player_wins_var, font=f_sb_v,
             background=TABLE_BACKGROUND_COLOR, fg="white"
         )
-        lbl_pw_v.grid(row=0, column=3, padx=(0, 15))
+        lbl_pw_v.grid(**get_grid_options("top_bar", "player_wins_value"))
 
         lbl_t_t = tkinter.Label(
-            scoreboard_frame, text="Ties: ", font=("Arial", 11, "bold"),
+            scoreboard_frame, text="Ties: ", font=f_sb_t,
             background=TABLE_BACKGROUND_COLOR, fg="white"
         )
-        lbl_t_t.grid(row=0, column=4)
+        lbl_t_t.grid(**get_grid_options("top_bar", "ties_title"))
         lbl_t_v = tkinter.Label(
-            scoreboard_frame, textvariable=self.ties_var, font=("Arial", 11),
+            scoreboard_frame, textvariable=self.ties_var, font=f_sb_v,
             background=TABLE_BACKGROUND_COLOR, fg="white"
         )
-        lbl_t_v.grid(row=0, column=5)
+        lbl_t_v.grid(**get_grid_options("top_bar", "ties_value"))
 
         self.stat_labels = [
             (lbl_dw_t, True),
@@ -460,108 +519,101 @@ class BlackjackApp:
             (lbl_t_v, False),
         ]
 
-        # Shoe Cards Remaining Display
+        # Shoe Cards Remaining Display (Relocated to card table felt beneath shoe tray; retained for backward-compatibility)
         self.shoe_label = tkinter.Label(
-            scoreboard_frame, textvariable=self.shoe_info_var, font=("Arial", 10, "bold"),
+            scoreboard_frame, textvariable=self.shoe_info_var, font=get_digital_font(14),
             background=TABLE_BACKGROUND_COLOR, fg="#80cbc4"
         )
-        self.shoe_label.grid(row=0, column=6, padx=(12, 0))
+        self.shoe_label.grid(**get_grid_options("top_bar", "shoe_label"))
+        self.shoe_label.grid_remove()
 
         # Spacer column to push utility buttons to the right
-        scoreboard_frame.columnconfigure(7, weight=1)
+        spacer_cfg = get_ui_layout("top_bar", "elements").get("spacer", {"column": 7, "weight": 1})
+        scoreboard_frame.columnconfigure(spacer_cfg.get("column", 7), weight=spacer_cfg.get("weight", 1))
 
         # Sound Mute Toggle Button
-        self.sound_button = tkinter.Button(
-            scoreboard_frame, textvariable=self.sound_status_var, font=("Arial", 9, "bold"),
-            background=PANEL_BACKGROUND_COLOR, fg="white", activebackground=TABLE_BACKGROUND_COLOR,
-            activeforeground="white", relief="ridge", borderwidth=1, cursor="hand2",
-            command=self._on_toggle_sound
+        top_btn_ipady = int(get_ui_layout("top_bar").get("button_ipady", 6) * self.scale_factor)
+        f_top_btn = get_element_font("top_bar_button", scale=self.scale_factor)
+        btn_scale = max(1, int(2 * self.scale_factor))
+        self.sound_button = PixelButtonWidget(
+            scoreboard_frame, textvariable=self.sound_status_var, font=f_top_btn,
+            theme="neutral", scale=btn_scale, command=self._on_toggle_sound
         )
-        self.sound_button.grid(row=0, column=8, padx=(15, 0))
+        self.sound_button.grid(**get_grid_options("top_bar", "sound_button"), ipady=top_btn_ipady)
 
         # Shortcuts / Help Button
         help_btn_kwargs = {
-            "font": ("Arial", 9, "bold"),
-            "background": PANEL_BACKGROUND_COLOR,
-            "fg": "#ffeb3b",
-            "activebackground": TABLE_BACKGROUND_COLOR,
-            "activeforeground": "#ffeb3b",
-            "relief": "ridge",
-            "borderwidth": 1,
-            "cursor": "hand2",
+            "font": f_top_btn,
+            "theme": "neutral",
+            "scale": btn_scale,
+            "fg": "#ffd700",
             "command": self._toggle_shortcuts_overlay,
         }
         if self.icon_question_small:
-            self.help_button = tkinter.Button(
+            self.help_button = PixelButtonWidget(
                 scoreboard_frame, text=" Help", image=self.icon_question_small, compound="left",
                 **help_btn_kwargs
             )
         else:
-            self.help_button = tkinter.Button(
+            self.help_button = PixelButtonWidget(
                 scoreboard_frame, text="[?] Help",
                 **help_btn_kwargs
             )
-        self.help_button.grid(row=0, column=9, padx=(10, 0))
+        self.help_button.grid(**get_grid_options("top_bar", "help_button"), ipady=top_btn_ipady)
 
         # Dealer View Toggle Button (retained as instance for compatibility, unmapped since dealer is permanent)
-        self.dealer_view_button = tkinter.Button(
-            scoreboard_frame, textvariable=self.dealer_view_status_var, font=("Arial", 9, "bold"),
-            background=PANEL_BACKGROUND_COLOR, fg="white", activebackground=TABLE_BACKGROUND_COLOR,
-            activeforeground="white", relief="ridge", borderwidth=1, cursor="hand2",
-            command=self._on_toggle_dealer_view
+        self.dealer_view_button = PixelButtonWidget(
+            scoreboard_frame, textvariable=self.dealer_view_status_var, font=f_top_btn,
+            theme="neutral", scale=btn_scale, command=self._on_toggle_dealer_view
         )
         # Omitted from header grid since dealer is always enabled
 
-
         # Scale Mode Toggle Button (1x <-> 2x High-DPI in-memory scaling)
-        self.scale_button = tkinter.Button(
-            scoreboard_frame, textvariable=self.scale_status_var, font=("Arial", 9, "bold"),
-            background=PANEL_BACKGROUND_COLOR, fg="white", activebackground=TABLE_BACKGROUND_COLOR,
-            activeforeground="white", relief="ridge", borderwidth=1, cursor="hand2",
-            command=self.toggle_scale_mode
+        self.scale_button = PixelButtonWidget(
+            scoreboard_frame, textvariable=self.scale_status_var, font=f_top_btn,
+            theme="neutral", scale=btn_scale, command=self.toggle_scale_mode
         )
-        self.scale_button.grid(row=0, column=11, padx=(6, 0))
+        self.scale_button.grid(**get_grid_options("top_bar", "scale_button"), ipady=top_btn_ipady)
 
         # Fullscreen Toggle Button (F11)
-        self.fullscreen_button = tkinter.Button(
-            scoreboard_frame, textvariable=self.fullscreen_status_var, font=("Arial", 9, "bold"),
-            background=PANEL_BACKGROUND_COLOR, fg="white", activebackground=TABLE_BACKGROUND_COLOR,
-            activeforeground="white", relief="ridge", borderwidth=1, cursor="hand2",
-            command=self.toggle_fullscreen
+        self.fullscreen_button = PixelButtonWidget(
+            scoreboard_frame, textvariable=self.fullscreen_status_var, font=f_top_btn,
+            theme="neutral", scale=btn_scale, command=self.toggle_fullscreen
         )
-        self.fullscreen_button.grid(row=0, column=12, padx=(6, 0))
+        self.fullscreen_button.grid(**get_grid_options("top_bar", "fullscreen_button"), ipady=top_btn_ipady)
 
         # Settings & Save Management Button
-        self.settings_button = tkinter.Button(
-            scoreboard_frame, text="⚙ Settings", font=("Arial", 9, "bold"),
-            background=PANEL_BACKGROUND_COLOR, fg="white", activebackground=TABLE_BACKGROUND_COLOR,
-            activeforeground="white", relief="ridge", borderwidth=1, cursor="hand2",
-            command=self._open_settings_dialog
+        self.settings_button = PixelButtonWidget(
+            scoreboard_frame, text="⚙ Settings", font=f_top_btn,
+            theme="neutral", scale=btn_scale, command=self._open_settings_dialog
         )
-        self.settings_button.grid(row=0, column=13, padx=(6, 0))
+        self.settings_button.grid(**get_grid_options("top_bar", "settings_button"), ipady=top_btn_ipady)
 
         # Bankroll and Bet summary (visible in Chips Mode)
+        bankroll_fg = get_theme_color("bankroll_text", "#ffd700")
+        bankroll_banner_pady = tuple(get_ui_layout("top_bar").get("bankroll_banner", {}).get("pady", [2, 2]))
         self.bankroll_label = tkinter.Label(
-            scoreboard_frame, text="Bankroll: $1,000  |  Bet: $0",
-            font=("Arial", 11, "bold"), background=TABLE_BACKGROUND_COLOR, fg="#81c784"
+            scoreboard_frame, text="BANKROLL: $1,000  |  BET: $0",
+            font=get_element_font("bankroll_label", scale=self.scale_factor),
+            background=TABLE_BACKGROUND_COLOR, fg=bankroll_fg
         )
-        self.bankroll_label.grid(row=1, column=0, columnspan=14, pady=(2, 2))
+        self.bankroll_label.grid(**get_grid_options("top_bar", "bankroll_label"))
         if not self.chips_mode_var.get():
             self.bankroll_label.grid_remove()  # Hidden in Casual Mode
 
         # Status / Result banner (Preserved for backwards compatibility, hidden from crowded top bar)
         self.result_label = tkinter.Label(
-            scoreboard_frame, textvariable=self.result_var, font=("Arial", 13, "bold"),
+            scoreboard_frame, textvariable=self.result_var, font=get_header_font(13),
             background=TABLE_BACKGROUND_COLOR, fg="#ffeb3b"
         )
-        self.result_label.grid(row=2, column=0, columnspan=14, pady=(2, 4))
+        self.result_label.grid(**get_grid_options("top_bar", "result_label"))
         self.result_label.grid_remove()  # Moved to TableAnnouncementHUD between Dealer & Player hands
 
         # Tier 1: Dealer Stage Area (Phase 4 Horizon Layout - Above the Horizon Rail)
         self.dealer_stage_frame = tkinter.Frame(
             self.root, background=PANEL_BACKGROUND_COLOR, padx=0, pady=0
         )
-        self.dealer_stage_frame.grid(row=1, column=0, sticky="ew", columnspan=3)
+        self.dealer_stage_frame.grid(**get_grid_options("root_layout", "dealer_stage"))
         self.dealer_panel = self.dealer_stage_frame
 
         # Panoramic Dealer Stage Canvas (Full width atmospheric backdrops & stage hanger)
@@ -570,7 +622,7 @@ class BlackjackApp:
             app=self,
             on_hanger_click=self._on_click_stage_hanger,
         )
-        self.dealer_stage_canvas.pack(fill="both", expand=True)
+        self.dealer_stage_canvas.pack(**get_pack_options("dealer_stage", "stage_canvas"))
 
         # Living Dealer Actor Layer Compositor
         init_costume = "julian"
@@ -594,7 +646,7 @@ class BlackjackApp:
         )
         if pumpkin_img:
             self.pumpkin_label.image = pumpkin_img
-        self.pumpkin_label.pack(side="left", padx=(0, 6), pady=2)
+        self.pumpkin_label.pack(**get_pack_options("dealer_stage", "pumpkin", scale=self.scale_factor))
         self.pumpkin_label.pack_forget()
 
         # Dealer Avatar Portrait (Retained inside dealer_header_row for legacy tests)
@@ -605,57 +657,54 @@ class BlackjackApp:
         if dealer_img:
             self.dealer_avatar_label.image = dealer_img
             self.dealer_stage_canvas.set_dealer_image(dealer_img)
-        self.dealer_avatar_label.pack(side="left", padx=2, pady=2)
+        self.dealer_avatar_label.pack(**get_pack_options("dealer_stage", "avatar", scale=self.scale_factor))
         self.dealer_avatar_label.pack_forget()
 
         # Dealer Dialogue & Actor Info Column (placed directly on stage canvas)
-        self.dealer_dialogue_frame = tkinter.Frame(
-            self.dealer_stage_canvas, background="#141014", relief="ridge", borderwidth=1,
-            highlightthickness=1, highlightbackground="#c8a038", padx=6, pady=4
+        self.dealer_dialogue_frame = PixelDialogueFrame(
+            self.dealer_stage_canvas, scale=max(1, int(2 * self.scale_factor)),
+            title="The Classic Croupier", speech_var=self.dealer_speech_var,
         )
-        bubble_x = 500 - int(76 * self.scale_factor)
-        bubble_y = stage_init_h - int(90 * self.scale_factor)
-        self.dealer_stage_canvas.create_window(bubble_x, bubble_y, window=self.dealer_dialogue_frame, anchor="se", tags="dialogue_win")
-
-        self.dealer_nameplate_label = tkinter.Label(
-            self.dealer_dialogue_frame, text="The Classic Croupier", font=("Arial", 10, "bold"),
-            foreground="#ffd700", background="#141014"
+        dlg_cfg = get_ui_layout("dealer_stage", "dialogue_frame")
+        bubble_x = 500 + int(dlg_cfg.get("offset_x", -76) * self.scale_factor)
+        bubble_y = stage_init_h + int(dlg_cfg.get("offset_y", -90) * self.scale_factor)
+        self.dealer_stage_canvas.create_window(
+            bubble_x, bubble_y, window=self.dealer_dialogue_frame, anchor=dlg_cfg.get("anchor", "se"), tags="dialogue_win"
         )
-        self.dealer_nameplate_label.pack(anchor="w")
 
-        self.dealer_speech_label = tkinter.Label(
-            self.dealer_dialogue_frame, textvariable=self.dealer_speech_var,
-            font=("Arial", 9, "italic"), fg="#f0f0f0", background="#1c161c",
-            relief="flat", borderwidth=0, padx=6, pady=2, wraplength=int(270 * self.scale_factor), justify="left"
-        )
-        self.dealer_speech_label.pack(anchor="w", pady=(2, 0))
-        self.dealer_speech_label.pack_forget()  # Hidden until speech is set
-
-        for widget in (self.dealer_dialogue_frame, self.dealer_nameplate_label, self.dealer_speech_label):
-            widget.bind("<Button-1>", self._on_dialogue_click)
+        self.dealer_nameplate_label = self.dealer_dialogue_frame.nameplate_label
+        self.dealer_speech_label = self.dealer_dialogue_frame.speech_label
+        self.dealer_dialogue_frame.bind("<Button-1>", self._on_dialogue_click)
 
         # Tier 2: 3D Beveled Horizon Rail (Separates Dealer Stage from Playing Felt)
         self.horizon_rail = tkinter.Frame(
             self.root, height=4, background="#073512", relief="raised", borderwidth=1
         )
-        self.horizon_rail.grid(row=2, column=0, columnspan=3, sticky="ew")
+        self.horizon_rail.grid(**get_grid_options("root_layout", "horizon_rail"))
 
         # Tier 3: Main Card Table Area (Below the Horizon Rail)
+        tbl_layout = get_table_layout()
+        tbl_frame_opts = tbl_layout.get("frame", {})
         card_table_frame = TableFeltCanvas(
-            self.root, relief="sunken", borderwidth=2, background=PANEL_BACKGROUND_COLOR, padx=8, pady=3
+            self.root,
+            relief=tbl_frame_opts.get("relief", "sunken"),
+            borderwidth=tbl_frame_opts.get("borderwidth", 2),
+            background=PANEL_BACKGROUND_COLOR,
+            padx=tbl_frame_opts.get("padx", 8),
+            pady=tbl_frame_opts.get("pady", 3),
         )
-        card_table_frame.grid(row=3, column=0, sticky="nsew", columnspan=3)
-        card_table_frame.columnconfigure(1, weight=1)
-        card_table_frame.columnconfigure(2, weight=0)
-        card_table_frame.rowconfigure(0, weight=1, minsize=118)
-        card_table_frame.rowconfigure(1, weight=1, minsize=140)
-        card_table_frame.rowconfigure(2, weight=0, minsize=58)
+        card_table_frame.grid(**get_grid_options("root_layout", "card_table"))
+        self.root.rowconfigure(3, weight=1)
+        for col_cfg in tbl_layout.get("column_weights", [{"column": 1, "weight": 1}, {"column": 2, "weight": 0}]):
+            card_table_frame.columnconfigure(col_cfg["column"], weight=col_cfg["weight"])
+        for row_cfg in tbl_layout.get("row_configs", [{"row": 0, "weight": 1, "minsize": 118}, {"row": 1, "weight": 1, "minsize": 140}, {"row": 2, "weight": 0, "minsize": 58}]):
+            card_table_frame.rowconfigure(row_cfg["row"], weight=row_cfg["weight"], minsize=int(row_cfg.get("minsize", 0) * self.scale_factor))
         self.scoreboard_frame = scoreboard_frame
         self.card_table_frame = card_table_frame
 
         # Table Accessories Frame (Haunted Altar: 5 Candles & 5 Rising Gravestones on Table Felt)
         self.accessories_frame = tkinter.Frame(card_table_frame, background=PANEL_BACKGROUND_COLOR, borderwidth=0, highlightthickness=0)
-        self.accessories_frame.grid(row=0, column=2, sticky="ne", padx=0, pady=0)
+        self.accessories_frame.grid(**get_grid_options("card_table", "accessories"))
         self.accessories_frame.grid_remove()
 
         # Unified 2.5D Haunted Altar Canvas (5 Candles, Directional Shadows, Rising Gravestones)
@@ -663,7 +712,7 @@ class BlackjackApp:
             self.accessories_frame, assets=self.haunted_assets, width=260, height=135,
             background=PANEL_BACKGROUND_COLOR
         )
-        self.haunted_altar.pack(side="top", pady=2)
+        self.haunted_altar.pack(**get_pack_options("card_table", "haunted_altar", scale=self.scale_factor))
         self.haunted_altar.pack_forget()
 
         # Legacy frames preserved for backwards compatibility with tests / extensions
@@ -672,27 +721,18 @@ class BlackjackApp:
         self.gravestones_frame = tkinter.Frame(self.accessories_frame, background=PANEL_BACKGROUND_COLOR)
         self.gravestone_labels = []
 
-        # Dealer Section - Casino Plaque Styling
-        self.dealer_header_frame = tkinter.Frame(
-            card_table_frame, background="#082210", relief="ridge", borderwidth=1,
-            highlightthickness=1, highlightbackground="#8a733f", padx=6, pady=3
+        # Dealer Section - Casino Plaque Styling with authentic brass rivets and transparent canvas text
+        self.dealer_header_frame = PixelPlaqueFrame(
+            card_table_frame, width=114, height=60, title="Dealer",
+            score_var=self.dealer_score_var, scale=max(1, int(2 * self.scale_factor)),
+            bg=PANEL_BACKGROUND_COLOR
         )
-        self.dealer_header_frame.grid(row=0, column=0, sticky="nw", padx=(4, 6), pady=(4, 0))
-
-        self.dealer_title_label = tkinter.Label(
-            self.dealer_header_frame, text="Dealer", font=("Arial", 11, "bold"),
-            background="#082210", fg="#d4af37"
-        )
-        self.dealer_title_label.pack(anchor="w")
-
-        self.dealer_score_label = tkinter.Label(
-            self.dealer_header_frame, textvariable=self.dealer_score_var, font=("Arial", 12, "bold"),
-            background="#082210", fg="#ffffff"
-        )
-        self.dealer_score_label.pack(anchor="w", pady=(1, 0))
+        self.dealer_header_frame.grid(**get_grid_options("card_table", "dealer_header"))
+        self.dealer_title_label = self.dealer_header_frame.title_label
+        self.dealer_score_label = self.dealer_header_frame.score_label
 
         self.dealer_cards_frame = tkinter.Frame(card_table_frame, background=PANEL_BACKGROUND_COLOR)
-        self.dealer_cards_frame.grid(row=0, column=1, padx=10, pady=1)
+        self.dealer_cards_frame.grid(**get_grid_options("card_table", "dealer_cards"))
 
         # In-Table Floating Dialog Overlay (unmapped when empty, floats over center when active)
         self.announcement_hud = TableAnnouncementHUD(
@@ -701,45 +741,36 @@ class BlackjackApp:
         self.result_var.trace_add("write", lambda *_: self.announcement_hud.set_message(self.result_var.get()))
         self.announcement_hud.set_message(self.result_var.get())
 
-        # Player Section - Casino Plaque Styling
-        self.player_header_frame = tkinter.Frame(
-            card_table_frame, background="#082210", relief="ridge", borderwidth=1,
-            highlightthickness=1, highlightbackground="#8a733f", padx=6, pady=3
+        # Player Section - Casino Plaque Styling with authentic brass rivets and transparent canvas text
+        self.player_header_frame = PixelPlaqueFrame(
+            card_table_frame, width=114, height=60, title="Player",
+            score_var=self.player_score_var, scale=max(1, int(2 * self.scale_factor)),
+            bg=PANEL_BACKGROUND_COLOR
         )
-        self.player_header_frame.grid(row=1, column=0, sticky="nw", padx=(4, 6), pady=(4, 0))
-
-        self.player_title_label = tkinter.Label(
-            self.player_header_frame, text="Player", font=("Arial", 11, "bold"),
-            background="#082210", fg="#d4af37"
-        )
-        self.player_title_label.pack(anchor="w")
-
-        self.player_score_label = tkinter.Label(
-            self.player_header_frame, textvariable=self.player_score_var, font=("Arial", 12, "bold"),
-            background="#082210", fg="#ffffff"
-        )
-        self.player_score_label.pack(anchor="w", pady=(1, 0))
+        self.player_header_frame.grid(**get_grid_options("card_table", "player_header"))
+        self.player_title_label = self.player_header_frame.title_label
+        self.player_score_label = self.player_header_frame.score_label
 
         self.player_cards_frame = tkinter.Frame(card_table_frame, background=PANEL_BACKGROUND_COLOR)
-        self.player_cards_frame.grid(row=1, column=1, padx=10, pady=1)
+        self.player_cards_frame.grid(**get_grid_options("card_table", "player_cards"))
 
         # 2.5D Casino Felt Betting Spot Visualizer (visible in Chips Mode)
         self.chip_visualizer = ChipVisualizer(
             card_table_frame,
-            width=200,
-            height=135,
             background=PANEL_BACKGROUND_COLOR,
             on_chip_click=self._add_chip_bet,
+            on_chip_deduct=self._deduct_chip_bet,
+            on_spot_click=self._clear_bet,
         )
-        self.chip_visualizer.grid(row=1, column=2, padx=(10, 5), pady=2, sticky="e")
+        self.chip_visualizer.grid(**get_grid_options("chip_visualizer"))
         if not self.chips_mode_var.get():
             self.chip_visualizer.grid_remove()  # Hidden in Casual Mode
 
         # 2.5D Animated Tug-of-War Soul Meter (visible in Hell's Table Mode)
         self.soul_meter_canvas = SoulMeterCanvas(
-            card_table_frame, width=180, height=135, background="#140508"
+            card_table_frame, background="#140508"
         )
-        self.soul_meter_canvas.grid(row=1, column=2, padx=(10, 5), pady=2, sticky="e")
+        self.soul_meter_canvas.grid(**get_grid_options("soul_meter"))
         self.soul_meter_canvas.grid_remove()  # Hidden until Hell's Table Mode
 
         # Hi-Lo Card Counting Trainer HUD pill (table felt overlay)
@@ -754,184 +785,133 @@ class BlackjackApp:
         if self.play_mode == "training":
             self.card_counting_hud.set_visible(True)
 
-        # Betting Controls Bar (visible in Chips Mode)
-        self.betting_frame = tkinter.Frame(self.root, background=TABLE_BACKGROUND_COLOR)
-        self.betting_frame.grid(row=4, column=0, columnspan=3, pady=(2, 4))
-        if not self.chips_mode_var.get():
-            self.betting_frame.grid_remove()  # Hidden in Casual Mode
-
-        self.bet_chips_label = tkinter.Label(
-            self.betting_frame, text="Bet Chips:", font=("Arial", 10, "bold"),
-            background=TABLE_BACKGROUND_COLOR, fg="white"
+        # Tier 4: Unified Mahogany Wood Rail & Contextual Control Deck
+        self.mahogany_rail = MahoganyRailCanvas(
+            self.root, height=get_ui_layout("mahogany_rail").get("default_height", 72)
         )
-        self.bet_chips_label.pack(side="left", padx=(0, 6))
+        self.mahogany_rail.grid(**get_grid_options("mahogany_rail"))
 
-        self.chip_buttons.clear()
-        for amount, bg_color, fg_color in CHIP_DENOMINATIONS:
-            btn = tkinter.Button(
-                self.betting_frame, text=f"${amount}", font=("Arial", 9, "bold"),
-                width=5, background=bg_color, foreground=fg_color,
-                activebackground=bg_color, activeforeground=fg_color,
-                relief="raised", borderwidth=2, cursor="hand2", takefocus=False,
-                command=lambda a=amount: self._add_chip_bet(a)
-            )
-            btn.pack(side="left", padx=3)
-            self.chip_buttons.append(btn)
+        # Compatibility shims for legacy tests inspecting betting_frame or button_frame
+        self.betting_frame = tkinter.Frame(self.mahogany_rail, width=1, height=1)
+        self.button_frame = tkinter.Frame(self.mahogany_rail, width=1, height=1)
+        if self.chips_mode_var.get():
+            self.betting_frame.grid(row=0, column=0)
+        self.button_frame.grid(row=0, column=0)
 
-        self.all_in_button = tkinter.Button(
-            self.betting_frame, text="All In", font=("Arial", 9, "bold"),
-            width=7, background="#e65100", foreground="#ffffff",
-            activebackground="#f57c00", activeforeground="#ffffff",
-            relief="raised", borderwidth=2, cursor="hand2", takefocus=False,
-            command=self._all_in
+        # Legacy chip button proxies for test suites checking app.chip_buttons
+        self.bet_chips_label = tkinter.Label(self.mahogany_rail, text="Bet Chips:")
+        self.chip_buttons = [ChipButtonProxy(self, amt) for amt, _, _ in CHIP_DENOMINATIONS]
+
+        # Contextual Button Dock (Option A: Center Dock Swap between Betting and In-Play)
+        btn_scale = max(3, int(3 * self.scale_factor))
+        f_bet_btn = get_element_font("betting_button", scale=self.scale_factor)
+        f_action_btn = get_element_font("action_button", scale=self.scale_factor)
+
+        # 1. Betting Phase Center Dock ("bet_dock")
+        self.clear_bet_button = CanvasPixelButton(
+            self.mahogany_rail, x=240, y=36, width=114, height=36,
+            text="Clear Bet", theme="neutral", font=f_bet_btn, scale=btn_scale, group_tag="bet_dock", command=self._clear_bet
         )
-        self.all_in_button.pack(side="left", padx=4)
-
-        self.clear_bet_button = tkinter.Button(
-            self.betting_frame, text="Clear Bet", font=("Arial", 9, "bold"),
-            width=8, takefocus=False, command=self._clear_bet
+        self.all_in_button = CanvasPixelButton(
+            self.mahogany_rail, x=355, y=36, width=90, height=36,
+            text="All In", theme="red", font=f_bet_btn, scale=btn_scale, group_tag="bet_dock", command=self._all_in
         )
-        self.clear_bet_button.pack(side="left", padx=5)
-
-        self.deal_bet_button = tkinter.Button(
-            self.betting_frame, text="Deal Hand", font=("Arial", 9, "bold"),
-            width=10, background="#ffd700", foreground="#000000",
-            activebackground="#ffea00", activeforeground="#000000",
-            relief="raised", borderwidth=2, cursor="hand2", takefocus=False,
-            command=self._deal_hand_with_bet
+        self.deal_bet_button = CanvasPixelButton(
+            self.mahogany_rail, x=475, y=36, width=120, height=36,
+            text="Deal Hand", theme="gold", font=f_bet_btn, scale=btn_scale, group_tag="bet_dock", command=self._deal_hand_with_bet
         )
-        self.deal_bet_button.pack(side="left", padx=5)
-
-        self.rebuy_button = tkinter.Button(
-            self.betting_frame, text="Rebuy ($1,000)", font=("Arial", 9, "bold"),
-            width=13, background="#ff9800", foreground="#000000",
-            activebackground="#ffa726", relief="raised", borderwidth=2,
-            cursor="hand2", takefocus=False, command=self._rebuy
+        self.rebuy_button = CanvasPixelButton(
+            self.mahogany_rail, x=615, y=36, width=138, height=36,
+            text="Rebuy ($1,000)", theme="amber", font=f_bet_btn, scale=btn_scale, group_tag="bet_dock", command=self._rebuy
         )
-        self.rebuy_button.pack(side="left", padx=5)
+
+        # 2. In-Play Phase Center Dock ("play_dock")
+        self.hit_button = CanvasPixelButton(
+            self.mahogany_rail, x=185, y=36, width=96, height=36,
+            text="Hit", theme="green", font=f_action_btn, scale=btn_scale, group_tag="play_dock", command=self.on_hit
+        )
+        self.stand_button = CanvasPixelButton(
+            self.mahogany_rail, x=290, y=36, width=96, height=36,
+            text="Stand", theme="red", font=f_action_btn, scale=btn_scale, group_tag="play_dock", command=self.on_stand
+        )
+        self.double_button = CanvasPixelButton(
+            self.mahogany_rail, x=395, y=36, width=96, height=36,
+            text="Double", theme="gold", font=f_action_btn, scale=btn_scale, group_tag="play_dock", command=self.on_double_down, enabled=False
+        )
+        self.split_button = CanvasPixelButton(
+            self.mahogany_rail, x=500, y=36, width=96, height=36,
+            text="Split", theme="blue", font=f_action_btn, scale=btn_scale, group_tag="play_dock", command=self.on_split, enabled=False
+        )
+        self.surrender_button = CanvasPixelButton(
+            self.mahogany_rail, x=610, y=36, width=118, height=36,
+            text="Surrender", theme="neutral", font=f_action_btn, scale=btn_scale, group_tag="play_dock", command=self.on_surrender, enabled=False
+        )
+
+        # 3. Dedicated Actions (Right / Left anchors)
+        self.new_game_button = CanvasPixelButton(
+            self.mahogany_rail, x=825, y=36, width=118, height=36,
+            text="New Game", theme="gold", font=f_action_btn, scale=btn_scale, command=self.new_game
+        )
+        self.miracle_button = CanvasPixelButton(
+            self.mahogany_rail, x=75, y=36, width=100, height=36,
+            text="✨ Miracle", theme="gold", font=f_action_btn, scale=btn_scale, command=self._on_miracle_draw, enabled=False
+        )
+        self.mahogany_rail.itemconfigure(self.miracle_button.tag, state="hidden")
+
+        # Initial contextual visibility and responsive centering
+        self._set_dock_phase("betting" if self.chips_mode_var.get() else "play")
+        self.mahogany_rail.bind("<Configure>", self._reposition_rail_buttons, add="+")
+        self._reposition_rail_buttons()
 
         # Insurance Prompt Bar (visible when dealer shows an Ace in Chips Mode)
-        self.insurance_frame = tkinter.Frame(
-            self.root, background=PANEL_BACKGROUND_COLOR, padx=10, pady=5,
-            relief="ridge", borderwidth=2
-        )
-        self.insurance_frame.grid(row=5, column=0, columnspan=3, pady=(2, 6))
+        self.insurance_frame = tkinter.Frame(self.root)
+        apply_style(self.insurance_frame, "insurance_prompt", "frame", scale=self.scale_factor)
+        self.insurance_frame.grid(**get_grid_options("insurance_prompt"))
         self.insurance_frame.grid_remove()  # Hidden by default
 
         self.insurance_label = tkinter.Label(
-            self.insurance_frame, text="Dealer shows an Ace! Insurance pays 2:1 against Dealer Blackjack.",
-            font=("Arial", 10, "bold"), background=PANEL_BACKGROUND_COLOR, fg="#ffeb3b"
+            self.insurance_frame, text="Dealer shows an Ace! Insurance pays 2:1 against Dealer Blackjack."
         )
-        self.insurance_label.pack(side="left", padx=(0, 10))
+        apply_style(self.insurance_label, "insurance_prompt", "label", scale=self.scale_factor)
+        lbl_pad = get_ui_layout("insurance_prompt", "label").get("padx", [0, 16])
+        self.insurance_label.pack(side="left", padx=tuple(lbl_pad) if isinstance(lbl_pad, list) else lbl_pad)
 
         self.take_insurance_button = tkinter.Button(
-            self.insurance_frame, text="Take Insurance ($25)", font=("Arial", 9, "bold"),
-            background="#ff9800", foreground="#000000", activebackground="#ffa726",
-            relief="raised", borderwidth=2, cursor="hand2", takefocus=False,
-            command=self._on_take_insurance
+            self.insurance_frame, text="Take Insurance ($25)", takefocus=False, command=self._on_take_insurance
         )
-        self.take_insurance_button.pack(side="left", padx=5)
+        apply_style(self.take_insurance_button, "insurance_prompt", "take_button", scale=self.scale_factor)
+        self.take_insurance_button.pack(side="left", padx=6)
 
         self.decline_insurance_button = tkinter.Button(
-            self.insurance_frame, text="Decline", font=("Arial", 9, "bold"),
-            width=8, takefocus=False, command=self._on_decline_insurance
+            self.insurance_frame, text="Decline", takefocus=False, command=self._on_decline_insurance
         )
-        self.decline_insurance_button.pack(side="left", padx=5)
-
-        # Bottom Button Bar
-        button_frame = tkinter.Frame(self.root, background=TABLE_BACKGROUND_COLOR)
-        button_frame.grid(row=6, column=0, columnspan=3, sticky="ew", pady=(4, 10))
-        self.button_frame = button_frame
-
-        # Ornate Video Poker Gem Action Buttons (Polished glass / gem styling with crisp black text)
-        self.hit_button = tkinter.Button(
-            button_frame, text="Hit", width=8, font=("Arial", 10, "bold"),
-            background="#00e676", foreground="#000000",
-            activebackground="#69f0ae", activeforeground="#000000",
-            disabledforeground="#42554a",
-            relief="raised", borderwidth=3, cursor="hand2", takefocus=False,
-            command=self.on_hit
-        )
-        self.hit_button.grid(row=0, column=0, padx=6)
-
-        self.stand_button = tkinter.Button(
-            button_frame, text="Stand", width=8, font=("Arial", 10, "bold"),
-            background="#ff5252", foreground="#000000",
-            activebackground="#ff8a80", activeforeground="#000000",
-            disabledforeground="#42554a",
-            relief="raised", borderwidth=3, cursor="hand2", takefocus=False,
-            command=self.on_stand
-        )
-        self.stand_button.grid(row=0, column=1, padx=6)
-
-        self.double_button = tkinter.Button(
-            button_frame, text="Double", width=8, font=("Arial", 10, "bold"),
-            background="#ffd740", foreground="#000000",
-            activebackground="#ffe57f", activeforeground="#000000",
-            disabledforeground="#42554a",
-            relief="raised", borderwidth=3, cursor="hand2", takefocus=False,
-            command=self.on_double_down, state="disabled"
-        )
-        self.double_button.grid(row=0, column=2, padx=6)
-
-        self.split_button = tkinter.Button(
-            button_frame, text="Split", width=8, font=("Arial", 10, "bold"),
-            background="#40c4ff", foreground="#000000",
-            activebackground="#80d8ff", activeforeground="#000000",
-            disabledforeground="#42554a",
-            relief="raised", borderwidth=3, cursor="hand2", takefocus=False,
-            command=self.on_split, state="disabled"
-        )
-        self.split_button.grid(row=0, column=3, padx=6)
-
-        self.surrender_button = tkinter.Button(
-            button_frame, text="Surrender", width=9, font=("Arial", 10, "bold"),
-            background="#cfd8dc", foreground="#000000",
-            activebackground="#eceff1", activeforeground="#000000",
-            disabledforeground="#42554a",
-            relief="raised", borderwidth=3, cursor="hand2", takefocus=False,
-            command=self.on_surrender, state="disabled"
-        )
-        self.surrender_button.grid(row=0, column=4, padx=6)
-
-        self.new_game_button = tkinter.Button(
-            button_frame, text="New Game", width=9, font=("Arial", 10, "bold"),
-            background="#ffd700", foreground="#000000",
-            activebackground="#ffea00", activeforeground="#000000",
-            disabledforeground="#42554a",
-            relief="raised", borderwidth=4, cursor="hand2", takefocus=False,
-            command=self.new_game
-        )
-        self.new_game_button.grid(row=0, column=5, padx=6)
-
-        self.miracle_button = tkinter.Button(
-            button_frame, text="✨ Miracle", width=10, font=("Arial", 10, "bold"),
-            background="#18ffff", foreground="#000000",
-            activebackground="#84ffff", activeforeground="#000000",
-            relief="raised", borderwidth=3, cursor="hand2",
-            takefocus=False, command=self._on_miracle_draw, state="disabled"
-        )
+        apply_style(self.decline_insurance_button, "insurance_prompt", "decline_button", scale=self.scale_factor)
+        self.decline_insurance_button.pack(side="left", padx=6)
         self.miracle_button.grid(row=0, column=6, padx=6)
         self.miracle_button.grid_remove()
 
         # Spacer column to push right-hand action controls to the far right
-        button_frame.columnconfigure(7, weight=1)
+        self.button_frame.columnconfigure(7, weight=1)
 
-        # Cursed Stakes Mode Button (Unlocks upon surviving Hell's Table, placed left of Chips Mode)
-        self.cursed_stakes_button = tkinter.Button(
-            button_frame, text="🔥 Cursed Stakes", font=("Arial", 10, "bold"),
-            background="#b71c1c", fg="#ffd700", activebackground="#d32f2f",
-            activeforeground="#ffffff", relief="ridge", borderwidth=1, cursor="hand2",
-            takefocus=False, command=self._on_toggle_cursed_stakes
+        # Cursed Stakes Mode Button (Unlocks upon surviving Hell's Table, placed left of mahogany rail)
+        f_cursed_btn = get_element_font("cursed_stakes_button", scale=self.scale_factor)
+        self.cursed_stakes_button = CanvasPixelButton(
+            self.mahogany_rail, x=85, y=36, width=124, height=36,
+            text="🔥 Cursed", theme="red", font=f_cursed_btn,
+            scale=btn_scale, group_tag="anchor_dock",
+            command=self._on_toggle_cursed_stakes, master=self.button_frame
         )
-        self.cursed_stakes_button.grid(row=0, column=8, padx=(6, 8), sticky="e")
+        self.cursed_stakes_button.grid(**get_grid_options("mahogany_rail", "cursed_stakes"))
         if not self.haunted.unlocked_cursed_stakes:
             self.cursed_stakes_button.grid_remove()  # Hidden until unlocked
 
         # Celestial Blessings Display Tray (shows acquired relics in Hell's Table)
         self.blessings_tray = tkinter.Frame(self.root, background=TABLE_BACKGROUND_COLOR)
-        self.blessings_tray.grid(row=7, column=0, columnspan=3, pady=(0, 4))
+        self.blessings_tray.grid(**get_grid_options("blessings_tray"))
         self.blessings_tray.grid_remove()
+
+        # Initialize shoe tray display on table felt
+        self._update_shoe_display()
 
         # Keyboard shortcuts initialization
         self._setup_keyboard_shortcuts()
@@ -1983,7 +1963,7 @@ class BlackjackApp:
         candles_mapped = hasattr(self, "candle_bar_frame") and bool(self.candle_bar_frame.winfo_manager())
         graves_mapped = hasattr(self, "gravestones_frame") and bool(self.gravestones_frame.winfo_manager())
         if altar_mapped or candles_mapped or graves_mapped:
-            self.accessories_frame.grid(row=0, column=2, sticky="ne", padx=0, pady=0)
+            self.accessories_frame.grid(**get_grid_options("card_table", "accessories"))
         else:
             self.accessories_frame.grid_remove()
 
@@ -1992,13 +1972,13 @@ class BlackjackApp:
         if hasattr(self, "haunted_altar"):
             if self.haunted.phase in (Phase.OMEN, Phase.SNUFFING) or (self.haunted.phase == Phase.HELL_TABLE and self.haunted.candles_remaining > 0):
                 if hasattr(self, "accessories_frame"):
-                    self.accessories_frame.grid(row=0, column=2, sticky="ne", padx=0, pady=0)
+                    self.accessories_frame.grid(**get_grid_options("card_table", "accessories"))
                 if not getattr(self, "_candles_manifested", False):
-                    self.haunted_altar.pack(side="top", pady=0)
+                    self.haunted_altar.pack(**get_pack_options("card_table", "haunted_altar", scale=self.scale_factor))
                     self.haunted_altar.animate_candle_poof()
                     self._candles_manifested = True
                 else:
-                    self.haunted_altar.pack(side="top", pady=0)
+                    self.haunted_altar.pack(**get_pack_options("card_table", "haunted_altar", scale=self.scale_factor))
                 try:
                     self.root.update_idletasks()
                 except Exception:
@@ -2035,8 +2015,8 @@ class BlackjackApp:
                     self.haunted_altar.pack_forget()
             else:
                 if hasattr(self, "accessories_frame"):
-                    self.accessories_frame.grid(row=0, column=2, sticky="ne", padx=0, pady=0)
-                self.haunted_altar.pack(side="top", pady=0)
+                    self.accessories_frame.grid(**get_grid_options("card_table", "accessories"))
+                self.haunted_altar.pack(**get_pack_options("card_table", "haunted_altar", scale=self.scale_factor))
                 try:
                     self.root.update_idletasks()
                 except Exception:
@@ -2083,23 +2063,27 @@ class BlackjackApp:
 
         bg_col = self.root["background"]
         self.blessings_tray.configure(background=bg_col)
-        self.blessings_tray.grid()
+        self.blessings_tray.grid(**get_grid_options("blessings_tray"))
+        tray_cfg = get_ui_layout("blessings_tray")
+        header_padx = tuple(tray_cfg.get("header_padx", [0, 4])) if isinstance(tray_cfg.get("header_padx"), list) else tray_cfg.get("header_padx", (0, 4))
+        relic_item_padx = tray_cfg.get("relic_item_padx", 3)
+        icon_padx = tray_cfg.get("icon_padx", 2)
         tkinter.Label(
-            self.blessings_tray, text="✦ RELICS: ", font=("Arial", 9, "bold"),
+            self.blessings_tray, text="✦ RELICS: ", font=get_badge_font(11),
             fg="#ffd700", background=bg_col
-        ).pack(side="left", padx=(0, 4))
+        ).pack(side="left", padx=header_padx)
 
         for b in sorted(self.haunted.equipped_blessings, key=lambda x: x.value):
             details = BLESSING_REGISTRY[b]
             img = self.haunted_assets.get(f"relic_{b.value}") or self.haunted_assets.get(b.value)
             f = tkinter.Frame(self.blessings_tray, background="#051f38", relief="ridge", borderwidth=1, padx=4, pady=2)
-            f.pack(side="left", padx=3)
+            f.pack(side="left", padx=relic_item_padx)
             if img:
                 ilbl = tkinter.Label(f, image=img, background="#051f38")
                 ilbl.image = img
-                ilbl.pack(side="left", padx=2)
+                ilbl.pack(side="left", padx=icon_padx)
             tkinter.Label(
-                f, text=details.title, font=("Arial", 8, "bold"),
+                f, text=details.title, font=get_badge_font(10),
                 fg="#80cbc4", background="#051f38"
             ).pack(side="left")
 
@@ -2264,7 +2248,8 @@ class BlackjackApp:
         if hasattr(self, "pumpkin_label"):
             if self.haunted.phase in (Phase.CREEP, Phase.OMEN, Phase.SNUFFING, Phase.HELL_TABLE):
                 pack_kw = {"before": self.dealer_avatar_label} if hasattr(self, "dealer_avatar_label") and self.dealer_avatar_label.winfo_manager() == "pack" else {}
-                self.pumpkin_label.pack(side="left", padx=(0, 6), pady=2, **pack_kw)
+                pack_opts = get_pack_options("dealer_stage", "pumpkin", scale=self.scale_factor)
+                self.pumpkin_label.pack(**pack_opts, **pack_kw)
                 p_img = self.haunted_assets.get(f"pumpkin_glow_{frame_idx}")
                 if p_img:
                     self.pumpkin_label.configure(image=p_img)
@@ -2396,8 +2381,12 @@ class BlackjackApp:
             self.save_manager.unlock_achievement("exorcist")
             self.save_manager.record_bankroll(self.bankroll_var.get())
         if hasattr(self, "cursed_stakes_button"):
-            s = self.scale_factor
-            self.cursed_stakes_button.grid(row=0, column=8, padx=(int(6 * s), int(8 * s)), pady=int(3 * s), sticky="e")
+            cursed_opts = get_grid_options("mahogany_rail", "cursed_stakes")
+            if "padx" in cursed_opts and isinstance(cursed_opts["padx"], tuple):
+                cursed_opts["padx"] = tuple(int(p * self.scale_factor) for p in cursed_opts["padx"])
+            if "pady" in cursed_opts and isinstance(cursed_opts["pady"], (int, float)):
+                cursed_opts["pady"] = int(cursed_opts["pady"] * self.scale_factor)
+            self.cursed_stakes_button.grid(**cursed_opts)
 
         def on_victory_close():
             self.haunted.reset_after_victory()
@@ -2522,12 +2511,14 @@ class BlackjackApp:
     # ------------------------------------------------------------------------
 
     def _update_shoe_display(self):
-        """Updates the shoe cards remaining label text."""
+        """Updates the shoe cards remaining label text and table felt shoe tray plaque."""
         if hasattr(self, "shoe_info_var"):
-            total = len(self.all_cards) * self.deck_count
+            total = len(self.all_cards) * self.deck_count if self.all_cards else self.deck_count * 52
             remaining = len(self.deck)
             cut_notice = " [Cut]" if self.shoe_needs_reshuffle else ""
             self.shoe_info_var.set(f"Shoe: {remaining}/{total}{cut_notice}")
+            if hasattr(self, "card_table_frame") and hasattr(self.card_table_frame, "update_shoe_penetration"):
+                self.card_table_frame.update_shoe_penetration(remaining, total, cut_notice=self.shoe_needs_reshuffle)
 
     def _update_action_buttons(self):
         """Evaluates and applies eligibility for Hit, Stand, Double, Split, and Surrender."""
@@ -2804,6 +2795,26 @@ class BlackjackApp:
             if hasattr(self, "sound_manager"):
                 self.sound_manager.play_chip_add()
 
+    def _deduct_chip_bet(self, amount: int):
+        """Deducts chip denomination from the staged bet, bounded by current bet amount."""
+        if not self.is_betting_phase:
+            return
+        current_bet = self.current_bet_var.get()
+        if current_bet <= 0:
+            return
+        deduct_amt = min(current_bet, amount)
+        new_bet = current_bet - deduct_amt
+        self.current_bet_var.set(new_bet)
+        if hasattr(self, "chip_visualizer"):
+            if new_bet <= 0:
+                self.chip_visualizer.animate_clear()
+            else:
+                self.chip_visualizer.set_bet(new_bet, animate=True)
+        self._update_bankroll_display()
+        self._update_betting_controls()
+        if hasattr(self, "sound_manager"):
+            self.sound_manager.play_chip_clear()
+
     def _clear_bet(self):
         """Resets the staged bet back to 0."""
         if not self.is_betting_phase:
@@ -2868,7 +2879,7 @@ class BlackjackApp:
         bankroll = self.bankroll_var.get()
         bet = self.current_bet_var.get() if self.is_betting_phase else sum(self.hand_bets)
         self.bankroll_label.configure(
-            text=f"Bankroll: ${bankroll:,}  |  Bet: ${bet:,}"
+            text=f"BANKROLL: ${bankroll:,}  |  BET: ${bet:,}"
         )
         if hasattr(self, "chip_visualizer"):
             available = max(0, bankroll - self.current_bet_var.get()) if self.is_betting_phase else max(0, bankroll)
@@ -2887,6 +2898,7 @@ class BlackjackApp:
             self.chip_visualizer.set_bankroll(avail, interactive=self.is_betting_phase)
 
         if self.is_betting_phase:
+            self._set_dock_phase("betting")
             for btn, (denom, _, _) in zip(self.chip_buttons, CHIP_DENOMINATIONS):
                 btn.configure(state="normal" if remaining >= denom else "disabled")
             if hasattr(self, "all_in_button"):
@@ -2898,6 +2910,7 @@ class BlackjackApp:
             else:
                 self.rebuy_button.configure(state="disabled")
         else:
+            self._set_dock_phase("play")
             # During active card play or dealer turn, betting controls are disabled
             for btn in self.chip_buttons:
                 btn.configure(state="disabled")
@@ -2906,6 +2919,86 @@ class BlackjackApp:
             self.clear_bet_button.configure(state="disabled")
             self.deal_bet_button.configure(state="disabled")
             self.rebuy_button.configure(state="disabled")
+
+    def _set_dock_phase(self, phase: str):
+        """Contextually displays the active player control dock on the mahogany rail."""
+        if not hasattr(self, "mahogany_rail"):
+            return
+        if phase == "betting" and self.chips_mode_var.get():
+            self.mahogany_rail.itemconfigure("bet_dock", state="normal")
+            self.mahogany_rail.itemconfigure("play_dock", state="hidden")
+        else:
+            self.mahogany_rail.itemconfigure("bet_dock", state="hidden")
+            self.mahogany_rail.itemconfigure("play_dock", state="normal")
+
+    def _reposition_rail_buttons(self, event=None):
+        """Dynamically centers contextual control docks on the mahogany armrest rail across all window sizes."""
+        if not hasattr(self, "mahogany_rail") or not hasattr(self, "deal_bet_button"):
+            return
+        rail_w = self.mahogany_rail.winfo_width()
+        if rail_w < 100:
+            rail_w = max(100, getattr(self.root, "winfo_width", lambda: 900)())
+        rail_h = self.mahogany_rail.winfo_height()
+        cy = max(36, rail_h // 2) if rail_h > 10 else 36
+        cx = rail_w // 2
+        s = getattr(self, "scale_factor", 1.0)
+        dock_cfg = get_rail_button_layout()
+        base_h = dock_cfg.get("btn_height", 36)
+        h_mult = dock_cfg.get("scale_2x_height_multiplier", 1.25)
+        btn_h = int(base_h * (1.0 if s <= 1.0 else h_mult))
+        gap = int(dock_cfg.get("dock_gap", 12) * s)
+        side_margin = int(dock_cfg.get("side_margin", 24) * s)
+
+        # 1. Betting Phase Dock ("Clear Bet", "All In", "Deal Hand", "Rebuy")
+        btn_scale = max(3, int(3 * s))
+        # 1. Betting Phase Dock ("Clear Bet", "All In", "Deal Hand", "Rebuy")
+        bet_cfgs = dock_cfg.get("bet_buttons", {})
+        bet_btns = [
+            (self.clear_bet_button, int(bet_cfgs.get("clear_bet", {}).get("width", 114) * s)),
+            (self.all_in_button, int(bet_cfgs.get("all_in", {}).get("width", 90) * s)),
+            (self.deal_bet_button, int(bet_cfgs.get("deal_hand", {}).get("width", 120) * s)),
+            (self.rebuy_button, int(bet_cfgs.get("rebuy", {}).get("width", 138) * s)),
+        ]
+        total_bet_w = sum(bw for _, bw in bet_btns) + gap * (len(bet_btns) - 1)
+        cur_x = cx - (total_bet_w // 2)
+        for btn, bw in bet_btns:
+            btn.resize(cur_x + bw // 2, cy, bw, btn_h, scale=btn_scale)
+            cur_x += bw + gap
+
+        # 2. In-Play Phase Dock ("Hit", "Stand", "Double", "Split", "Surrender")
+        play_cfgs = dock_cfg.get("play_buttons", {})
+        play_btns = [
+            (self.hit_button, int(play_cfgs.get("hit", {}).get("width", 96) * s)),
+            (self.stand_button, int(play_cfgs.get("stand", {}).get("width", 96) * s)),
+            (self.double_button, int(play_cfgs.get("double", {}).get("width", 96) * s)),
+            (self.split_button, int(play_cfgs.get("split", {}).get("width", 96) * s)),
+            (self.surrender_button, int(play_cfgs.get("surrender", {}).get("width", 118) * s)),
+        ]
+        total_play_w = sum(bw for _, bw in play_btns) + gap * (len(play_btns) - 1)
+        cur_x = cx - (total_play_w // 2)
+
+        # Cursed Stakes Button: Left anchor on mahogany rail
+        if hasattr(self, "cursed_stakes_button") and isinstance(self.cursed_stakes_button, CanvasPixelButton):
+            cs_w = int(124 * s)
+            cs_x = side_margin + (cs_w // 2)
+            self.cursed_stakes_button.resize(cs_x, cy, cs_w, btn_h, scale=btn_scale)
+            if bool(self.cursed_stakes_button.grid_info()):
+                cur_x = max(cur_x, cs_x + (cs_w // 2) + int(24 * s))
+
+        for btn, bw in play_btns:
+            btn.resize(cur_x + bw // 2, cy, bw, btn_h, scale=btn_scale)
+            cur_x += bw + gap
+
+        # 3. Side Anchors
+        anchor_cfgs = dock_cfg.get("anchor_buttons", {})
+        ng_w = int(anchor_cfgs.get("new_game", {}).get("width", 118) * s)
+        ng_x = rail_w - (ng_w // 2) - side_margin
+        self.new_game_button.resize(ng_x, cy, ng_w, btn_h, scale=btn_scale)
+
+        # Miracle: Left anchor
+        m_w = int(anchor_cfgs.get("miracle", {}).get("width", 100) * s)
+        m_x = (m_w // 2) + side_margin
+        self.miracle_button.resize(m_x, cy, m_w, btn_h, scale=btn_scale)
 
     def _prompt_insurance(self):
         """Offers the insurance side bet when the dealer shows an Ace in Chips Mode."""
@@ -3090,7 +3183,8 @@ class BlackjackApp:
 
         bg_pnl = self.card_table_frame["background"] if hasattr(self, "card_table_frame") else PANEL_BACKGROUND_COLOR
         container = self._get_or_create_dealer_cards_container(bg_pnl)
-        padx = int(2 * self.scale_factor)
+        card_cfg = get_card_layout()
+        padx = int(card_cfg.get("dealer_card_padx", 2) * self.scale_factor)
 
         if is_hole_card:
             # Face-down hole card
@@ -3132,7 +3226,9 @@ class BlackjackApp:
             delattr(self, "_dealer_cards_container")
 
         bg_pnl = self.card_table_frame["background"] if hasattr(self, "card_table_frame") else PANEL_BACKGROUND_COLOR
-        padx = int(2 * self.scale_factor)
+        card_cfg = get_card_layout()
+        padx = int(card_cfg.get("dealer_card_padx", 2) * self.scale_factor)
+        compress_threshold = card_cfg.get("multi_card_compress_threshold", 4)
 
         num_cards = len(self.dealer_hand)
         if num_cards == 0:
@@ -3148,7 +3244,7 @@ class BlackjackApp:
         self.dealer_cards_frame.grid()
         container = self._get_or_create_dealer_cards_container(bg_pnl)
 
-        if num_cards > 4:
+        if num_cards > compress_threshold:
             # Overlapping layout for 5+ cards to prevent table felt overflow
             card_w = getattr(self, "card_width", CARD_WIDTH)
             card_h = getattr(self, "card_height", CARD_HEIGHT)
@@ -3207,12 +3303,16 @@ class BlackjackApp:
     def _calculate_hand_overlap(self, num_cards: int, is_split: bool) -> int:
         """Dynamically compresses card overlap offset when hand has many cards to prevent right-edge overflow."""
         base_overlap = getattr(self, "card_overlap_offset", PLAYER_CARD_OVERLAP_OFFSET)
-        if num_cards <= 4:
+        card_cfg = get_card_layout()
+        compress_threshold = card_cfg.get("multi_card_compress_threshold", 4)
+        if num_cards <= compress_threshold:
             return base_overlap
         # For hands with 5+ cards, compress overlap dynamically to prevent table overflow
-        factor = 0.7 if is_split else 0.85
-        compressed = int(base_overlap * (factor ** (num_cards - 4)))
-        min_overlap = int(12 * self.scale_factor)
+        factor_split = card_cfg.get("compression_factor_split", 0.70)
+        factor_single = card_cfg.get("compression_factor_single", 0.85)
+        factor = factor_split if is_split else factor_single
+        compressed = int(base_overlap * (factor ** (num_cards - compress_threshold)))
+        min_overlap = int(card_cfg.get("min_overlap", 12) * self.scale_factor)
         return max(min_overlap, compressed)
 
     def _render_player_cards(self):
@@ -3234,6 +3334,9 @@ class BlackjackApp:
         self.player_cards_frame.grid()
         is_split = len(self.player_hands) > 1
         bg_pnl = self.card_table_frame["background"] if hasattr(self, "card_table_frame") else PANEL_BACKGROUND_COLOR
+        card_cfg = get_card_layout()
+        split_gap = card_cfg.get("split_hand_gap", 10)
+        container_pad = card_cfg.get("container_pad", {"padx": 6, "pady": 4})
 
         player_container = tkinter.Frame(self.player_cards_frame, background=bg_pnl)
 
@@ -3244,29 +3347,25 @@ class BlackjackApp:
             container = tkinter.Frame(
                 player_container,
                 background=bg_pnl,
-                padx=6,
-                pady=4,
+                padx=container_pad.get("padx", 6),
+                pady=container_pad.get("pady", 4),
                 relief="groove" if is_split else "flat",
                 borderwidth=2 if is_split else 0
             )
-            container.pack(side="left", padx=10 if is_split else 0)
+            container.pack(side="left", padx=split_gap if is_split else 0)
 
             if is_split:
                 status_suffix = " (Active)" if is_active else ""
                 title = f"Hand {idx + 1}{status_suffix}"
                 fg_color = "#ffeb3b" if is_active else "#cfd8dc"
                 tkinter.Label(
-                    container, text=title, font=("Arial", 9, "bold"),
+                    container, text=title, font=get_badge_font(11),
                     background=bg_pnl, fg=fg_color
                 ).pack(anchor="w", pady=(0, 2))
 
             num_cards = len(hand)
             card_w = getattr(self, "card_width", CARD_WIDTH)
             card_h = getattr(self, "card_height", CARD_HEIGHT)
-            available_h = self.card_table_frame.winfo_height() if hasattr(self, "card_table_frame") else 0
-            if available_h > 40 and available_h < (card_h * 2 + 10):
-                card_h = max(36, (available_h - 14) // 2)
-                card_w = max(24, int(card_h * (CARD_WIDTH / CARD_HEIGHT)))
             overlap = self._calculate_hand_overlap(num_cards, is_split)
 
             if num_cards == 0:
@@ -3848,11 +3947,11 @@ class BlackjackApp:
         scale_ratio = 2.0 if s > 1.5 else 1.0
 
         # 1. Scoreboard Typography
-        f_stat_title = ("Arial", int(11 * scale_ratio), "bold")
-        f_stat_val = ("Arial", int(11 * scale_ratio))
-        f_shoe = ("Arial", int(10 * scale_ratio), "bold")
-        f_top_btn = ("Arial", int(9 * scale_ratio), "bold")
-        f_bankroll = ("Arial", int(11 * scale_ratio), "bold")
+        f_stat_title = get_element_font("scoreboard_title", scale=scale_ratio)
+        f_stat_val = get_element_font("scoreboard_value", scale=scale_ratio)
+        f_shoe = get_element_font("shoe_counter", scale=scale_ratio)
+        f_top_btn = get_element_font("top_bar_button", scale=scale_ratio)
+        f_bankroll = get_element_font("bankroll_label", scale=scale_ratio)
 
         if hasattr(self, "stat_labels"):
             for lbl, is_bold in self.stat_labels:
@@ -3861,6 +3960,8 @@ class BlackjackApp:
         if hasattr(self, "shoe_label"):
             self.shoe_label.configure(font=f_shoe)
 
+        top_bar_cfg = get_ui_layout("top_bar")
+        btn_ipady = int(top_bar_cfg.get("button_ipady", 6) * s)
         for btn in (
             getattr(self, "sound_button", None),
             getattr(self, "help_button", None),
@@ -3871,33 +3972,44 @@ class BlackjackApp:
         ):
             if btn:
                 btn.configure(font=f_top_btn)
+                if bool(btn.grid_info()):
+                    btn.grid_configure(ipady=btn_ipady)
 
         if hasattr(self, "bankroll_label"):
             self.bankroll_label.configure(font=f_bankroll)
 
         # Scale help button icon if present
         if getattr(self, "icon_loader", None) and hasattr(self, "help_button"):
-            div = 1.5 if s > 1.5 else 3.0
-            self.icon_question_small = self.icon_loader.get_icon("keyboard_question", scale_div=div)
+            self.icon_question_small = self.icon_loader.get_clean_glyph_icon(
+                "keyboard_question", target_height=int(16 * s), color="#ffd700"
+            )
             if self.icon_question_small:
                 self.help_button.configure(image=self.icon_question_small)
 
         # 2. Hand Titles and Scores
-        f_hand_title = ("Arial", int(11 * scale_ratio), "bold")
-        f_hand_score = ("Arial", int(12 * scale_ratio), "bold" if s > 1.5 else "normal")
-        if hasattr(self, "dealer_title_label"):
+        f_hand_title = get_element_font("hand_title", scale=scale_ratio)
+        f_hand_score = get_element_font("hand_score", scale=scale_ratio)
+        if hasattr(self, "dealer_dialogue_frame") and hasattr(self.dealer_dialogue_frame, "set_scale"):
+            self.dealer_dialogue_frame.set_scale(self.scale_factor)
+        if hasattr(self, "dealer_header_frame") and hasattr(self.dealer_header_frame, "set_scale"):
+            self.dealer_header_frame.set_scale(self.scale_factor)
+        elif hasattr(self, "dealer_title_label"):
             self.dealer_title_label.configure(font=f_hand_title)
-        if hasattr(self, "dealer_score_label"):
-            self.dealer_score_label.configure(font=f_hand_score)
-        if hasattr(self, "player_title_label"):
+            if hasattr(self, "dealer_score_label"):
+                self.dealer_score_label.configure(font=f_hand_score)
+        if hasattr(self, "player_header_frame") and hasattr(self.player_header_frame, "set_scale"):
+            self.player_header_frame.set_scale(self.scale_factor)
+        elif hasattr(self, "player_title_label"):
             self.player_title_label.configure(font=f_hand_title)
-        if hasattr(self, "player_score_label"):
-            self.player_score_label.configure(font=f_hand_score)
+            if hasattr(self, "player_score_label"):
+                self.player_score_label.configure(font=f_hand_score)
 
         # 3. Action Buttons & Chips Mode Toggle
-        f_action_btn = ("Arial", int(10 * scale_ratio), "bold")
+        f_action_btn = get_element_font("action_button", scale=scale_ratio)
+        f_cursed_btn = get_element_font("cursed_stakes_button", scale=scale_ratio)
         action_btn_pad = int(6 * s)
         btn_pady = int(3 * s)
+        btn_scale = max(3, int(3 * self.scale_factor))
         action_buttons = [
             getattr(self, "hit_button", None),
             getattr(self, "stand_button", None),
@@ -3910,22 +4022,37 @@ class BlackjackApp:
         for btn in action_buttons:
             if btn:
                 btn.configure(font=f_action_btn)
+                if hasattr(btn, "rebuild"):
+                    btn.rebuild(scale=btn_scale)
                 if bool(btn.grid_info()):
                     btn.grid_configure(padx=action_btn_pad, pady=btn_pady)
 
+        if hasattr(self, "mahogany_rail"):
+            self.mahogany_rail.set_scale(self.scale_factor)
+            self._reposition_rail_buttons()
+
         if hasattr(self, "cursed_stakes_button"):
-            self.cursed_stakes_button.configure(font=f_action_btn)
-            if bool(self.cursed_stakes_button.grid_info()):
-                self.cursed_stakes_button.grid_configure(padx=(int(6 * s), int(8 * s)), pady=btn_pady)
+            self.cursed_stakes_button.configure(font=f_cursed_btn)
+            if hasattr(self.cursed_stakes_button, "rebuild"):
+                self.cursed_stakes_button.rebuild(scale=btn_scale)
+            if bool(self.cursed_stakes_button.grid_info()) and getattr(self.haunted, "unlocked_cursed_stakes", False):
+                cursed_opts = get_grid_options("mahogany_rail", "cursed_stakes")
+                px = cursed_opts.get("padx", (6, 8))
+                if isinstance(px, (list, tuple)):
+                    px = tuple(int(p * s) for p in px)
+                else:
+                    px = int(px * s)
+                self.cursed_stakes_button.grid_configure(padx=px, pady=btn_pady)
 
         # 4. Betting Buttons (when Chips Mode is on)
-        f_bet_btn = ("Arial", int(9 * scale_ratio), "bold")
-        f_bet_label = ("Arial", int(10 * scale_ratio), "bold")
+        f_bet_btn = get_element_font("betting_button", scale=scale_ratio)
+        f_bet_chip = get_element_font("betting_chip_button", scale=scale_ratio)
+        f_bet_label = get_element_font("chip_bet_badge", scale=scale_ratio)
         if hasattr(self, "bet_chips_label"):
             self.bet_chips_label.configure(font=f_bet_label)
         if hasattr(self, "chip_buttons"):
             for b in self.chip_buttons:
-                b.configure(font=f_bet_btn)
+                b.configure(font=f_bet_chip)
                 b.pack_configure(padx=int(3 * s), pady=int(2 * s))
         for b in (
             getattr(self, "all_in_button", None),
@@ -3938,18 +4065,16 @@ class BlackjackApp:
                 b.pack_configure(padx=int(4 * s), pady=int(2 * s))
 
         # 5. Insurance prompt bar
-        f_ins_label = ("Arial", int(10 * scale_ratio), "bold")
-        f_ins_btn = ("Arial", int(9 * scale_ratio), "bold")
         if hasattr(self, "insurance_label"):
-            self.insurance_label.configure(font=f_ins_label)
+            apply_style(self.insurance_label, "insurance_prompt", "label", scale=s)
         if hasattr(self, "take_insurance_button"):
-            self.take_insurance_button.configure(font=f_ins_btn)
+            apply_style(self.take_insurance_button, "insurance_prompt", "take_button", scale=s)
         if hasattr(self, "decline_insurance_button"):
-            self.decline_insurance_button.configure(font=f_ins_btn)
+            apply_style(self.decline_insurance_button, "insurance_prompt", "decline_button", scale=s)
 
         # 6. Dealer Actor Elements (Phase 4)
-        f_nameplate = ("Arial", int(10 * scale_ratio), "bold")
-        f_speech = ("Arial", int(9 * scale_ratio), "italic")
+        f_nameplate = get_element_font("dealer_nameplate", scale=scale_ratio)
+        f_speech = get_element_font("dealer_speech", scale=scale_ratio)
         if hasattr(self, "dealer_nameplate_label"):
             self.dealer_nameplate_label.configure(font=f_nameplate)
         if hasattr(self, "dealer_speech_label"):
@@ -3985,8 +4110,13 @@ class BlackjackApp:
         if hasattr(self, "card_table_frame"):
             if isinstance(self.card_table_frame, TableFeltCanvas):
                 self.card_table_frame.set_scale(self.scale_factor)
-            self.card_table_frame.rowconfigure(0, weight=1, minsize=int(118 * self.scale_factor))
-            self.card_table_frame.rowconfigure(1, weight=1, minsize=int(118 * self.scale_factor))
+            tbl_layout = get_table_layout()
+            for r_cfg in tbl_layout.get("row_configs", []):
+                self.card_table_frame.rowconfigure(
+                    r_cfg["row"],
+                    weight=r_cfg.get("weight", 1),
+                    minsize=int(r_cfg.get("minsize", 0) * self.scale_factor),
+                )
 
         if hasattr(self, "announcement_hud"):
             self.announcement_hud.set_scale(self.scale_factor)
@@ -4046,14 +4176,14 @@ class BlackjackApp:
         for c in self.all_cards:
             fname = f"1_{c.suit}.png" if c.rank == "ace" else f"{c.rank}_{c.suit}.png"
             path = ASSETS_DIR / fname
-            scaled_img = scaler.get_scaled_image(path, w, h)
+            scaled_img = scaler.get_scaled_image(path, w, h, element_type="cards")
             new_card = Card(value=c.value, image=scaled_img, rank=c.rank, suit=c.suit)
             new_all_cards.append(new_card)
         self.all_cards = new_all_cards
 
         # 2. Update card back
         back_path = ASSETS_DIR / "back.png"
-        self.back_image = scaler.get_scaled_image(back_path, w, h)
+        self.back_image = scaler.get_scaled_image(back_path, w, h, element_type="cards")
 
         # 3. Update haunted assets
         if HAUNTED_ASSETS_DIR.exists():
@@ -4061,20 +4191,27 @@ class BlackjackApp:
                 stem = p.stem
                 if stem.startswith("card_") or stem == "back_haunted" or ("haunted" in stem and any(f in stem for f in ("jack", "queen", "king"))):
                     img_w, img_h = w, h
+                    elem_type = "cards"
                 elif "avatar" in stem or "dealer" in stem:
                     img_w, img_h = int(96 * scale), int(96 * scale)
+                    elem_type = "dealer"
                 elif "pumpkin" in stem:
                     img_w, img_h = int(48 * scale), int(48 * scale)
+                    elem_type = "haunted_accessories"
                 elif "gravestone" in stem:
                     img_w, img_h = int(48 * scale), int(56 * scale)
+                    elem_type = "haunted_accessories"
                 elif "candle" in stem:
                     img_w, img_h = int(40 * scale), int(40 * scale)
+                    elem_type = "haunted_accessories"
                 elif "relic" in stem:
                     img_w, img_h = int(48 * scale), int(48 * scale)
+                    elem_type = "relics"
                 else:
                     img_w, img_h = int(48 * scale), int(48 * scale)
+                    elem_type = "haunted_accessories"
 
-                scaled = scaler.get_scaled_image(p, img_w, img_h)
+                scaled = scaler.get_scaled_image(p, img_w, img_h, element_type=elem_type)
                 if scaled:
                     self.haunted_assets[stem] = scaled
 

@@ -588,8 +588,14 @@ class DealerActor:
             l_img = self._get_layer_image(lname, force_2x=use_2x)
             if l_img is not None:
                 if l_img.size != target_size:
-                    resample = getattr(Image, "Resampling", Image).LANCZOS
-                    l_img = l_img.resize(target_size, resample)
+                    try:
+                        from ui_layout import resolve_pil_resample
+                        is_pass, resample = resolve_pil_resample("dealer", l_img.size, target_size)
+                    except Exception:
+                        is_pass = (l_img.size == target_size)
+                        resample = getattr(Image, "Resampling", Image).LANCZOS
+                    if not is_pass:
+                        l_img = l_img.resize(target_size, resample)
                 dx = int(round(ox * scale_mult)) if (ox == 0 or use_2x) else (1 if ox > 0 else -1)
                 dy = int(round(oy * scale_mult)) if (oy == 0 or use_2x) else (1 if oy > 0 else -1)
                 if dx != 0 or dy != 0:
