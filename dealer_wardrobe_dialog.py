@@ -297,7 +297,7 @@ class DealerCardPanel(tkinter.Canvas):
             self.req_header_id = self.create_text(
                 164,
                 102,
-                text="[🔒] UNLOCK REQUIREMENT:",
+                text="🔒 UNLOCK REQUIREMENT:",
                 font=get_role_font("header", size_override=-14),
                 fill="#ffd54f",
                 anchor="nw",
@@ -332,8 +332,8 @@ class DealerCardPanel(tkinter.Canvas):
 
     def _get_status_info(self) -> tuple[str, str]:
         if self.unlocked:
-            return ("[✓] Unlocked", "#5ce6b5")
-        return ("[🔒] Locked", "#ff8a80")
+            return ("✓ Unlocked", "#5ce6b5")
+        return ("🔒 Locked", "#ff8a80")
 
     def _get_carousel_label(self) -> str:
         total = len(self.costumes)
@@ -1208,14 +1208,23 @@ class WardrobeDialog(tkinter.Toplevel):
             anchor="nw",
         )
 
+        self.dot_peak_record = records_canvas.create_text(
+            24, 41, text="•", font=get_role_font("badge", size_override=-16), fill="#5ce6b5", anchor="nw"
+        )
         self.lbl_peak_record = records_canvas.create_text(
-            24, 38, text="• Peak Bankroll: $1,000", font=get_role_font("badge", size_override=-16), fill="#5ce6b5", anchor="nw"
+            36, 38, text="Peak Bankroll: $1,000", font=get_role_font("badge", size_override=-16), fill="#5ce6b5", anchor="nw"
+        )
+        self.dot_streak_record = records_canvas.create_text(
+            330, 41, text="•", font=get_role_font("badge", size_override=-16), fill="#ffd54f", anchor="nw"
         )
         self.lbl_streak_record = records_canvas.create_text(
-            330, 38, text="• Longest Win Streak: 0 hands", font=get_role_font("badge", size_override=-16), fill="#ffd54f", anchor="nw"
+            342, 38, text="Longest Win Streak: 0 hands", font=get_role_font("badge", size_override=-16), fill="#ffd54f", anchor="nw"
+        )
+        self.dot_clears_record = records_canvas.create_text(
+            660, 41, text="•", font=get_role_font("badge", size_override=-16), fill="#ff8a80", anchor="nw"
         )
         self.lbl_clears_record = records_canvas.create_text(
-            660, 38, text="• Hell's Table Clears: 0", font=get_role_font("badge", size_override=-16), fill="#ff8a80", anchor="nw"
+            672, 38, text="Hell's Table Clears: 0", font=get_role_font("badge", size_override=-16), fill="#ff8a80", anchor="nw"
         )
 
         self.lbl_hands_record = records_canvas.create_text(
@@ -1292,7 +1301,7 @@ class WardrobeDialog(tkinter.Toplevel):
                 406, 12, text=f"[{spec['reward']}]", font=get_role_font("badge", size_override=-14), fill="#80cbc4", anchor="ne"
             )
             p_canvas.create_text(
-                14, 34, text=spec["desc"], font=get_role_font("body", size_override=-14), fill="#b0bec5", width=390, anchor="nw"
+                14, 34, text=spec["desc"], font=get_role_font("body", size_override=-16), fill="#d8e2dc", width=390, anchor="nw"
             )
             status_text_id = p_canvas.create_text(
                 14, 60, text="🔒 LOCKED", font=get_role_font("badge", size_override=-14), fill="#ff8a80", anchor="nw"
@@ -1336,9 +1345,9 @@ class WardrobeDialog(tkinter.Toplevel):
             return
 
         hs = save_data.highscores
-        self._records_canvas.itemconfigure(self.lbl_peak_record, text=f"• Peak Bankroll: ${hs.peak_bankroll:,}")
-        self._records_canvas.itemconfigure(self.lbl_streak_record, text=f"• Longest Win Streak: {hs.longest_win_streak:,} hands")
-        self._records_canvas.itemconfigure(self.lbl_clears_record, text=f"• Hell's Table Clears: {hs.hell_table_clears:,}")
+        self._records_canvas.itemconfigure(self.lbl_peak_record, text=f"Peak Bankroll: ${hs.peak_bankroll:,}")
+        self._records_canvas.itemconfigure(self.lbl_streak_record, text=f"Longest Win Streak: {hs.longest_win_streak:,} hands")
+        self._records_canvas.itemconfigure(self.lbl_clears_record, text=f"Hell's Table Clears: {hs.hell_table_clears:,}")
 
         pct = (hs.total_hands_won / hs.total_hands_played * 100.0) if hs.total_hands_played > 0 else 0.0
         self._records_canvas.itemconfigure(

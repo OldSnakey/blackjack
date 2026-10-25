@@ -268,6 +268,52 @@ class TestDealerWardrobeDialog(unittest.TestCase):
 
         dialog._on_close()
 
+    def test_status_badge_bracket_free_and_tab2_styling(self):
+        """Status badges on Tab 1 are bracket-free ('✓ Unlocked' / '🔒 Locked'), Tab 2 records bullets are aligned, and descriptions use m5x7 @ -16 #d8e2dc."""
+        self.app._on_click_stage_hanger()
+        dialog = self.app._wardrobe_dialog
+
+        # Tab 1: Julian (unlocked) status badge
+        julian_panel = dialog.cards["julian"]["panel"]
+        badge_text = julian_panel.itemcget(julian_panel.status_badge_id, "text")
+        self.assertEqual(badge_text, "✓ Unlocked")
+        self.assertNotIn("[", badge_text)
+        self.assertNotIn("]", badge_text)
+
+        # Tab 1: Selene on Page 3 (locked) status badge and header
+        dialog._switch_page(2)
+        selene_panel = dialog.cards["selene"]["panel"]
+        selene_badge = selene_panel.itemcget(selene_panel.status_badge_id, "text")
+        self.assertEqual(selene_badge, "🔒 Locked")
+        self.assertNotIn("[", selene_badge)
+        self.assertNotIn("]", selene_badge)
+
+        req_header = selene_panel.itemcget(selene_panel.req_header_id, "text")
+        self.assertEqual(req_header, "🔒 UNLOCK REQUIREMENT:")
+        self.assertNotIn("[", req_header)
+        self.assertNotIn("]", req_header)
+
+        # Tab 2: Switch to Hall of Fame
+        dialog._switch_tab(1)
+        dialog.update()
+
+        # Check records plaque bullet alignment
+        self.assertEqual(dialog._records_canvas.itemcget(dialog.dot_peak_record, "text"), "•")
+        self.assertEqual(dialog._records_canvas.coords(dialog.dot_peak_record)[1], 41.0)
+        self.assertEqual(dialog._records_canvas.coords(dialog.lbl_peak_record)[1], 38.0)
+        self.assertIn("Peak Bankroll", dialog._records_canvas.itemcget(dialog.lbl_peak_record, "text"))
+
+        # Check achievement plaque description styling
+        exorcist_plaque = dialog.plaque_widgets["exorcist"]["frame"]
+        items = exorcist_plaque.find_all()
+        # Find description text item (at y=34)
+        desc_items = [it for it in items if exorcist_plaque.type(it) == "text" and exorcist_plaque.coords(it)[1] == 34.0]
+        self.assertEqual(len(desc_items), 1)
+        desc_id = desc_items[0]
+        self.assertEqual(exorcist_plaque.itemcget(desc_id, "fill"), "#d8e2dc")
+
+        dialog._on_close()
+
 
 if __name__ == "__main__":
     unittest.main()
