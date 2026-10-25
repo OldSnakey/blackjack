@@ -52,6 +52,8 @@ from pixel_ui import (
     get_display_font,
     get_digital_font,
     get_micro_font,
+    CanvasPixelPanel,
+    CanvasTextLabelProxy,
 )
 from ui_layout import get_ui_layout, resolve_origin, resolve_offset
 
@@ -90,7 +92,7 @@ class ChipVisualizer(tkinter.Canvas):
     ):
         cv_cfg = get_ui_layout("chip_visualizer")
         base_w = width if width is not None else cv_cfg.get("base_width", 200)
-        base_h = height if height is not None else cv_cfg.get("base_height", 140)
+        base_h = height if height is not None else cv_cfg.get("base_height", 148)
         super().__init__(
             master, width=base_w, height=base_h, background=background,
             highlightthickness=0, borderwidth=0, relief="flat", **kwargs
@@ -100,7 +102,9 @@ class ChipVisualizer(tkinter.Canvas):
         self.base_height = base_h
         self.canvas_width = base_w
         self.canvas_height = base_h
-        self.cx, self.cy = resolve_origin(get_ui_layout("chip_visualizer", "betting_spot"), base_w, base_h)
+        self.cx, self.cy = resolve_origin(
+            get_ui_layout("chip_visualizer", "betting_spot"), base_w, base_h, content_offset=self._get_content_offset()
+        )
         self.current_bet = 0
         self.available_bankroll = 1000
         self.interactive_bankroll = True
@@ -152,10 +156,11 @@ class ChipVisualizer(tkinter.Canvas):
         self.scale = scale
         self.canvas_width = int(getattr(self, "base_width", 200) * scale)
         scale_h = 1.0 if scale <= 1.0 else (1.0 + (scale - 1.0) * 0.35)
-        self.canvas_height = int(getattr(self, "base_height", 140) * scale_h)
+        self.canvas_height = int(getattr(self, "base_height", 148) * scale_h)
         self.configure(width=self.canvas_width, height=self.canvas_height)
         self.cx, self.cy = resolve_origin(
-            get_ui_layout("chip_visualizer", "betting_spot"), self.canvas_width, self.canvas_height
+            get_ui_layout("chip_visualizer", "betting_spot"), self.canvas_width, self.canvas_height,
+            content_offset=self._get_content_offset()
         )
         if self._felt_source_img and self._felt_coords:
             self.sync_felt_background(self._felt_source_img, self._felt_coords[0], self._felt_coords[1])
@@ -846,9 +851,11 @@ class TableAnnouncementHUD(tkinter.Frame):
         **kwargs
     ):
         super().__init__(master, background=background, **kwargs)
+        self.scale = 1.0
         self.outcome_font_family = outcome_family
         self.outcome_font_size = outcome_size
         self.outcome_font_weight = outcome_weight
+        self.lore_family = lore_family
         self.lore_font_family = lore_family
         self.lore_font_size = lore_size
         self.lore_font_slant = lore_slant
@@ -856,43 +863,72 @@ class TableAnnouncementHUD(tkinter.Frame):
         self.current_raw_message = ""
         self._dismiss_timer_id: Optional[str] = None
 
-        # Outer felt badge with subtle gold border
+        # Outer felt badge containing procedural brass-riveted plaque canvas
         self.badge = tkinter.Frame(
-            self, background="#07200e", highlightthickness=2,
-            highlightbackground="#d4af37", relief="ridge", borderwidth=1, padx=22, pady=8, cursor="hand2"
+            self, background=background, bd=0, highlightthickness=0, cursor="hand2"
         )
         self.badge.pack(anchor="center")
 
-        # Tier 1: Outcome Label
-        self.outcome_label = tkinter.Label(
-            self.badge,
-            text="",
-            font=(self.outcome_font_family, self.outcome_font_size, self.outcome_font_weight),
-            background="#07200e",
-            fg="#f5f5f5",
-            justify="center",
-            cursor="hand2",
-            wraplength=self.wraplength
+        init_w, init_h = 280, 44
+        self.badge_canvas = tkinter.Canvas(
+            self.badge, width=init_w, height=init_h, bd=0, highlightthickness=0,
+            background=background, cursor="hand2"
         )
-        self.outcome_label.pack(side="top", fill="x", expand=True)
+        self.badge_canvas.pack(fill="both", expand=True)
 
-        # Tier 2: Thematic Lore / Status Label
-        self.lore_label = tkinter.Label(
-            self.badge,
-            text="",
-            font=(self.lore_font_family, self.lore_font_size, self.lore_font_slant),
-            background="#07200e",
-            fg="#ffb74d",
-            justify="center",
-            cursor="hand2",
+        self.panel = CanvasPixelPanel(
+            self.badge_canvas,
+            x=init_w // 2,
+            y=init_h // 2,
+            width=init_w,
+            height=init_h,
+            bg="#0c2917",
+            border="#06140b",
+            inner_hi="#1f4d30",
+            inner_sh="#071a0e",
+            rivet_color="#d4af37",
+            scale=2,
+            recessed=True,
+            anchor="center",
+            tag="announcement_panel",
+        )
+
+        # Tier 1: Outcome text item with 1px drop shadow
+        out_f = (self.outcome_font_family, -abs(self.outcome_font_size), self.outcome_font_weight)
+        self._outcome_sh_id = self.badge_canvas.create_text(
+            init_w // 2 + 1, init_h // 2 + 1, text="", font=out_f, fill="#040c06", anchor="center"
+        )
+        self._outcome_id = self.badge_canvas.create_text(
+            init_w // 2, init_h // 2, text="", font=out_f, fill="#f5f5f5", anchor="center"
+        )
+        self.outcome_label = CanvasTextLabelProxy(
+            self.badge_canvas, self._outcome_id, self._outcome_sh_id,
+            initial_text="", initial_font=out_f, initial_fg="#f5f5f5", bg="#0c2917",
             wraplength=self.wraplength
         )
-        # Hidden by default until lore text is present
+
+        # Tier 2: Thematic Lore / Status text item with 1px drop shadow
+        lore_f = (self.lore_font_family, -abs(self.lore_font_size), self.lore_font_slant)
+        self._lore_sh_id = self.badge_canvas.create_text(
+            init_w // 2 + 1, int(init_h * 0.72) + 1, text="", font=lore_f, fill="#040c06",
+            anchor="center", state="hidden"
+        )
+        self._lore_id = self.badge_canvas.create_text(
+            init_w // 2, int(init_h * 0.72), text="", font=lore_f, fill="#ffb74d",
+            anchor="center", state="hidden"
+        )
+        self.lore_label = CanvasTextLabelProxy(
+            self.badge_canvas, self._lore_id, self._lore_sh_id,
+            initial_text="", initial_font=lore_f, initial_fg="#ffb74d", bg="#0c2917",
+            wraplength=self.wraplength
+        )
         self.lore_label.pack_forget()
 
         # Click-to-dismiss bindings across dialog elements
-        for w in (self, self.badge, self.outcome_label, self.lore_label):
+        for w in (self, self.badge, self.badge_canvas):
             w.bind("<Button-1>", lambda e: self.dismiss())
+        self.outcome_label.bind("<Button-1>", lambda e: self.dismiss())
+        self.lore_label.bind("<Button-1>", lambda e: self.dismiss())
 
     def dismiss(self):
         """Dismisses the floating dialog overlay immediately."""
@@ -941,15 +977,47 @@ class TableAnnouncementHUD(tkinter.Frame):
         self._update_outcome_color(outcome_text)
         if lore_text:
             self.lore_label.configure(text=lore_text)
-            if not self.lore_label.winfo_manager():
-                self.lore_label.pack(side="top", pady=(3, 0), fill="x", expand=True)
+            self.lore_label.pack()
         else:
             self.lore_label.configure(text="")
             self.lore_label.pack_forget()
 
+        # Dynamic measurement and plaque sizing
+        s = getattr(self, "scale", 1.0)
+        try:
+            import tkinter.font
+            f_out = tkinter.font.Font(font=(self.outcome_font_family, -abs(self.outcome_font_size), self.outcome_font_weight))
+            tw = f_out.measure(outcome_text)
+            th = f_out.metrics("linespace")
+            if lore_text:
+                f_lore = tkinter.font.Font(font=(self.lore_font_family, -abs(self.lore_font_size), self.lore_font_slant))
+                tw = max(tw, f_lore.measure(lore_text))
+                th += f_lore.metrics("linespace") + int(6 * s)
+        except Exception:
+            tw = max(len(outcome_text), len(lore_text)) * 10
+            th = 24
+
+        w = max(int(260 * s), tw + int(48 * s))
+        h = max(int(44 * s), th + (int(20 * s) if lore_text else int(16 * s)))
+        self.badge_canvas.configure(width=w, height=h)
+        self.panel.resize(w // 2, h // 2, w, h, scale=max(2, int(2 * s)))
+
+        cx = w // 2
+        if lore_text:
+            cy_out = int(h * 0.36)
+            cy_lore = int(h * 0.70)
+            self.badge_canvas.coords(self._outcome_id, cx, cy_out)
+            self.badge_canvas.coords(self._outcome_sh_id, cx + 1, cy_out + 1)
+            self.badge_canvas.coords(self._lore_id, cx, cy_lore)
+            self.badge_canvas.coords(self._lore_sh_id, cx + 1, cy_lore + 1)
+        else:
+            cy = h // 2
+            self.badge_canvas.coords(self._outcome_id, cx, cy)
+            self.badge_canvas.coords(self._outcome_sh_id, cx + 1, cy + 1)
+
         # Float in center of parent table felt as an overlay dialog card
         if not self.winfo_manager() or self.winfo_manager() == "place":
-            self.place(relx=0.5, rely=0.5, anchor="center")
+            self.place(relx=0.5, rely=0.54, anchor="center")
             self.lift()
 
         # Automatically dismiss transient announcements after 2.5s
@@ -979,8 +1047,16 @@ class TableAnnouncementHUD(tkinter.Frame):
             fg = "#f5f5f5"  # Clean White
             border = "#80cbc4"
         self.outcome_label.configure(fg=fg)
+        if hasattr(self, "panel") and self.panel:
+            self.panel.update_palette(
+                border=border if fg != "#f5f5f5" else "#06140b",
+                inner_hi=border if fg != "#f5f5f5" else "#1f4d30",
+            )
         if hasattr(self, "badge"):
-            self.badge.configure(highlightbackground=border)
+            try:
+                self.badge.configure(highlightbackground=border)
+            except Exception:
+                pass
 
     def set_typography(
         self,
@@ -1009,11 +1085,11 @@ class TableAnnouncementHUD(tkinter.Frame):
             self.wraplength = wraplength
 
         self.outcome_label.configure(
-            font=(self.outcome_font_family, self.outcome_font_size, self.outcome_font_weight),
+            font=(self.outcome_font_family, -abs(self.outcome_font_size), self.outcome_font_weight),
             wraplength=self.wraplength
         )
         self.lore_label.configure(
-            font=(self.lore_font_family, self.lore_font_size, self.lore_font_slant),
+            font=(self.lore_font_family, -abs(self.lore_font_size), self.lore_font_slant),
             wraplength=self.wraplength
         )
 
@@ -1026,17 +1102,28 @@ class TableAnnouncementHUD(tkinter.Frame):
             wraplength=int(600 * scale),
         )
         if hasattr(self, "badge"):
-            self.badge.configure(padx=int(22 * scale), pady=int(8 * scale))
+            try:
+                self.badge.configure(padx=int(22 * scale), pady=int(8 * scale))
+            except Exception:
+                pass
 
     def set_theme_color(self, bg_color: str, border_color: str | None = None):
         """Cascades table felt background color to announcement HUD and badge."""
         self.configure(background=bg_color)
         if hasattr(self, "badge"):
-            if border_color:
-                border = border_color
-            else:
-                border = "#3a151b" if bg_color.lower() in ("#0d0204", "#140508", "#0e0306") else "#1b2a1b"
-            self.badge.configure(background=bg_color, highlightbackground=border)
+            try:
+                if border_color:
+                    border = border_color
+                else:
+                    border = "#3a151b" if bg_color.lower() in ("#0d0204", "#140508", "#0e0306") else "#1b2a1b"
+                self.badge.configure(background=bg_color, highlightbackground=border)
+            except Exception:
+                pass
+        if hasattr(self, "badge_canvas"):
+            try:
+                self.badge_canvas.configure(background=bg_color)
+            except Exception:
+                pass
         if hasattr(self, "outcome_label"):
             self.outcome_label.configure(background=bg_color)
         if hasattr(self, "lore_label"):
@@ -2050,7 +2137,7 @@ class TableFeltCanvas(tkinter.Canvas):
         s = self.scale_factor
         gold = cfg["gold"]
 
-        ribbon_y = int(h * 0.36) - int(8 * s)
+        ribbon_y = int(h * 0.36) - int(20 * s)
         rx = int(w * 0.38)
         ry = int(h * 0.28)
         draw.arc([cx - rx, ribbon_y - int(10 * s), cx + rx, ribbon_y + ry], start=22, end=158, fill=gold, width=max(1, int(2 * s)))

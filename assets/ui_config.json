@@ -237,7 +237,7 @@
   },
   "chip_visualizer": {
     "base_width": 200,
-    "base_height": 140,
+    "base_height": 148,
     "grid_placement": {
       "row": 1,
       "column": 2,
@@ -254,7 +254,7 @@
     },
     "content_offset": {
       "x": 0,
-      "y": 0
+      "y": 8
     },
     "betting_spot": {
       "origin": {
@@ -554,16 +554,16 @@
       "side_margin": 24,
       "bet_buttons": {
         "clear_bet": {
-          "width": 114
+          "width": 136
         },
         "all_in": {
-          "width": 90
+          "width": 96
         },
         "deal_hand": {
-          "width": 120
+          "width": 144
         },
         "rebuy": {
-          "width": 138
+          "width": 124
         }
       },
       "play_buttons": {

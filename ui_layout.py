@@ -134,7 +134,7 @@ DEFAULT_UI_CONFIG: dict[str, Any] = {
     },
     "chip_visualizer": {
         "base_width": 200,
-        "base_height": 140,
+        "base_height": 148,
         "grid_placement": {
             "row": 1,
             "column": 2,
@@ -143,13 +143,13 @@ DEFAULT_UI_CONFIG: dict[str, Any] = {
             "pady": [0, 6],
             "sticky": "se",
         },
-        "content_offset": {"x": 0, "y": 0},
+        "content_offset": {"x": 0, "y": 8},
         "betting_spot": {
             "origin": {"x_ratio": 0.5, "y_ratio": 0.24},
             "outer_oval": {"rx": 72, "ry": 22},
             "inner_oval": {"rx": 65, "ry": 18},
             "watermark": {"offset_x": 0, "offset_y": 1},
-            "bet_badge": {"offset_x": 0, "offset_y": -29},
+            "bet_badge": {"offset_x": 0, "offset_y": -34},
         },
         "tray_divider": {
             "y_ratio": 0.46,
@@ -265,10 +265,10 @@ DEFAULT_UI_CONFIG: dict[str, Any] = {
             "dock_gap": 12,
             "side_margin": 24,
             "bet_buttons": {
-                "clear_bet": {"width": 114},
-                "all_in": {"width": 90},
-                "deal_hand": {"width": 120},
-                "rebuy": {"width": 138},
+                "clear_bet": {"width": 136},
+                "all_in": {"width": 96},
+                "deal_hand": {"width": 144},
+                "rebuy": {"width": 124},
             },
             "play_buttons": {
                 "hit": {"width": 96},

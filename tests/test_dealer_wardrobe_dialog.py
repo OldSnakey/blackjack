@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from unittest.mock import MagicMock
 import tkinter
 from pathlib import Path
 
@@ -183,9 +184,59 @@ class TestDealerWardrobeDialog(unittest.TestCase):
             hasattr(dialog, "hof_canvas") or hasattr(dialog, "_on_hof_mousewheel") or hasattr(dialog, "_on_mousewheel")
         )
 
+    def test_voice_button_triggers_speech_bubble_and_tail(self):
+        """Clicking Voice on a character card renders a speech bubble with directional tail and streams Animalese."""
+        self.app._on_click_stage_hanger()
+        dialog = self.app._wardrobe_dialog
+        self.assertIsNotNone(dialog)
+
+        # Mock sound manager play_dialogue_blip
+        mock_blip = MagicMock()
+        self.app.sound_manager.play_dialogue_blip = mock_blip
+
+        panel = dialog.cards["julian"]["panel"]
+        self.assertFalse(panel._speech_active)
+        self.assertEqual(len(panel.find_withtag("speech_bubble")), 0)
+
+        # Trigger voice preview
+        panel._play_voice()
+        self.assertTrue(panel._speech_active)
+
+        # Verify speech bubble and tail items are created on canvas
+        bubble_items = panel.find_withtag("speech_bubble")
+        self.assertGreater(len(bubble_items), 0, "Speech bubble elements should be rendered on canvas")
+
+        # Step typewriter
+        dialog.update()
+        self.assertTrue(mock_blip.called, "Animalese play_dialogue_blip should be called during speech stream")
+        args, kwargs = mock_blip.call_args
+        self.assertEqual(args[0], "julian")
+
+        # Cleanup
+        panel.dismiss_speech_bubble()
+        self.assertFalse(panel._speech_active)
+        self.assertEqual(len(panel.find_withtag("speech_bubble")), 0)
+        dialog._on_close()
+
+    def test_voice_speech_bubble_dismissal_and_navigation_cleanup(self):
+        """Navigating pages or closing dialog cleanly dismisses active speech bubbles and stops timers."""
+        self.app._on_click_stage_hanger()
+        dialog = self.app._wardrobe_dialog
+
+        panel_julian = dialog.cards["julian"]["panel"]
+        panel_julian._play_voice()
+        self.assertTrue(panel_julian._speech_active)
+
+        # Switching page dismisses voice bubble
+        dialog._next_page()
+        self.assertFalse(panel_julian._speech_active)
+        self.assertIsNone(panel_julian._speech_timer_id)
+        self.assertEqual(len(panel_julian.find_withtag("speech_bubble")), 0)
+
         dialog._on_close()
 
 
 if __name__ == "__main__":
     unittest.main()
+
 

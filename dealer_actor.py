@@ -30,6 +30,16 @@ CHARACTERS_DIR = HAUNTED_ASSETS_DIR / "characters"
 
 
 @dataclass(frozen=True)
+class CostumeVariant:
+    costume_id: str
+    name: str
+    bust_image_key: Optional[str] = None
+    audio_cue: Optional[str] = None
+    unlock_criteria: str = ""
+    unlocked_by_default: bool = False
+
+
+@dataclass(frozen=True)
 class CharacterProfile:
     id: str
     name: str
@@ -41,6 +51,20 @@ class CharacterProfile:
     unlock_key: str
     lore: str
     is_puppet: bool = False
+    costumes: tuple[CostumeVariant, ...] = ()
+
+    def get_costumes(self) -> tuple[CostumeVariant, ...]:
+        if self.costumes:
+            return self.costumes
+        default_name = f"Classic {self.name}" if self.id in ("julian", "tiffany") else f"Default {self.name}"
+        return (
+            CostumeVariant(
+                costume_id=self.id,
+                name=default_name,
+                audio_cue=self.audio_cue,
+                unlocked_by_default=(self.id in ("julian", "tiffany", "dummy")),
+            ),
+        )
 
 
 CHARACTERS: Dict[str, CharacterProfile] = {
@@ -55,6 +79,14 @@ CHARACTERS: Dict[str, CharacterProfile] = {
         unlock_key="classic",
         lore="Consummate casino gentleman who deals cards with effortless elegance and calm composure.",
         is_puppet=True,
+        costumes=(
+            CostumeVariant(
+                costume_id="julian",
+                name="Classic Tuxedo",
+                audio_cue="dealer_julian.ogg",
+                unlocked_by_default=True,
+            ),
+        ),
     ),
     "malphas": CharacterProfile(
         id="malphas",
@@ -103,6 +135,14 @@ CHARACTERS: Dict[str, CharacterProfile] = {
         unlock_key="tiffany",
         lore="Glamorous and quick-witted croupier whose velvet touch and radiant smile charm even the sharpest card counters.",
         is_puppet=True,
+        costumes=(
+            CostumeVariant(
+                costume_id="tiffany",
+                name="Velvet Vest",
+                audio_cue="dealer_tiffany.ogg",
+                unlocked_by_default=True,
+            ),
+        ),
     ),
     "selene": CharacterProfile(
         id="selene",
@@ -139,6 +179,14 @@ CHARACTERS: Dict[str, CharacterProfile] = {
         unlock_key="dummy_test",
         lore="High-contrast multi-layer dummy puppet rigged to verify layer stacking, Z-order, and articulation.",
         is_puppet=True,
+        costumes=(
+            CostumeVariant(
+                costume_id="dummy",
+                name="Lab Test Rig",
+                audio_cue="dealer_julian.ogg",
+                unlocked_by_default=True,
+            ),
+        ),
     ),
 }
 
@@ -360,6 +408,7 @@ class DealerActor:
         self.head_offset: tuple[int, int] = (0, 0)
         self.arm_offset: tuple[int, int] = (0, 0)
         self.eye_gaze_offset: tuple[int, int] = (0, 0)
+        self.current_costume: str = self.current_character
 
         # Asset and composite caches
         self._raw_layers_cache: Dict[str, Image.Image] = {}
@@ -379,11 +428,18 @@ class DealerActor:
             return cid
         return COSTUME_ALIASES.get(cid, "julian")
 
-    def equip_costume(self, character_id: str) -> None:
-        """Swaps active character persona. Guarantees game state immutability."""
+    def equip_costume(self, character_id: str, costume_id: Optional[str] = None) -> None:
+        """Swaps active character persona and costume variant. Guarantees game state immutability."""
         resolved = self._resolve_character_id(character_id)
+        cid = costume_id or resolved
+        changed = False
         if resolved != self.current_character:
             self.current_character = resolved
+            changed = True
+        if getattr(self, "current_costume", None) != cid:
+            self.current_costume = cid
+            changed = True
+        if changed:
             self._invalidate_composite()
 
     def set_eye_state(self, state: str) -> None:

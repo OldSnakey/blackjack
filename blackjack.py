@@ -809,20 +809,20 @@ class BlackjackApp:
 
         # 1. Betting Phase Center Dock ("bet_dock")
         self.clear_bet_button = CanvasPixelButton(
-            self.mahogany_rail, x=240, y=36, width=114, height=36,
+            self.mahogany_rail, x=240, y=36, width=136, height=36,
             text="Clear Bet", theme="neutral", font=f_bet_btn, scale=btn_scale, group_tag="bet_dock", command=self._clear_bet
         )
         self.all_in_button = CanvasPixelButton(
-            self.mahogany_rail, x=355, y=36, width=90, height=36,
+            self.mahogany_rail, x=355, y=36, width=96, height=36,
             text="All In", theme="red", font=f_bet_btn, scale=btn_scale, group_tag="bet_dock", command=self._all_in
         )
         self.deal_bet_button = CanvasPixelButton(
-            self.mahogany_rail, x=475, y=36, width=120, height=36,
+            self.mahogany_rail, x=475, y=36, width=144, height=36,
             text="Deal Hand", theme="gold", font=f_bet_btn, scale=btn_scale, group_tag="bet_dock", command=self._deal_hand_with_bet
         )
         self.rebuy_button = CanvasPixelButton(
-            self.mahogany_rail, x=615, y=36, width=138, height=36,
-            text="Rebuy ($1,000)", theme="amber", font=f_bet_btn, scale=btn_scale, group_tag="bet_dock", command=self._rebuy
+            self.mahogany_rail, x=615, y=36, width=124, height=36,
+            text="Rebuy $1K", theme="amber", font=f_bet_btn, scale=btn_scale, group_tag="bet_dock", command=self._rebuy
         )
 
         # 2. In-Play Phase Center Dock ("play_dock")
@@ -2657,7 +2657,7 @@ class BlackjackApp:
         bankroll = self.bankroll_var.get()
         if bankroll < MINIMUM_BET and self.current_bet_var.get() < MINIMUM_BET:
             self.current_bet_var.set(0)
-            self.result_var.set("Bankroll empty! Click Rebuy ($1,000) to keep playing.")
+            self.result_var.set("Bankroll empty! Click Rebuy $1K to keep playing.")
         else:
             # Default staged bet: preserve previous bet if affordable, or MINIMUM_BET
             if self.current_bet_var.get() == 0 or self.current_bet_var.get() > bankroll:
@@ -2954,10 +2954,10 @@ class BlackjackApp:
         # 1. Betting Phase Dock ("Clear Bet", "All In", "Deal Hand", "Rebuy")
         bet_cfgs = dock_cfg.get("bet_buttons", {})
         bet_btns = [
-            (self.clear_bet_button, int(bet_cfgs.get("clear_bet", {}).get("width", 114) * s)),
-            (self.all_in_button, int(bet_cfgs.get("all_in", {}).get("width", 90) * s)),
-            (self.deal_bet_button, int(bet_cfgs.get("deal_hand", {}).get("width", 120) * s)),
-            (self.rebuy_button, int(bet_cfgs.get("rebuy", {}).get("width", 138) * s)),
+            (self.clear_bet_button, int(bet_cfgs.get("clear_bet", {}).get("width", 136) * s)),
+            (self.all_in_button, int(bet_cfgs.get("all_in", {}).get("width", 96) * s)),
+            (self.deal_bet_button, int(bet_cfgs.get("deal_hand", {}).get("width", 144) * s)),
+            (self.rebuy_button, int(bet_cfgs.get("rebuy", {}).get("width", 124) * s)),
         ]
         total_bet_w = sum(bw for _, bw in bet_btns) + gap * (len(bet_btns) - 1)
         cur_x = cx - (total_bet_w // 2)

@@ -496,6 +496,112 @@ class CanvasPixelPanel:
 
 
 # ============================================================================
+# Procedural Pixel Art Icons
+# ============================================================================
+_PIXEL_ICON_PIL_CACHE: dict[tuple[str, int], Image.Image] = {}
+
+
+def get_pixel_icon(name: str, scale: int = 2, master: Optional[Any] = None) -> Optional[ImageTk.PhotoImage]:
+    """
+    Procedurally draws crisp 1x pixel art icons scaled with NEAREST filtering.
+    Supported icons: 'top_hat', 'heart', 'flask', 'check', 'lock', 'mystery_bust'.
+    """
+    scale = max(1, int(scale))
+    key = name.lower().strip()
+    cache_key = (key, scale)
+
+    if cache_key in _PIXEL_ICON_PIL_CACHE:
+        img = _PIXEL_ICON_PIL_CACHE[cache_key]
+        return ImageTk.PhotoImage(img, master=master)
+
+    img: Optional[Image.Image] = None
+
+    if key == "top_hat":
+        img = Image.new("RGBA", (14, 14), (0, 0, 0, 0))
+        d = ImageDraw.Draw(img)
+        # Crown: x=4..9, y=2..8
+        d.rectangle([4, 2, 9, 8], fill="#161616")
+        d.line([4, 2, 4, 8], fill="#383838")
+        d.line([5, 2, 9, 2], fill="#282828")
+        # Gold ribbon band: y=8
+        d.line([4, 8, 9, 8], fill="#ffd700")
+        d.point((4, 8), fill="#ffe57f")
+        d.point((9, 8), fill="#c69214")
+        # Brim: y=9..10, x=1..12
+        d.line([2, 9, 11, 9], fill="#2a2a2a")
+        d.line([1, 10, 12, 10], fill="#161616")
+        d.point((1, 9), fill="#383838")
+        d.point((12, 9), fill="#383838")
+
+    elif key == "heart":
+        img = Image.new("RGBA", (8, 8), (0, 0, 0, 0))
+        d = ImageDraw.Draw(img)
+        d.line([(1, 1), (2, 1)], fill="#ff3366")
+        d.line([(4, 1), (5, 1)], fill="#ff3366")
+        d.rectangle([0, 2, 6, 3], fill="#ff3366")
+        d.line([(1, 4), (5, 4)], fill="#ff3366")
+        d.line([(2, 5), (4, 5)], fill="#e91e63")
+        d.point((3, 6), fill="#c2185b")
+        d.point((1, 2), fill="#ffffff")
+
+    elif key == "flask":
+        img = Image.new("RGBA", (8, 8), (0, 0, 0, 0))
+        d = ImageDraw.Draw(img)
+        d.line([(3, 0), (4, 0)], fill="#a1887f")
+        d.rectangle([3, 1, 4, 2], fill="#cfd8dc")
+        d.line([(2, 3), (5, 3)], fill="#90a4ae")
+        d.rectangle([1, 4, 6, 6], fill="#00e676")
+        d.line([(1, 4), (6, 4)], fill="#69f0ae")
+        d.line([(2, 7), (5, 7)], fill="#37474f")
+        d.point((2, 5), fill="#ffffff")
+
+    elif key == "check":
+        img = Image.new("RGBA", (8, 8), (0, 0, 0, 0))
+        d = ImageDraw.Draw(img)
+        pts = [(1, 4), (2, 5), (3, 6), (4, 5), (5, 4), (6, 3), (7, 2)]
+        for px, py in pts:
+            d.point((px, py), fill="#5ce6b5")
+            d.point((px, py + 1), fill="#004d40")
+
+    elif key == "lock":
+        img = Image.new("RGBA", (8, 8), (0, 0, 0, 0))
+        d = ImageDraw.Draw(img)
+        d.line([(2, 1), (5, 1)], fill="#cfd8dc")
+        d.line([(2, 2), (2, 3)], fill="#90a4ae")
+        d.line([(5, 2), (5, 3)], fill="#90a4ae")
+        d.rectangle([1, 3, 6, 6], fill="#ffb300")
+        d.line([(1, 3), (6, 3)], fill="#ffe082")
+        d.line([(2, 7), (5, 7)], fill="#ff8f00")
+        d.point((3, 5), fill="#3e2723")
+        d.point((4, 5), fill="#3e2723")
+
+    elif key == "mystery_bust":
+        img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+        d = ImageDraw.Draw(img)
+        # Recessed dark silhouette bust
+        d.rectangle([0, 0, 63, 63], fill="#060c08")
+        # Shoulders / torso
+        d.polygon([(6, 60), (18, 38), (45, 38), (57, 60)], fill="#0b1710", outline="#13271c")
+        # Head oval
+        d.ellipse([21, 12, 42, 34], fill="#0b1710", outline="#13271c")
+        # Golden question mark
+        d.rectangle([28, 18, 35, 21], fill="#8a6d1b")
+        d.rectangle([32, 21, 35, 25], fill="#8a6d1b")
+        d.rectangle([29, 25, 33, 27], fill="#8a6d1b")
+        d.point((31, 30), fill="#8a6d1b")
+        d.point((31, 31), fill="#8a6d1b")
+
+    if img is None:
+        return None
+
+    if scale > 1:
+        img = img.resize((img.width * scale, img.height * scale), Image.Resampling.NEAREST)
+
+    _PIXEL_ICON_PIL_CACHE[cache_key] = img
+    return ImageTk.PhotoImage(img, master=master)
+
+
+# ============================================================================
 # Transparent Canvas Text Label Proxy & Score Plaque Frame
 # ============================================================================
 class CanvasTextLabelProxy:
@@ -517,6 +623,7 @@ class CanvasTextLabelProxy:
         bg: str = "#0c2917",
         on_text_change: Optional[Callable[[str], None]] = None,
         on_manage_change: Optional[Callable[[bool], None]] = None,
+        wraplength: int = 0,
     ):
         self.canvas = canvas
         self.text_id = text_id
@@ -526,9 +633,18 @@ class CanvasTextLabelProxy:
         self._fg = initial_fg
         self._bg = bg
         self._textvariable = textvariable
+        self._wraplength = int(wraplength)
         self.on_text_change = on_text_change
         self.on_manage_change = on_manage_change
         self._is_managed: bool = True
+
+        if self._wraplength > 0:
+            try:
+                self.canvas.itemconfigure(self.text_id, width=self._wraplength)
+                if self.shadow_id:
+                    self.canvas.itemconfigure(self.shadow_id, width=self._wraplength)
+            except Exception:
+                pass
 
         if self._textvariable is not None:
             self.set_text(self._textvariable.get())
@@ -587,6 +703,21 @@ class CanvasTextLabelProxy:
             self.set_fg(kwargs.get("fg") or kwargs.get("foreground"))
         if "bg" in kwargs or "background" in kwargs:
             self._bg = kwargs.get("bg") or kwargs.get("background")
+        if "wraplength" in kwargs:
+            self._wraplength = int(kwargs["wraplength"])
+            try:
+                self.canvas.itemconfigure(self.text_id, width=self._wraplength)
+                if self.shadow_id:
+                    self.canvas.itemconfigure(self.shadow_id, width=self._wraplength)
+            except Exception:
+                pass
+        if "justify" in kwargs:
+            try:
+                self.canvas.itemconfigure(self.text_id, justify=kwargs["justify"])
+                if self.shadow_id:
+                    self.canvas.itemconfigure(self.shadow_id, justify=kwargs["justify"])
+            except Exception:
+                pass
 
     config = configure
 
@@ -599,6 +730,8 @@ class CanvasTextLabelProxy:
             return self._fg
         if key in ("bg", "background"):
             return self._bg
+        if key == "wraplength":
+            return self._wraplength
         return ""
 
     def __getitem__(self, key: str) -> Any:
@@ -1391,6 +1524,10 @@ class CanvasPixelButton:
             self.font = kwargs["font"]
             self.canvas.itemconfigure(self.text_id, font=self.font)
             self.canvas.itemconfigure(self.shadow_text_id, font=self.font)
+        if "theme" in kwargs:
+            self.theme = kwargs["theme"]
+            self._build_sprites()
+            self._update_visuals()
 
     config = configure
 
