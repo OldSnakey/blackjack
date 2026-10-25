@@ -122,6 +122,10 @@ def main():
     if dialog and dialog.winfo_exists():
         hwnd = dialog.winfo_id()
         screenshot_tab0 = capture_hwnd_to_image(hwnd)
+        out_path0 = artifact_dir / "wardrobe_tab1_closet.png"
+        screenshot_tab0.convert("RGB").save(str(out_path0), "PNG")
+        print(f"SAVED: {out_path0}")
+
         # 1. Trigger Julian's voice on Page 1 to capture speech bubble with tail
         dialog.cards["julian"]["panel"]._play_voice()
         for _ in range(40):

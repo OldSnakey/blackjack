@@ -314,7 +314,7 @@ class DealerCardPanel(tkinter.Canvas):
             )
 
         # y=180: Equip / Equipped Button: cx=290, cy=180, width=252, height=32, scale=3
-        btn_text, btn_theme, btn_enabled = self._get_action_state()
+        btn_text, btn_theme, btn_enabled, dis_text_color = self._get_action_state()
         self.equip_btn = CanvasPixelButton(
             self,
             x=290,
@@ -326,6 +326,7 @@ class DealerCardPanel(tkinter.Canvas):
             font=get_role_font("button", size_override=-16),
             scale=3,
             enabled=btn_enabled,
+            disabled_text_color=dis_text_color,
             command=self._on_equip_click,
         )
 
@@ -340,7 +341,7 @@ class DealerCardPanel(tkinter.Canvas):
         c_name = cur.name if cur else "Default"
         return f"{c_name} ({self.costume_idx + 1}/{total})"
 
-    def _get_action_state(self) -> tuple[str, str, bool]:
+    def _get_action_state(self) -> tuple[str, str, bool, Optional[str]]:
         active_char = getattr(getattr(self.dialog.app, "dealer_actor", None), "current_character", "julian")
         active_costume = getattr(getattr(self.dialog.app, "dealer_actor", None), "current_costume", active_char)
 
@@ -348,14 +349,15 @@ class DealerCardPanel(tkinter.Canvas):
         variant_id = cur_variant.costume_id if cur_variant else self.char_id
 
         # 2D equipped state check: character AND costume
+        # In EQUIPPED state: keep recessed slot sprite (disabled), but override text to bright gold (#ffd700)
         if self.char_id == active_char and variant_id == active_costume:
-            return ("✦ EQUIPPED", "gold", False)
+            return ("✦ EQUIPPED", "gold", False, "#ffd700")
 
         if not self.unlocked:
-            return ("Locked", "neutral", False)
+            return ("Locked", "neutral", False, None)
 
         # Unlocked variant ready to equip
-        return ("Equip Costume", "green", True)
+        return ("Equip Costume", "green", True, None)
 
     def _prev_costume(self):
         if len(self.costumes) > 1:
@@ -370,9 +372,10 @@ class DealerCardPanel(tkinter.Canvas):
     def _update_costume_display(self):
         c_label = self._get_carousel_label()
         self.itemconfigure(self.carousel_text_id, text=c_label)
-        btn_text, btn_theme, btn_enabled = self._get_action_state()
+        btn_text, btn_theme, btn_enabled, dis_text_color = self._get_action_state()
         self.equip_btn.set_text(btn_text)
         self.equip_btn.configure(theme=btn_theme)
+        self.equip_btn.set_disabled_text_color(dis_text_color)
         self.equip_btn.set_enabled(btn_enabled)
 
     def _play_voice(self):

@@ -235,8 +235,42 @@ class TestDealerWardrobeDialog(unittest.TestCase):
 
         dialog._on_close()
 
+    def test_equipped_button_disabled_gold_text_override(self):
+        """Equipped dealer button uses recessed disabled slot sprite with bright gold (#ffd700) text."""
+        self.app._on_click_stage_hanger()
+        dialog = self.app._wardrobe_dialog
+
+        # Julian is equipped by default
+        julian_btn = dialog.cards["julian"]["panel"].equip_btn
+        self.assertFalse(julian_btn.enabled)
+        self.assertEqual(julian_btn.text, "✦ EQUIPPED")
+        self.assertEqual(julian_btn.disabled_text_color, "#ffd700")
+
+        # Verify canvas text fill color is bright gold #ffd700
+        canvas = dialog.cards["julian"]["panel"]
+        text_fill = canvas.itemcget(julian_btn.text_id, "fill")
+        self.assertEqual(text_fill, "#ffd700")
+
+        # Tiffany is unlocked and unequipped -> enabled green button
+        tiffany_btn = dialog.cards["tiffany"]["panel"].equip_btn
+        self.assertTrue(tiffany_btn.enabled)
+        self.assertEqual(tiffany_btn.text, "Equip Costume")
+
+        # Selene on Page 3 is locked -> disabled with default muted brown text
+        dialog._switch_page(2)
+        selene_btn = dialog.cards["selene"]["panel"].equip_btn
+        self.assertFalse(selene_btn.enabled)
+        self.assertEqual(selene_btn.text, "Locked")
+        self.assertIsNone(selene_btn.disabled_text_color)
+        canvas_selene = dialog.cards["selene"]["panel"]
+        selene_fill = canvas_selene.itemcget(selene_btn.text_id, "fill")
+        self.assertEqual(selene_fill, "#5e4337")
+
+        dialog._on_close()
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
 

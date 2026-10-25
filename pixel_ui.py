@@ -1300,6 +1300,7 @@ class CanvasPixelButton:
         text_color: str = "#f4efe6",
         scale: int = 3,
         enabled: bool = True,
+        disabled_text_color: Optional[str] = None,
         group_tag: Optional[str] = None,
         master: Optional[tkinter.Widget] = None,
     ):
@@ -1314,6 +1315,7 @@ class CanvasPixelButton:
         self.theme = theme
         self.scale = max(1, int(scale))
         self.enabled = enabled
+        self.disabled_text_color = disabled_text_color
         self.font = font or get_pixel_font(size_px=14 * self.scale // 2, weight="normal")
         self.text_color = text_color
         self.group_tag = group_tag
@@ -1412,12 +1414,16 @@ class CanvasPixelButton:
         so = self._shadow_offset
         if not self.enabled:
             self.canvas.itemconfigure(self.bg_id, image=self.sprites["disabled"])
-            self.canvas.itemconfigure(self.text_id, fill=PALETTE["disabled"]["text"])
+            dis_color = self.disabled_text_color or PALETTE["disabled"]["text"]
+            self.canvas.itemconfigure(self.text_id, fill=dis_color)
+            shadow_color = "#0a0503" if self.disabled_text_color else "#0e1410"
+            self.canvas.itemconfigure(self.shadow_text_id, fill=shadow_color)
             self.canvas.coords(self.text_id, self.x, self.y + 1)
             self.canvas.coords(self.shadow_text_id, self.x + so, self.y + 1 + so)
             return
 
         self.canvas.itemconfigure(self.text_id, fill=self.text_color)
+        self.canvas.itemconfigure(self.shadow_text_id, fill="#0e1410")
         if self._is_pressed:
             self.canvas.itemconfigure(self.bg_id, image=self.sprites["pressed"])
             # Shift text down by 1 pixel unit (scale) when pressed
@@ -1470,6 +1476,12 @@ class CanvasPixelButton:
             self._is_hovered = False
             self._is_pressed = False
         self._update_visuals()
+
+    def set_disabled_text_color(self, color: Optional[str]):
+        """Sets or clears the custom text color override for the disabled state."""
+        self.disabled_text_color = color
+        if not self.enabled:
+            self._update_visuals()
 
     def set_text(self, new_text: str):
         """Updates button display text."""
@@ -1528,6 +1540,10 @@ class CanvasPixelButton:
             self.theme = kwargs["theme"]
             self._build_sprites()
             self._update_visuals()
+        if "disabled_text_color" in kwargs:
+            self.disabled_text_color = kwargs["disabled_text_color"]
+            if not self.enabled:
+                self._update_visuals()
 
     config = configure
 
