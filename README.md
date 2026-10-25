@@ -1,4 +1,4 @@
-# Blackjack v1.3.1 (Python & Tkinter)
+# Blackjack v1.4.0 (Python & Tkinter)
 
 > 🎮 **Play the Game**: Download the standalone, zero-install Windows release on itch.io:  
 > 👉 **[https://wrehman.itch.io/blackjack-classic](https://wrehman.itch.io/blackjack-classic)** *(No Python setup required!)*
@@ -88,7 +88,7 @@ For casual players and non-engineers who want to play without installing Python 
 **[https://wrehman.itch.io/blackjack-classic](https://wrehman.itch.io/blackjack-classic)**
 
 - **Platform**: Windows 64-bit (Standalone portable release)
-- **Zero Installation**: Extract `Blackjack-Windows-v1.3.1.zip` and double-click `Blackjack.exe` to play.
+- **Zero Installation**: Extract `Blackjack-Windows-v1.4.0.zip` and double-click `Blackjack.exe` to play.
 - **Features Included**: Complete game with Living Dealer, Hell's Table, 2x scaling, sound effects, and persistent achievements.
 
 ---
@@ -121,7 +121,7 @@ To compile the standalone Windows release uploaded to [itch.io](https://wrehman.
 1. Double-click `build_itch_release.bat` (or run `./build_itch_release.ps1` in PowerShell).
 2. The automated pipeline runs regression tests, invokes PyInstaller, bundles documentation, and outputs:
    - `dist/Blackjack-Windows/`: Unpacked folder containing `Blackjack.exe` and bundled assets.
-   - `dist/Blackjack-Windows-v1.3.1.zip`: Optimized ZIP archive ready to upload to [itch.io](https://wrehman.itch.io/blackjack-classic).
+   - `dist/Blackjack-Windows-v1.4.0.zip`: Optimized ZIP archive ready to upload to [itch.io](https://wrehman.itch.io/blackjack-classic).
 
 For complete store page copy, metadata, and upload instructions, see [docs/ITCH_IO_GUIDE.md](docs/ITCH_IO_GUIDE.md).
 
