@@ -69,7 +69,7 @@ Designed as an educational project for Python learners and junior developers, th
   - Showdown against **The Pit Fiend** with a 2.5D Animated Tug-of-War Soul Meter and 7 Celestial Blessings (*Seraph's Grace* bust-redraw protection, *Eye of Providence*, *Archangel's Smite*, *Cherub's Shield*, *Heavenly Tithe*, *Miracle Draw*, and *Hallowed Run*).
 - **Hall of Fame & Save Persistence (`save_manager.py`)**:
   - Persistent career metrics (`blackjack_save.json`): Peak Bankroll, Longest Win Streak, Total Blackjacks, Hell's Table Clears, and Counting Streaks.
-  - 8 unlockable gameplay achievements (*Exorcist*, *High Roller*, *Natural Streak*, *Cursed Survivor*, *Split Maestro*, *Big Spender*, *Apprentice Counter*, *Master Counter*).
+  - 12 unlockable gameplay achievements (*Exorcist*, *High Roller*, *Natural Streak*, *Cursed Survivor*, *Split Maestro*, *Big Spender*, *Apprentice Counter*, *Master Counter*, *Shoe Whisperer*, *Count Capitalist*, *Pair Perfectionist*, *Poker Face*).
 - **Dual Play Modes (Chips Mode Default)**:
   - **Casino Mode (Default)**: Authentic wagering system with a \$1,000 starting bankroll, 5 authentic casino chip denominations (\$5, \$25, \$100, \$500, and \$1,000 Platinum), interactive bottom-right bankroll chip piles, staged betting, an **"All In"** button, 3:2 Natural Blackjack payouts, and a \$1,000 rebuy feature.
   - **Casual Mode**: Instant deals, zero-stress casual play with win/loss tracking and no bankroll overhead. Switching modes prompts confirmation and automatically persists preferences to disk.

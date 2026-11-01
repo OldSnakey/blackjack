@@ -164,7 +164,7 @@ class TestDealerWardrobeDialog(unittest.TestCase):
         self.assertIsNone(self.app._wardrobe_dialog)
 
     def test_wardrobe_tab2_hof_scrollable_plaques(self):
-        """Tab 2 (Hall of Fame) contains all 8 plaques in a scrollable frame with mousewheel support."""
+        """Tab 2 (Hall of Fame) contains all 12 plaques in a scrollable frame with mousewheel support."""
         self.app._on_click_stage_hanger()
         dialog = self.app._wardrobe_dialog
         self.assertIsNotNone(dialog)
@@ -173,10 +173,22 @@ class TestDealerWardrobeDialog(unittest.TestCase):
         dialog._switch_tab(1)
         self.assertEqual(dialog.current_tab, 1)
 
-        # Check all 8 plaques are registered
-        self.assertEqual(len(dialog.plaque_widgets), 8)
-        for ach_id in ("exorcist", "high_roller", "natural_streak", "cursed_survivor",
-                       "split_maestro", "big_spender", "apprentice_counter", "master_counter"):
+        # Check all 12 plaques are registered
+        self.assertEqual(len(dialog.plaque_widgets), 12)
+        for ach_id in (
+            "exorcist",
+            "high_roller",
+            "natural_streak",
+            "cursed_survivor",
+            "split_maestro",
+            "big_spender",
+            "apprentice_counter",
+            "master_counter",
+            "shoe_whisperer",
+            "count_capitalist",
+            "pair_perfectionist",
+            "poker_face",
+        ):
             self.assertIn(ach_id, dialog.plaque_widgets)
 
         # Verify scrollable canvas or mousewheel support on Tab 2

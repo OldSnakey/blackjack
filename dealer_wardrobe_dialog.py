@@ -812,6 +812,34 @@ class WardrobeDialog(tkinter.Toplevel):
             "reward": "Vladimir (Crimson Nocturne) Persona",
             "criteria": "20 Counting Quiz Streak",
         },
+        {
+            "id": "shoe_whisperer",
+            "title": "👞 Shoe Whisperer",
+            "desc": "Complete an entire card shoe to the cut card maintaining 100% quiz accuracy (min 3 quizzes).",
+            "reward": "Counting Savant",
+            "criteria": "100% Shoe Accuracy",
+        },
+        {
+            "id": "count_capitalist",
+            "title": "📈 Count Capitalist",
+            "desc": "Exploit player advantage by winning a $1,000+ wager when True Count is +3.0 or higher.",
+            "reward": "Advantage Playmaker",
+            "criteria": "Win $1,000+ at TC ≥ +3.0",
+        },
+        {
+            "id": "pair_perfectionist",
+            "title": "💎 Pair Perfectionist",
+            "desc": "Hit an authentic 25:1 payout with an identical suit and rank Perfect Pair.",
+            "reward": "Diamond Payout",
+            "criteria": "Win 25:1 Perfect Pair",
+        },
+        {
+            "id": "poker_face",
+            "title": "🃏 Poker Face",
+            "desc": "Hit Three of a Kind, Straight Flush, or Suited Trips on a 21+3 side bet.",
+            "reward": "Card Sharp Title",
+            "criteria": "Win 21+3 Premium Hand",
+        },
     ]
 
     def __init__(self, parent: tkinter.Tk, app: Any, initial_tab: int = 0):

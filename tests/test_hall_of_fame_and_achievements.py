@@ -185,7 +185,7 @@ class TestHallOfFameAndAchievements(unittest.TestCase):
         dialog._switch_tab(1)
         self.assertEqual(dialog.current_tab, 1)
 
-        # Verify all 6 core achievement plaques exist
+        # Verify all 12 achievement plaques exist
         expected_plaques = (
             "exorcist",
             "high_roller",
@@ -193,6 +193,12 @@ class TestHallOfFameAndAchievements(unittest.TestCase):
             "cursed_survivor",
             "split_maestro",
             "big_spender",
+            "apprentice_counter",
+            "master_counter",
+            "shoe_whisperer",
+            "count_capitalist",
+            "pair_perfectionist",
+            "poker_face",
         )
         for ach_id in expected_plaques:
             self.assertIn(ach_id, dialog.plaque_widgets, f"Achievement plaque missing: {ach_id}")
