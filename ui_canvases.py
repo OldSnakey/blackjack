@@ -2542,7 +2542,10 @@ class TableFeltCanvas(tkinter.Canvas):
                 pass
         target = self._card_anim_targets.pop(item_id, None)
         if target:
-            self.move_card_sprite(item_id, target[0], target[1])
+            try:
+                self.move_card_sprite(item_id, target[0], target[1])
+            except Exception:
+                pass
         cb = self._card_anim_callbacks.pop(item_id, None)
         if cb:
             try:

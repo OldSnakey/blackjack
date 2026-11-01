@@ -3833,7 +3833,7 @@ class BlackjackApp:
 
         # 4. Check if Hand 1 reached 21 on the deal
         if score_hand(self.player_hands[0]) == BLACKJACK_TARGET:
-            self.on_stand()
+            self.on_stand(auto=True)
 
     def on_double_down(self):
         """
@@ -3888,7 +3888,7 @@ class BlackjackApp:
                 self._update_player_score_display()
                 self._update_action_buttons()
                 if self._score_player_hand(self.player_hands[self.active_hand_index]) == BLACKJACK_TARGET:
-                    self.on_stand()
+                    self.on_stand(auto=True)
             else:
                 all_busted = all(self._score_player_hand(h) > BLACKJACK_TARGET for h in self.player_hands)
                 if all_busted:
@@ -3903,7 +3903,7 @@ class BlackjackApp:
                     self._dealer_timer_id = self.root.after(DEALER_DRAW_DELAY_MS, self._dealer_step)
         else:
             # Automatically stand after receiving exactly one card
-            self.on_stand()
+            self.on_stand(auto=True)
 
     def on_surrender(self):
         """
@@ -3969,7 +3969,7 @@ class BlackjackApp:
                 self._update_player_score_display()
                 self._update_action_buttons()
                 if self._score_player_hand(self.player_hands[self.active_hand_index]) == BLACKJACK_TARGET:
-                    self.on_stand()
+                    self.on_stand(auto=True)
             else:
                 # Final hand has completed (busted)
                 all_busted = all(self._score_player_hand(h) > BLACKJACK_TARGET for h in self.player_hands)
@@ -3985,18 +3985,19 @@ class BlackjackApp:
                     self._reveal_dealer_hole_card()
                     self._dealer_timer_id = self.root.after(DEALER_DRAW_DELAY_MS, self._dealer_step)
         elif current_score == BLACKJACK_TARGET:
-            self.on_stand()
+            self.on_stand(auto=True)
         else:
             self._update_action_buttons()
 
-    def on_stand(self):
+    def on_stand(self, auto: bool = False):
         """
         Handles the 'Stand' player action.
         If playing split hands and Hand 1 stands, advances to Hand 2.
         Once all player hands have stood, begins dealer turn.
         """
-        if not self.fsm.trigger("stand"):
-            return
+        if not auto:
+            if not self.fsm.trigger("stand"):
+                return
         self.double_button.configure(state="disabled")
         self.split_button.configure(state="disabled")
         self.surrender_button.configure(state="disabled")
@@ -4008,7 +4009,7 @@ class BlackjackApp:
             self._update_player_score_display()
             self._update_action_buttons()
             if score_hand(self.player_hands[self.active_hand_index]) == BLACKJACK_TARGET:
-                self.on_stand()
+                self.on_stand(auto=True)
             return
 
         # All player hands completed -> transition to dealer turn

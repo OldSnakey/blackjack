@@ -171,6 +171,33 @@ class TestGuiStateInvariants(unittest.TestCase):
         self.assertEqual(self.app.new_game_button["state"], "normal")
         self.assertEqual(self.app.player_wins_var.get(), initial_wins + 1)
 
+    def test_player_hit_to_twenty_one_auto_stands_during_in_flight_animation(self):
+        """When hitting reaches 21, auto-stand must progress to dealer turn even if card animation is in-flight."""
+        from rules import RoundPhase
+
+        c7 = Card(7, self.app.back_image, "7", "club")
+        c4 = Card(4, self.app.back_image, "4", "heart")
+        c10 = Card(10, self.app.back_image, "10", "spade")
+        self.app.player_hands = [[c7, c4]]
+        self.app.dealer_hand = [c10, Card(8, self.app.back_image, "8", "diamond")]
+        self.app.deck = [c10] * 10
+        self.app.round_phase = RoundPhase.PLAYER_TURN
+        self.app.fsm.in_flight = False
+
+        # Intercept _deal_card_to_player to simulate a real mapped window where _dealing is True during animation
+        orig_deal = self.app._deal_card_to_player
+        def _deal_with_in_flight(*args, **kwargs):
+            orig_deal(*args, **kwargs)
+            self.app._dealing = True  # In a mapped window, animate_card_slide sets _dealing = True
+
+        self.app._deal_card_to_player = _deal_with_in_flight
+        self.app.on_hit()
+
+        self.assertEqual(self.app._score_player_hand(self.app.player_hands[0]), 21)
+        self.assertEqual(self.app.round_phase, RoundPhase.DEALER_TURN)
+        self.assertIsNotNone(self.app._dealer_timer_id)
+        self.assertFalse(self.app.is_hole_card_hidden)
+
     def test_push_increments_ties_var(self):
         """Equal scores correctly increment ties_var counter."""
         initial_ties = self.app.ties_var.get()
