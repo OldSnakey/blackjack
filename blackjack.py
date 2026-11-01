@@ -3467,9 +3467,10 @@ class BlackjackApp:
                 if animate_new_card and (i == num_cards - 1):
                     shoe_x, shoe_y = canvas.get_shoe_mouth_coords()
                     self._dealing = True
-                    def _on_done():
-                        self._dealing = False
-                    canvas.animate_card_slide(item_id, shoe_x, shoe_y, target_x, target_y, on_complete=_on_done)
+                    canvas.animate_card_slide(
+                        item_id, shoe_x, shoe_y, target_x, target_y,
+                        on_complete=self._on_card_animation_complete,
+                    )
 
             new_sprites.append(item_id)
 
@@ -3604,9 +3605,10 @@ class BlackjackApp:
                     if should_anim:
                         shoe_x, shoe_y = canvas.get_shoe_mouth_coords()
                         self._dealing = True
-                        def _on_done():
-                            self._dealing = False
-                        canvas.animate_card_slide(item_id, shoe_x, shoe_y, card_x, card_y, on_complete=_on_done)
+                        canvas.animate_card_slide(
+                            item_id, shoe_x, shoe_y, card_x, card_y,
+                            on_complete=self._on_card_animation_complete,
+                        )
 
                 new_sprites.append(item_id)
 
@@ -3617,6 +3619,17 @@ class BlackjackApp:
             if hasattr(hand, "sprite_ids"):
                 hand.sprite_ids = new_sprites
             current_x += h_width + split_gap
+
+    def _on_card_animation_complete(self):
+        """Callback invoked when a card slide animation settles on the table felt."""
+        if hasattr(self, "card_table_frame") and hasattr(self.card_table_frame, "has_active_card_animations"):
+            if self.card_table_frame.has_active_card_animations():
+                return
+
+        self._dealing = False
+
+        if hasattr(self, "fsm") and self.fsm.phase == RoundPhase.PLAYER_TURN:
+            self._update_action_buttons()
 
     def _update_player_score_display(self):
         """Updates the reactive player score variable."""

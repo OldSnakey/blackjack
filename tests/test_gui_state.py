@@ -64,7 +64,7 @@ class TestGuiStateInvariants(unittest.TestCase):
     def setUp(self):
         self.root = tkinter.Tk()
         self.root.withdraw()
-        self.app = BlackjackApp(self.root, chips_mode=False)
+        self.app = BlackjackApp(self.root, chips_mode=False, sound_enabled=False)
 
     def tearDown(self):
         try:
@@ -137,6 +137,15 @@ class TestGuiStateInvariants(unittest.TestCase):
 
     def test_player_stand_disables_actions_during_dealer_turn(self):
         """Clicking Stand disables Hit, Stand, AND New Game during asynchronous dealer drawing."""
+        self.app.player_hand = [
+            Card(10, self.app.back_image, "10", "heart"),
+            Card(8, self.app.back_image, "8", "spade"),
+        ]
+        self.app.dealer_hand = [
+            Card(10, self.app.back_image, "10", "club"),
+            Card(6, self.app.back_image, "6", "diamond"),
+        ]
+        self.app.round_phase = self.app.fsm.phase.__class__.PLAYER_TURN
         self.app.on_stand()
         self.assertEqual(self.app.hit_button["state"], "disabled")
         self.assertEqual(self.app.stand_button["state"], "disabled")
@@ -179,6 +188,15 @@ class TestGuiStateInvariants(unittest.TestCase):
 
     def test_window_close_cancels_pending_timer(self):
         """Safely cleans up any active dealer timer on window destruction."""
+        self.app.player_hand = [
+            Card(10, self.app.back_image, "10", "heart"),
+            Card(8, self.app.back_image, "8", "spade"),
+        ]
+        self.app.dealer_hand = [
+            Card(10, self.app.back_image, "10", "club"),
+            Card(6, self.app.back_image, "6", "diamond"),
+        ]
+        self.app.round_phase = self.app.fsm.phase.__class__.PLAYER_TURN
         self.app.on_stand()
         timer_id = self.app._dealer_timer_id
         self.assertIsNotNone(timer_id)
@@ -232,6 +250,79 @@ class TestGuiStateInvariants(unittest.TestCase):
         # Key 'A' goes All In
         self.app._on_key_action(self.app._all_in, self.app.all_in_button)
         self.assertEqual(self.app.current_bet_var.get(), 1000)
+
+    def test_deal_hand_animation_settlement_enables_action_buttons(self):
+        """
+        Regression test: When the window is mapped (interactive GUI mode),
+        clicking 'Deal Hand' starts asynchronous card slide animations that set
+        _dealing=True (in_flight=True), temporarily disabling action buttons.
+        Once those card slide animations finish, Hit, Stand, Double, and Surrender
+        must automatically become 'normal' so the player can continue play.
+        """
+        self.app.chips_mode_var.set(True)
+        self.app._on_toggle_chips_mode()
+        self.app.current_bet_var.set(25)
+
+        # Deterministic non-blackjack, non-ace cards (Player: 6+5=11, Dealer: 7+8=15)
+        c1 = Card(6, self.app.back_image, "6", "heart")
+        c2 = Card(5, self.app.back_image, "5", "spade")
+        d1 = Card(7, self.app.back_image, "7", "club")
+        d2 = Card(8, self.app.back_image, "8", "diamond")
+        self.app.deck = [d2, d1, c2, c1]
+
+        # Simulate mapped window so animate_card_slide schedules async timers
+        self.app.card_table_frame.winfo_ismapped = lambda: True
+
+        self.app._deal_hand_with_bet()
+
+        # While animations are in flight, buttons are guarded (disabled)
+        self.assertTrue(self.app._dealing)
+        self.assertTrue(self.app.card_table_frame.has_active_card_animations())
+        self.assertEqual(self.app.hit_button["state"], "disabled")
+        self.assertEqual(self.app.stand_button["state"], "disabled")
+
+        # Complete all in-flight card animations (invokes on_complete callbacks)
+        self.app.card_table_frame.cancel_card_animations()
+
+        # After animations settle, _dealing is False and action buttons must be normal!
+        self.assertFalse(self.app._dealing)
+        self.assertEqual(self.app.hit_button["state"], "normal")
+        self.assertEqual(self.app.stand_button["state"], "normal")
+        self.assertEqual(self.app.double_button["state"], "normal")
+        self.assertEqual(self.app.surrender_button["state"], "normal")
+
+    def test_hit_animation_settlement_reenables_action_buttons(self):
+        """
+        Regression test: Hitting in mapped GUI mode disables buttons while the drawn
+        card slides in, and re-enables Hit/Stand once the slide animation settles.
+        """
+        c1 = Card(6, self.app.back_image, "6", "heart")
+        c2 = Card(5, self.app.back_image, "5", "spade")
+        d1 = Card(7, self.app.back_image, "7", "club")
+        d2 = Card(8, self.app.back_image, "8", "diamond")
+        hit_card = Card(4, self.app.back_image, "4", "heart")
+        self.app.player_hands = [[]]
+        self.app.dealer_hand = []
+        self.app.deck = [hit_card, d2, d1, c2, c1]
+
+        self.app._start_round_deal()
+        self.assertEqual(self.app.hit_button["state"], "normal")
+
+        # Simulate mapped window for the Hit card slide
+        self.app.card_table_frame.winfo_ismapped = lambda: True
+        self.app.on_hit()
+
+        # In-flight guard active during slide
+        self.assertTrue(self.app._dealing)
+        self.assertEqual(self.app.hit_button["state"], "disabled")
+
+        # Settle animation
+        self.app.card_table_frame.cancel_card_animations()
+
+        # Player has 15 (6+5+4), so Hit and Stand must be re-enabled
+        self.assertFalse(self.app._dealing)
+        self.assertEqual(self.app.hit_button["state"], "normal")
+        self.assertEqual(self.app.stand_button["state"], "normal")
 
 
 if __name__ == "__main__":
