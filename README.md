@@ -1,4 +1,4 @@
-# Blackjack v1.4.0 (Python & Tkinter)
+# Blackjack v1.5.0 (Python & Tkinter)
 
 > 🎮 **Play the Game**: Download the standalone, zero-install Windows release on itch.io:  
 > 👉 **[https://wrehman.itch.io/blackjack-classic](https://wrehman.itch.io/blackjack-classic)** *(No Python setup required!)*
@@ -83,6 +83,11 @@ Designed as an educational project for Python learners and junior developers, th
 - **Authentic Dealer Hole Card**: Dealer receives one card face-up and one card face-down (`back.png`). The hidden card is revealed only after the player stands (or when round resolves early).
 - **Dynamic Score Tracking & Beveled Plaques**: Dealer upcard score shows `"X + ?"` until reveal, framed in antique gold-bordered casino score plaques.
 - **Insurance Option**: When the dealer's visible upcard is an Ace in Casino Mode, players are offered an Insurance side bet costing half their main bet and paying 2:1 against a Dealer Natural Blackjack.
+- **Casino Side Bets Subsystem (`rules.py`, `ui_canvases.py`)**:
+  - **Perfect Pairs**: Pays on the player's initial two cards: Mixed Pair (6:1), Colored Pair (12:1), and Perfect Pair (25:1).
+  - **21+3**: Combines the player's initial two cards with the dealer's visible upcard for a 3-card poker hand: Flush (5:1), Straight (10:1), Three of a Kind (30:1), Straight Flush (40:1), and Suited Trips (100:1).
+  - Dedicated diegetic side bet felt spots flanking the main betting circle with full-surface click detection, symmetrical controls (Left-click adds \$5 / Shift+\$25, Right-click clears to \$0), and immediate post-deal resolution animations.
+  - 2 unlockable side bet achievements (*Pair Perfectionist*, *Poker Face*) and persistent tracking in the Hall of Fame.
 - **Hand Splitting**: Split matching rank pairs into two independent hands with active hand indicators, Double After Split (DAS) support, and multi-hand resolution.
 - **Auto-Stand & Mid-Hand Guarding**: Automatically stands on 21; action buttons strictly guard against re-entrant input while animations or dealer draws are in flight.
 - **Authentic Casino Audio (`.ogg`)**: 42 organic audio variations powered by `pygame.mixer` (via `pygame-ce`): card slides, hole card reveals, shoe shuffles, chip clicks, all-in thuds, rakes, and payout slides.
@@ -96,7 +101,7 @@ For casual players and non-engineers who want to play without installing Python 
 **[https://wrehman.itch.io/blackjack-classic](https://wrehman.itch.io/blackjack-classic)**
 
 - **Platform**: Windows 64-bit (Standalone portable release)
-- **Zero Installation**: Extract `Blackjack-Windows-v1.4.0.zip` and double-click `Blackjack.exe` to play.
+- **Zero Installation**: Extract `Blackjack-Windows-v1.5.0.zip` and double-click `Blackjack.exe` to play.
 - **Features Included**: Complete game with Living Dealer, Hell's Table, 2x scaling, sound effects, and persistent achievements.
 
 ---
@@ -129,7 +134,7 @@ To compile the standalone Windows release uploaded to [itch.io](https://wrehman.
 1. Double-click `build_itch_release.bat` (or run `./build_itch_release.ps1` in PowerShell).
 2. The automated pipeline runs regression tests, invokes PyInstaller, bundles documentation, and outputs:
    - `dist/Blackjack-Windows/`: Unpacked folder containing `Blackjack.exe` and bundled assets.
-   - `dist/Blackjack-Windows-v1.4.0.zip`: Optimized ZIP archive ready to upload to [itch.io](https://wrehman.itch.io/blackjack-classic).
+   - `dist/Blackjack-Windows-v1.5.0.zip`: Optimized ZIP archive ready to upload to [itch.io](https://wrehman.itch.io/blackjack-classic).
 
 For complete store page copy, metadata, and upload instructions, see [docs/ITCH_IO_GUIDE.md](docs/ITCH_IO_GUIDE.md).
 
@@ -548,7 +553,7 @@ Blackjack/
 - **Audio, Canvases, Dialogs & Pixel UI (`audio_assets.py`, `ui_canvases.py`, `ui_dialogs.py`, `pixel_ui.py`, `ui_layout.py`)**: `[audio_assets.py:AssetScaler]`, `[audio_assets.py:load_images]`, `[audio_assets.py:SoundManager]`, `[audio_assets.py:KeyboardIconLoader]`, `[ui_canvases.py:ChipVisualizer]`, `[ui_canvases.py:SoulMeterCanvas]`, `[ui_canvases.py:TableAnnouncementHUD]`, `[ui_canvases.py:HauntedAltarCanvas]`, `[ui_canvases.py:DealerStageCanvas]`, `[ui_canvases.py:TableFeltCanvas]`, `[ui_canvases.py:MahoganyRailCanvas]`, `[ui_dialogs.py:StoryDialogueDialog]`, `[ui_dialogs.py:AngelicDraftDialog]`, `[ui_dialogs.py:SettingsDialog]`, `[ui_dialogs.py:ShortcutsDialog]`, `[ui_dialogs.py:WelcomeSplashDialog]`, `[pixel_ui.py:load_all_pixel_fonts]`, `[pixel_ui.py:get_role_font]`, `[pixel_ui.py:get_element_font]`, `[pixel_ui.py:CanvasPixelPanel]`, `[pixel_ui.py:PixelPlaqueFrame]`, `[pixel_ui.py:PixelDialogueFrame]`, `[pixel_ui.py:CanvasPixelButton]`, `[pixel_ui.py:ChipButtonProxy]`, `[ui_layout.py:load_ui_config]`, `[ui_layout.py:get_ui_layout]`, `[ui_layout.py:get_grid_options]`, `[ui_layout.py:get_pack_options]`, `[ui_layout.py:resolve_pil_resample]`
 
 ### Local Invariants
-- `[blackjack.py:__version__]`: Single source of truth for application semantic version (`"1.4.0"`), aliased as `APP_VERSION`.
+- `[blackjack.py:__version__]`: Single source of truth for application semantic version (`"1.5.0"`), aliased as `APP_VERSION`.
 - `[rules.py:score_hand]`: Sums card values with Aces counted as `1` and promotes at most one Ace by `+10` iff `1 in values and score + 10 <= BLACKJACK_TARGET`.
 - `[rules.py:determine_outcome]` and `[rules.py:calculate_payout]`: Split hands (`is_split=True`) with 2-card 21 evaluate as `PLAYER_WINS` (`1:1`), never `NATURAL_BLACKJACK` (`3:2`); `[rules.py:calculate_insurance_payout]` rounds odd-bet insurance profit via `max(main_bet, insurance_bet * INSURANCE_PAYOUT_RATIO)` when `insurance_bet == main_bet // 2`.
 - `[state_machine.py:GameStateMachine.transition_to]`: Enforces `VALID_TRANSITIONS` across `RoundPhase` and raises `InvalidStateTransitionError` on illegal jumps unless `force=True`.
