@@ -341,6 +341,148 @@ def calculate_insurance_payout(dealer_has_blackjack: bool, insurance_bet: int, m
     return insurance_bet + (insurance_bet * INSURANCE_PAYOUT_RATIO)
 
 
+# ============================================================================
+# Casino Side Bets Subsystem: Perfect Pairs & 21+3
+# ============================================================================
+
+RED_SUITS = {"heart", "diamond"}
+BLACK_SUITS = {"spade", "club"}
+
+POKER_RANK_VALUES = {
+    "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9, "10": 10,
+    "jack": 11, "queen": 12, "king": 13, "ace": 14,
+}
+
+
+@dataclass(frozen=True)
+class SideBetResult:
+    """Outcome summary and payout details for an individual resolved side bet."""
+    bet_type: str      # "perfect_pairs" | "21_plus_3"
+    outcome: str       # "PERFECT_PAIR", "COLORED_PAIR", "MIXED_PAIR", "SUITED_TRIPS", "STRAIGHT_FLUSH", "THREE_OF_A_KIND", "STRAIGHT", "FLUSH", "LOSS"
+    label: str         # Human-readable payout label, e.g. "Perfect Pair (25:1)"
+    multiplier: int    # 25, 12, 6, 100, 40, 30, 10, 5, or 0
+    bet: int           # Original wager amount
+    payout: int        # Total return to player (bet + bet * multiplier if won else 0)
+    profit: int        # Net profit (bet * multiplier if won else -bet)
+
+    @property
+    def won(self) -> bool:
+        return self.multiplier > 0 and self.bet > 0
+
+
+def _get_card_rank_and_suit(card: Any) -> tuple[str, str]:
+    """Helper to extract rank and suit strings safely from Card instances or tuples."""
+    if isinstance(card, Card):
+        return card.rank.lower(), card.suit.lower()
+    rank = getattr(card, "rank", "")
+    suit = getattr(card, "suit", "")
+    if rank and suit:
+        return rank.lower(), suit.lower()
+    # Fallback to tuple if card has value
+    val = card[0] if isinstance(card, (tuple, list)) else getattr(card, "value", 0)
+    return str(val), ""
+
+
+def evaluate_perfect_pairs(player_hand: Any, bet: int = 0) -> SideBetResult:
+    """
+    Evaluates the Perfect Pairs side bet against the player's initial two cards.
+
+    Payouts:
+    - Mixed Pair (same rank, different color): 6:1
+    - Colored Pair (same rank, same color, different suit): 12:1
+    - Perfect Pair (identical rank and suit): 25:1
+    - Loss: 0:1
+    """
+    if len(player_hand) < 2 or bet < 0:
+        return SideBetResult("perfect_pairs", "LOSS", "Loss", 0, bet, 0, -bet)
+
+    c1, c2 = player_hand[0], player_hand[1]
+    rank1, suit1 = _get_card_rank_and_suit(c1)
+    rank2, suit2 = _get_card_rank_and_suit(c2)
+
+    # Exclude supernatural card thirteen
+    if rank1 in ("thirteen", "13") or rank2 in ("thirteen", "13") or c1[0] == 13 or c2[0] == 13:
+        return SideBetResult("perfect_pairs", "LOSS", "Loss", 0, bet, 0, -bet)
+
+    if not rank1 or not rank2 or rank1 != rank2:
+        return SideBetResult("perfect_pairs", "LOSS", "Loss", 0, bet, 0, -bet)
+
+    # Ranks match -> determine pair type
+    if suit1 and suit2 and suit1 == suit2:
+        mult = 25
+        outcome = "PERFECT_PAIR"
+        label = "Perfect Pair (25:1)"
+    elif (suit1 in RED_SUITS and suit2 in RED_SUITS) or (suit1 in BLACK_SUITS and suit2 in BLACK_SUITS):
+        mult = 12
+        outcome = "COLORED_PAIR"
+        label = "Colored Pair (12:1)"
+    else:
+        mult = 6
+        outcome = "MIXED_PAIR"
+        label = "Mixed Pair (6:1)"
+
+    payout = (bet + bet * mult) if bet > 0 else 0
+    profit = (bet * mult) if bet > 0 else 0
+    return SideBetResult("perfect_pairs", outcome, label, mult, bet, payout, profit)
+
+
+def evaluate_21_plus_3(player_hand: Any, dealer_upcard: Any, bet: int = 0) -> SideBetResult:
+    """
+    Evaluates the 21+3 side bet combining player's first 2 cards and dealer's upcard as a 3-card poker hand.
+
+    Payouts:
+    - Suited Trips (identical rank and suit): 100:1
+    - Straight Flush (consecutive ranks, same suit): 40:1
+    - Three of a Kind (same rank, different suits): 30:1
+    - Straight (consecutive ranks, mixed suits): 10:1
+    - Flush (same suit, non-consecutive ranks): 5:1
+    - Loss: 0:1
+    """
+    if len(player_hand) < 2 or dealer_upcard is None or bet < 0:
+        return SideBetResult("21_plus_3", "LOSS", "Loss", 0, bet, 0, -bet)
+
+    cards = [player_hand[0], player_hand[1], dealer_upcard]
+    ranks = []
+    suits = []
+    for c in cards:
+        r, s = _get_card_rank_and_suit(c)
+        if r in ("thirteen", "13") or c[0] == 13:
+            return SideBetResult("21_plus_3", "LOSS", "Loss", 0, bet, 0, -bet)
+        ranks.append(r)
+        suits.append(s)
+
+    # 1. Three of a Kind / Suited Trips check
+    is_three_of_a_kind = (ranks[0] == ranks[1] == ranks[2])
+    is_flush = (bool(suits[0]) and suits[0] == suits[1] == suits[2])
+
+    if is_three_of_a_kind and is_flush:
+        return SideBetResult("21_plus_3", "SUITED_TRIPS", "Suited Trips (100:1)", 100, bet, bet + bet * 100, bet * 100)
+
+    # 2. Straight check
+    # Map ranks to integer poker values (2..14)
+    poker_vals = [POKER_RANK_VALUES.get(r, 0) for r in ranks]
+    sorted_vals = sorted(poker_vals)
+    is_straight = False
+    if sorted_vals[0] > 0 and (sorted_vals[0] + 1 == sorted_vals[1] and sorted_vals[1] + 1 == sorted_vals[2]):
+        is_straight = True
+    elif sorted_vals == [2, 3, 14]:  # Ace-low straight: A-2-3
+        is_straight = True
+
+    if is_straight and is_flush:
+        return SideBetResult("21_plus_3", "STRAIGHT_FLUSH", "Straight Flush (40:1)", 40, bet, bet + bet * 40, bet * 40)
+
+    if is_three_of_a_kind:
+        return SideBetResult("21_plus_3", "THREE_OF_A_KIND", "Three of a Kind (30:1)", 30, bet, bet + bet * 30, bet * 30)
+
+    if is_straight:
+        return SideBetResult("21_plus_3", "STRAIGHT", "Straight (10:1)", 10, bet, bet + bet * 10, bet * 10)
+
+    if is_flush:
+        return SideBetResult("21_plus_3", "FLUSH", "Flush (5:1)", 5, bet, bet + bet * 5, bet * 5)
+
+    return SideBetResult("21_plus_3", "LOSS", "Loss", 0, bet, 0, -bet)
+
+
 def breakdown_chips(amount: int) -> list[tuple[int, int]]:
     """
     Decomposes an integer wager into denomination counts greedily from highest to lowest.

@@ -23,11 +23,14 @@ from rules import (
     Card,
     Hand,
     RoundPhase,
+    SideBetResult,
     build_shoe,
     calculate_insurance_payout,
     calculate_payout,
     dealer_should_hit,
     determine_outcome,
+    evaluate_21_plus_3,
+    evaluate_perfect_pairs,
 )
 from state_machine import GameStateMachine
 
@@ -89,6 +92,8 @@ class BlackjackEngine:
         self.insurance_bet: int = 0
         self.last_insurance_lost: int = 0
         self.hole_card_revealed: bool = False
+        self.staged_side_bets: dict[str, int] = {"perfect_pairs": 0, "21_plus_3": 0}
+        self.active_side_bets: dict[str, int] = {"perfect_pairs": 0, "21_plus_3": 0}
 
     @property
     def phase(self) -> RoundPhase:
@@ -125,6 +130,77 @@ class BlackjackEngine:
             {"bet": actual_bet, "bankroll": self.bankroll},
         )
         return actual_bet
+
+    def stage_side_bet(self, bet_type: str, amount: int, sound_hint: str = "set") -> int:
+        """Sets or clamps a staged side bet ('perfect_pairs' or '21_plus_3') bounded by available bankroll."""
+        if bet_type not in self.staged_side_bets:
+            return 0
+        other_side = sum(v for k, v in self.staged_side_bets.items() if k != bet_type)
+        max_allowed = max(0, self.bankroll - self.staged_bet - other_side)
+        clamped = max(0, min(amount, max_allowed))
+        self.staged_side_bets[bet_type] = clamped
+        self.event_bus.emit(
+            GameEventType.SIDE_BET_STAGED,
+            {
+                "bet_type": bet_type,
+                "amount": clamped,
+                "bankroll": self.bankroll,
+                "action": sound_hint,
+            },
+        )
+        return clamped
+
+    def clear_side_bets(self, sound_hint: str = "clear") -> None:
+        """Resets all staged side bets to 0."""
+        self.staged_side_bets = {"perfect_pairs": 0, "21_plus_3": 0}
+        self.event_bus.emit(
+            GameEventType.SIDE_BET_STAGED,
+            {"bet_type": "all", "amount": 0, "bankroll": self.bankroll, "action": sound_hint},
+        )
+
+    def commit_side_bets(self, side_bets: Optional[dict[str, int]] = None) -> dict[str, int]:
+        """Deducts staged side bets from bankroll and moves them to active_side_bets."""
+        source = self.staged_side_bets if side_bets is None else side_bets
+        total_side = sum(source.values())
+        if total_side > self.bankroll:
+            raise ValueError(f"Cannot commit side bets {source} exceeding bankroll {self.bankroll}")
+        self.bankroll -= total_side
+        self.active_side_bets = dict(source)
+        self.staged_side_bets = {"perfect_pairs": 0, "21_plus_3": 0}
+        return self.active_side_bets
+
+    def resolve_side_bets(
+        self,
+        player_hand: Optional[Hand] = None,
+        dealer_upcard: Optional[Card] = None,
+    ) -> dict[str, SideBetResult]:
+        """Evaluates active side bets immediately after the initial deal, crediting payouts."""
+        p_hand = self.player_hands[0] if player_hand is None else player_hand
+        d_up = self.dealer_hand[0] if dealer_upcard is None and len(self.dealer_hand) > 0 else dealer_upcard
+
+        results: dict[str, SideBetResult] = {}
+        pp_bet = self.active_side_bets.get("perfect_pairs", 0)
+        t13_bet = self.active_side_bets.get("21_plus_3", 0)
+
+        pp_res = evaluate_perfect_pairs(p_hand, pp_bet)
+        t13_res = evaluate_21_plus_3(p_hand, d_up, t13_bet)
+        results["perfect_pairs"] = pp_res
+        results["21_plus_3"] = t13_res
+
+        total_payout = 0
+        if pp_res.won:
+            total_payout += pp_res.payout
+        if t13_res.won:
+            total_payout += t13_res.payout
+
+        self.bankroll += total_payout
+        self.active_side_bets = {"perfect_pairs": 0, "21_plus_3": 0}
+
+        self.event_bus.emit(
+            GameEventType.SIDE_BET_RESOLVED,
+            {"results": results, "total_payout": total_payout, "bankroll": self.bankroll},
+        )
+        return results
 
     def rebuy(self, amount: int = STARTING_BANKROLL) -> int:
         """Replenishes bankroll if below MINIMUM_BET."""

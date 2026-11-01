@@ -133,7 +133,7 @@ DEFAULT_UI_CONFIG: dict[str, Any] = {
         },
     },
     "chip_visualizer": {
-        "base_width": 200,
+        "base_width": 260,
         "base_height": 148,
         "grid_placement": {
             "row": 1,
@@ -144,12 +144,26 @@ DEFAULT_UI_CONFIG: dict[str, Any] = {
             "sticky": "se",
         },
         "content_offset": {"x": 0, "y": 8},
+        "perfect_pairs_spot": {
+            "origin": {"x_ratio": 0.16, "y_ratio": 0.24},
+            "outer_oval": {"rx": 34, "ry": 16},
+            "inner_oval": {"rx": 30, "ry": 13},
+            "watermark": {"offset_x": 0, "offset_y": 1},
+            "bet_badge": {"offset_x": 0, "offset_y": -26},
+        },
         "betting_spot": {
             "origin": {"x_ratio": 0.5, "y_ratio": 0.24},
-            "outer_oval": {"rx": 72, "ry": 22},
-            "inner_oval": {"rx": 65, "ry": 18},
+            "outer_oval": {"rx": 46, "ry": 20},
+            "inner_oval": {"rx": 41, "ry": 16},
             "watermark": {"offset_x": 0, "offset_y": 1},
             "bet_badge": {"offset_x": 0, "offset_y": -34},
+        },
+        "twenty_one_plus_three_spot": {
+            "origin": {"x_ratio": 0.84, "y_ratio": 0.24},
+            "outer_oval": {"rx": 34, "ry": 16},
+            "inner_oval": {"rx": 30, "ry": 13},
+            "watermark": {"offset_x": 0, "offset_y": 1},
+            "bet_badge": {"offset_x": 0, "offset_y": -26},
         },
         "tray_divider": {
             "y_ratio": 0.46,

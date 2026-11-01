@@ -36,6 +36,9 @@ class HighScores:
     counting_quizzes_taken: int = 0
     counting_quizzes_correct: int = 0
     counting_accuracy_pct: float = 0.0
+    side_bets_played: int = 0
+    side_bets_won: int = 0
+    biggest_side_bet_win: int = 0
 
 
 @dataclass
@@ -50,6 +53,8 @@ class Achievements:
     master_counter: bool = False     # 20 consecutive correct card counting quiz answers
     shoe_whisperer: bool = False     # Completed a shoe to cut card with 100% quiz accuracy (min 3 quizzes)
     count_capitalist: bool = False   # Won a $1,000+ wager when True Count >= +3.0
+    pair_perfectionist: bool = False # Hit a 25:1 Perfect Pair
+    poker_face: bool = False         # Hit Three of a Kind, Straight Flush, or Suited Trips on 21+3
 
 
 @dataclass
@@ -100,6 +105,9 @@ class SaveData:
                 counting_quizzes_taken=hs_data.get("counting_quizzes_taken", 0),
                 counting_quizzes_correct=hs_data.get("counting_quizzes_correct", 0),
                 counting_accuracy_pct=float(hs_data.get("counting_accuracy_pct", 0.0)),
+                side_bets_played=hs_data.get("side_bets_played", 0),
+                side_bets_won=hs_data.get("side_bets_won", 0),
+                biggest_side_bet_win=hs_data.get("biggest_side_bet_win", 0),
             ),
             achievements=Achievements(
                 exorcist=ach_data.get("exorcist", False),
@@ -112,6 +120,8 @@ class SaveData:
                 master_counter=ach_data.get("master_counter", False),
                 shoe_whisperer=ach_data.get("shoe_whisperer", False),
                 count_capitalist=ach_data.get("count_capitalist", False),
+                pair_perfectionist=ach_data.get("pair_perfectionist", False),
+                poker_face=ach_data.get("poker_face", False),
             ),
             chips_mode=bool(data.get("chips_mode", True)),
             play_mode=str(data.get("play_mode", "betting")),
@@ -209,6 +219,19 @@ class SaveManager:
         if streak > self.data.highscores.longest_win_streak:
             self.data.highscores.longest_win_streak = streak
             self.save()
+
+    def record_side_bet(self, bet_type: str, outcome: str, bet: int, profit: int, won: bool):
+        """Updates side bet statistics, checks high water marks, and evaluates side bet achievements."""
+        self.data.highscores.side_bets_played += 1
+        if won:
+            self.data.highscores.side_bets_won += 1
+            if profit > self.data.highscores.biggest_side_bet_win:
+                self.data.highscores.biggest_side_bet_win = profit
+            if bet_type == "perfect_pairs" and outcome == "PERFECT_PAIR":
+                self.unlock_achievement("pair_perfectionist")
+            elif bet_type == "21_plus_3" and outcome in ("THREE_OF_A_KIND", "STRAIGHT_FLUSH", "SUITED_TRIPS"):
+                self.unlock_achievement("poker_face")
+        self.save()
 
     # --- Achievement & Unlock Tracking ---
 

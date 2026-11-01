@@ -1457,17 +1457,48 @@ class CanvasPixelButton:
                 pass
             self._update_visuals()
 
-    def _on_press(self, _event):
+    def _on_press(self, _event=None):
         if self.enabled:
+            self._is_hovered = True
             self._is_pressed = True
             self._update_visuals()
 
-    def _on_release(self, _event):
+    def _on_release(self, event=None):
         if self.enabled and self._is_pressed:
             self._is_pressed = False
             self._update_visuals()
-            if self._is_hovered and callable(self.command):
+            is_inside = self._is_hovered
+            if not is_inside and event is not None and hasattr(event, "x") and hasattr(event, "y"):
+                try:
+                    cx = self.canvas.canvasx(event.x)
+                    cy = self.canvas.canvasy(event.y)
+                    half_w = self.width / 2
+                    half_h = self.height / 2
+                    is_inside = (self.x - half_w <= cx <= self.x + half_w) and (self.y - half_h <= cy <= self.y + half_h)
+                except Exception:
+                    pass
+            if is_inside and callable(self.command):
                 self.command()
+
+    def _check_pointer_hover(self) -> None:
+        """Inspects whether the cursor is currently over the button and restores hover styling."""
+        try:
+            if not self.canvas.winfo_exists() or not self.canvas.winfo_ismapped():
+                return
+            ptr_x = self.canvas.winfo_pointerx() - self.canvas.winfo_rootx()
+            ptr_y = self.canvas.winfo_pointery() - self.canvas.winfo_rooty()
+            cx = self.canvas.canvasx(ptr_x)
+            cy = self.canvas.canvasy(ptr_y)
+            half_w = self.width / 2
+            half_h = self.height / 2
+            if (self.x - half_w <= cx <= self.x + half_w) and (self.y - half_h <= cy <= self.y + half_h):
+                self._is_hovered = True
+                try:
+                    self.canvas.config(cursor="hand2")
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     def set_enabled(self, enabled: bool):
         """Sets active or recessed disabled state."""
@@ -1475,6 +1506,8 @@ class CanvasPixelButton:
         if not self.enabled:
             self._is_hovered = False
             self._is_pressed = False
+        else:
+            self._check_pointer_hover()
         self._update_visuals()
 
     def set_disabled_text_color(self, color: Optional[str]):

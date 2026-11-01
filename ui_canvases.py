@@ -87,11 +87,15 @@ class ChipVisualizer(tkinter.Canvas):
         background=PANEL_BACKGROUND_COLOR,
         on_chip_click: Optional[Callable[[int], None]] = None,
         on_chip_deduct: Optional[Callable[[int], None]] = None,
-        on_spot_click: Optional[Callable[[], None]] = None,
+        on_spot_click: Optional[Any] = None,
+        on_spot_clear: Optional[Callable[[], None]] = None,
+        on_side_bet_click: Optional[Callable[[str, int], None]] = None,
+        on_side_bet_deduct: Optional[Callable[[str, int], None]] = None,
+        on_side_bet_clear: Optional[Callable[[str], None]] = None,
         **kwargs,
     ):
         cv_cfg = get_ui_layout("chip_visualizer")
-        base_w = width if width is not None else cv_cfg.get("base_width", 200)
+        base_w = width if width is not None else cv_cfg.get("base_width", 260)
         base_h = height if height is not None else cv_cfg.get("base_height", 148)
         super().__init__(
             master, width=base_w, height=base_h, background=background,
@@ -105,12 +109,22 @@ class ChipVisualizer(tkinter.Canvas):
         self.cx, self.cy = resolve_origin(
             get_ui_layout("chip_visualizer", "betting_spot"), base_w, base_h, content_offset=self._get_content_offset()
         )
+        self.rx, self.ry = 54, 20
+        self.pp_cx, self.pp_cy = self.cx, self.cy
+        self.pp_rx, self.pp_ry = 34, 16
+        self.t13_cx, self.t13_cy = self.cx, self.cy
+        self.t13_rx, self.t13_ry = 34, 16
         self.current_bet = 0
+        self.side_bets: dict[str, int] = {"perfect_pairs": 0, "21_plus_3": 0}
         self.available_bankroll = 1000
         self.interactive_bankroll = True
         self.on_chip_click = on_chip_click
         self.on_chip_deduct = on_chip_deduct
         self.on_spot_click = on_spot_click
+        self.on_spot_clear = on_spot_clear
+        self.on_side_bet_click = on_side_bet_click
+        self.on_side_bet_deduct = on_side_bet_deduct
+        self.on_side_bet_clear = on_side_bet_clear
         self._hovered_denom: Optional[int] = None
         self._active_timers: set[str] = set()
         self._felt_slice_photo: Optional[Any] = None
@@ -154,7 +168,7 @@ class ChipVisualizer(tkinter.Canvas):
     def set_scale(self, scale: float):
         """Scales visualizer canvas and re-renders base spot proportionally without table overflow."""
         self.scale = scale
-        self.canvas_width = int(getattr(self, "base_width", 200) * scale)
+        self.canvas_width = int(getattr(self, "base_width", 260) * scale)
         scale_h = 1.0 if scale <= 1.0 else (1.0 + (scale - 1.0) * 0.35)
         self.canvas_height = int(getattr(self, "base_height", 148) * scale_h)
         self.configure(width=self.canvas_width, height=self.canvas_height)
@@ -162,11 +176,22 @@ class ChipVisualizer(tkinter.Canvas):
             get_ui_layout("chip_visualizer", "betting_spot"), self.canvas_width, self.canvas_height,
             content_offset=self._get_content_offset()
         )
+        self.pp_cx, self.pp_cy = resolve_origin(
+            get_ui_layout("chip_visualizer", "perfect_pairs_spot"), self.canvas_width, self.canvas_height,
+            content_offset=self._get_content_offset()
+        )
+        self.t13_cx, self.t13_cy = resolve_origin(
+            get_ui_layout("chip_visualizer", "twenty_one_plus_three_spot"), self.canvas_width, self.canvas_height,
+            content_offset=self._get_content_offset()
+        )
         if self._felt_source_img and self._felt_coords:
             self.sync_felt_background(self._felt_source_img, self._felt_coords[0], self._felt_coords[1])
         self._draw_base_spot()
         if self.current_bet > 0:
             self.render_stacks(self.current_bet)
+        for b_type in ("perfect_pairs", "21_plus_3"):
+            if self.side_bets.get(b_type, 0) > 0:
+                self.render_side_bet_stacks(b_type, self.side_bets[b_type])
         self.render_bankroll_piles()
 
     def _get_content_offset(self) -> tuple[int, int]:
@@ -174,10 +199,10 @@ class ChipVisualizer(tkinter.Canvas):
         return (off.get("x", 0), off.get("y", 0))
 
     def _draw_base_spot(self):
-        """Draws the felt betting spot: outer dashed gold ellipse, inner accent ring, watermark, and badge."""
+        """Draws the felt betting spots: center main bet and flanking side bet spots."""
         self.delete("all")
         w, h = self.canvas_width, self.canvas_height
-        sx = w / float(getattr(self, "base_width", 200))
+        sx = w / float(getattr(self, "base_width", 260))
         sy = h / float(getattr(self, "base_height", 140))
         s_font = min(sx, sy)
 
@@ -185,43 +210,111 @@ class ChipVisualizer(tkinter.Canvas):
         if getattr(self, "_felt_slice_photo", None):
             self.create_image(0, 0, image=self._felt_slice_photo, anchor="nw", tags="felt_bg")
 
-        # Layout resolution for betting spot grouping with content_offset
         content_offset = self._get_content_offset()
+
+        # 1. Left Flanking Spot: Perfect Pairs
+        pp_cfg = get_ui_layout("chip_visualizer", "perfect_pairs_spot")
+        pp_cx, pp_cy = resolve_origin(pp_cfg, w, h, sx, sy, content_offset=content_offset)
+        self.pp_cx, self.pp_cy = pp_cx, pp_cy
+        pp_outer = pp_cfg.get("outer_oval", {"rx": 34, "ry": 16})
+        pp_rx = int(pp_outer["rx"] * sx)
+        pp_ry = int(pp_outer["ry"] * sy)
+        self.pp_rx, self.pp_ry = pp_rx, pp_ry
+        self.create_oval(
+            pp_cx - pp_rx, pp_cy - pp_ry, pp_cx + pp_rx, pp_cy + pp_ry,
+            outline="#d4af37", width=max(1, int(1.5 * s_font)), dash=(3, 3), fill="",
+            tags=("pp_spot_base", "pp_spot_interactive")
+        )
+        pp_inner = pp_cfg.get("inner_oval", {"rx": 30, "ry": 13})
+        pp_in_rx = int(pp_inner["rx"] * sx)
+        pp_in_ry = int(pp_inner["ry"] * sy)
+        self.create_oval(
+            pp_cx - pp_in_rx, pp_cy - pp_in_ry, pp_cx + pp_in_rx, pp_cy + pp_in_ry,
+            outline="#8a6d1b", width=1, dash=(2, 2),
+            tags=("pp_spot_ring", "pp_spot_interactive")
+        )
+        pp_wm = pp_cfg.get("watermark", {"offset_x": 0, "offset_y": 1})
+        pp_wm_x, pp_wm_y = resolve_offset(pp_wm, (pp_cx, pp_cy), sx, sy)
+        self.create_text(
+            pp_wm_x, pp_wm_y, text="PAIRS", fill="#8a6d1b",
+            font=get_element_font("betting_spot_watermark", scale=s_font * 0.85),
+            tags=("pp_watermark", "pp_spot_interactive")
+        )
+        pp_bdg = pp_cfg.get("bet_badge", {"offset_x": 0, "offset_y": -26})
+        pp_bdg_x, pp_bdg_y = resolve_offset(pp_bdg, (pp_cx, pp_cy), sx, sy)
+        self.create_text(
+            pp_bdg_x, max(int(6 * sy), pp_bdg_y), text="", fill="#ffd700",
+            font=get_element_font("chip_bet_badge", scale=s_font * 0.85), tags=("pp_badge", "pp_spot_interactive")
+        )
+
+        # 2. Center Main Betting Spot
         spot_cfg = get_ui_layout("chip_visualizer", "betting_spot")
         cx, cy = resolve_origin(spot_cfg, w, h, sx, sy, content_offset=content_offset)
         self.cx, self.cy = cx, cy
-
-        # 1. Outer betting circle felt background and golden dashed ring
-        outer_cfg = spot_cfg.get("outer_oval", {"rx": 72, "ry": 22})
+        outer_cfg = spot_cfg.get("outer_oval", {"rx": 54, "ry": 20})
         rx = int(outer_cfg["rx"] * sx)
         ry = int(outer_cfg["ry"] * sy)
+        self.rx, self.ry = rx, ry
         self.create_oval(
             cx - rx, cy - ry, cx + rx, cy + ry,
             outline="#d4af37", width=max(1, int(2 * s_font)), dash=(4, 3), fill="", tags=("spot_base", "spot_interactive")
         )
-        # 2. Inner subtle gold accent ring
-        inner_cfg = spot_cfg.get("inner_oval", {"rx": 65, "ry": 18})
+        inner_cfg = spot_cfg.get("inner_oval", {"rx": 49, "ry": 16})
         rx_inner = int(inner_cfg["rx"] * sx)
         ry_inner = int(inner_cfg["ry"] * sy)
         self.create_oval(
             cx - rx_inner, cy - ry_inner, cx + rx_inner, cy + ry_inner,
             outline="#8a6d1b", width=1, dash=(2, 3), tags=("spot_ring", "spot_interactive")
         )
-        # 3. Felt watermark
         wm_cfg = spot_cfg.get("watermark", {"offset_x": 0, "offset_y": 1})
         wm_x, wm_y = resolve_offset(wm_cfg, (cx, cy), sx, sy)
         self.create_text(
             wm_x, wm_y, text="BETTING SPOT", fill="#8a6d1b",
             font=get_element_font("betting_spot_watermark", scale=s_font), tags=("watermark", "spot_interactive")
         )
-        # 4. Top badge for bet amount
         badge_cfg = spot_cfg.get("bet_badge", {"offset_x": 0, "offset_y": -34})
         bet_badge_x, bet_badge_y = resolve_offset(badge_cfg, (cx, cy), sx, sy)
         self.create_text(
             bet_badge_x, max(int(6 * sy), bet_badge_y), text="", fill="#ffd700",
-            font=get_element_font("chip_bet_badge", scale=s_font), tags="badge"
+            font=get_element_font("chip_bet_badge", scale=s_font), tags=("badge", "spot_interactive")
         )
-        # 5. Divider (strictly above reserve chip piles)
+
+        # 3. Right Flanking Spot: 21+3
+        t13_cfg = get_ui_layout("chip_visualizer", "twenty_one_plus_three_spot")
+        t13_cx, t13_cy = resolve_origin(t13_cfg, w, h, sx, sy, content_offset=content_offset)
+        self.t13_cx, self.t13_cy = t13_cx, t13_cy
+        t13_outer = t13_cfg.get("outer_oval", {"rx": 34, "ry": 16})
+        t13_rx = int(t13_outer["rx"] * sx)
+        t13_ry = int(t13_outer["ry"] * sy)
+        self.t13_rx, self.t13_ry = t13_rx, t13_ry
+        self.create_oval(
+            t13_cx - t13_rx, t13_cy - t13_ry, t13_cx + t13_rx, t13_cy + t13_ry,
+            outline="#d4af37", width=max(1, int(1.5 * s_font)), dash=(3, 3), fill="",
+            tags=("t13_spot_base", "t13_spot_interactive")
+        )
+        t13_inner = t13_cfg.get("inner_oval", {"rx": 30, "ry": 13})
+        t13_in_rx = int(t13_inner["rx"] * sx)
+        t13_in_ry = int(t13_inner["ry"] * sy)
+        self.create_oval(
+            t13_cx - t13_in_rx, t13_cy - t13_in_ry, t13_cx + t13_in_rx, t13_cy + t13_in_ry,
+            outline="#8a6d1b", width=1, dash=(2, 2),
+            tags=("t13_spot_ring", "t13_spot_interactive")
+        )
+        t13_wm = t13_cfg.get("watermark", {"offset_x": 0, "offset_y": 1})
+        t13_wm_x, t13_wm_y = resolve_offset(t13_wm, (t13_cx, t13_cy), sx, sy)
+        self.create_text(
+            t13_wm_x, t13_wm_y, text="21+3", fill="#8a6d1b",
+            font=get_element_font("betting_spot_watermark", scale=s_font * 0.85),
+            tags=("t13_watermark", "t13_spot_interactive")
+        )
+        t13_bdg = t13_cfg.get("bet_badge", {"offset_x": 0, "offset_y": -26})
+        t13_bdg_x, t13_bdg_y = resolve_offset(t13_bdg, (t13_cx, t13_cy), sx, sy)
+        self.create_text(
+            t13_bdg_x, max(int(6 * sy), t13_bdg_y), text="", fill="#ffd700",
+            font=get_element_font("chip_bet_badge", scale=s_font * 0.85), tags=("t13_badge", "t13_spot_interactive")
+        )
+
+        # 4. Divider (strictly above reserve chip piles)
         divider_cfg = get_ui_layout("chip_visualizer", "tray_divider")
         tray_top_y = int(h * divider_cfg.get("y_ratio", 0.46)) + int(content_offset[1] * sy)
         margin_div = int(divider_cfg.get("margin_x", 10) * sx)
@@ -229,7 +322,7 @@ class ChipVisualizer(tkinter.Canvas):
             margin_div, tray_top_y, w - margin_div, tray_top_y,
             fill="#8a6d1b", width=1, dash=(2, 2), tags="tray_divider"
         )
-        # 6. Bankroll badge (at bottom)
+        # 5. Bankroll badge (at bottom)
         bankroll_badge_cfg = get_ui_layout("chip_visualizer", "bankroll_badge")
         badge_font = get_element_font("chip_bankroll_badge", scale=s_font)
         f_sz_bdg = abs(badge_font[1]) if isinstance(badge_font, tuple) and len(badge_font) > 1 else int(10 * s_font)
@@ -240,9 +333,18 @@ class ChipVisualizer(tkinter.Canvas):
             font=badge_font, tags="bankroll_badge"
         )
 
-        self.tag_bind("spot_interactive", "<Button-1>", lambda e: self.after(0, self.trigger_spot_click))
-        self.tag_bind("spot_interactive", "<Enter>", lambda e: self.configure(cursor="hand2") if (self.interactive_bankroll and self.current_bet > 0) else None)
+        # Canvas-level full-surface spot hit-dispatch and cursor hover
+        self.bind("<Button-1>", lambda e: self._on_canvas_click(e, is_right_click=False))
+        self.bind("<Button-3>", lambda e: self._on_canvas_click(e, is_right_click=True))
+        self.bind("<Motion>", self._on_canvas_motion)
+
+        # Tag bindings for hover styling
+        self.tag_bind("spot_interactive", "<Enter>", lambda e: self.configure(cursor="hand2") if self.interactive_bankroll else None)
         self.tag_bind("spot_interactive", "<Leave>", lambda e: self.configure(cursor=""))
+        self.tag_bind("pp_spot_interactive", "<Enter>", lambda e: self.configure(cursor="hand2") if self.interactive_bankroll else None)
+        self.tag_bind("pp_spot_interactive", "<Leave>", lambda e: self.configure(cursor=""))
+        self.tag_bind("t13_spot_interactive", "<Enter>", lambda e: self.configure(cursor="hand2") if self.interactive_bankroll else None)
+        self.tag_bind("t13_spot_interactive", "<Leave>", lambda e: self.configure(cursor=""))
 
     def set_bankroll(self, available_bankroll: int, interactive: bool = True):
         """Updates the player's available bankroll chip piles in the bottom reserve tray."""
@@ -266,10 +368,116 @@ class ChipVisualizer(tkinter.Canvas):
         if self.interactive_bankroll and callable(self.on_chip_deduct):
             self.on_chip_deduct(denom)
 
-    def trigger_spot_click(self):
-        """Clears the staged bet when the center betting spot is clicked."""
+    def trigger_spot_click(self, amount: int = 5):
+        """Adds chip amount to staged main bet when left-clicked."""
         if self.interactive_bankroll and callable(self.on_spot_click):
-            self.on_spot_click()
+            try:
+                self.on_spot_click(amount)
+            except TypeError:
+                self.on_spot_click()
+
+    def trigger_spot_clear(self):
+        """Clears the center staged bet when right-clicked."""
+        if not self.interactive_bankroll:
+            return
+        if callable(self.on_spot_clear):
+            self.on_spot_clear()
+        elif callable(self.on_spot_click):
+            try:
+                self.on_spot_click()
+            except TypeError:
+                pass
+
+    def trigger_side_bet_click(self, bet_type: str, amount: int = 5):
+        """Invokes callback when a side bet spot is left-clicked."""
+        if self.interactive_bankroll and callable(self.on_side_bet_click):
+            self.on_side_bet_click(bet_type, amount)
+
+    def trigger_side_bet_deduct(self, bet_type: str, amount: int = 5):
+        """Invokes callback when a side bet spot is right-clicked."""
+        if self.interactive_bankroll and callable(self.on_side_bet_deduct):
+            self.on_side_bet_deduct(bet_type, amount)
+
+    def trigger_side_bet_clear(self, bet_type: str):
+        """Invokes callback when a side bet spot is right-clicked to clear it to $0."""
+        if self.interactive_bankroll and callable(self.on_side_bet_clear):
+            self.on_side_bet_clear(bet_type)
+
+    def _point_in_spot(
+        self,
+        px: int,
+        py: int,
+        cx: int,
+        cy: int,
+        rx: int,
+        ry: int,
+        pad_x: float = 1.15,
+        pad_y_top: float = 1.6,
+        pad_y_bottom: float = 1.15,
+    ) -> bool:
+        """Determines if (px, py) is within the elliptical boundary of a betting spot with chip stack headroom."""
+        if rx <= 0 or ry <= 0:
+            return False
+        dx = px - cx
+        dy = py - cy
+        eff_ry = ry * (pad_y_top if dy < 0 else pad_y_bottom)
+        eff_rx = rx * pad_x
+        return (dx * dx) / (eff_rx * eff_rx) + (dy * dy) / (eff_ry * eff_ry) <= 1.0
+
+    def _on_canvas_click(self, event, is_right_click: bool = False):
+        """Unified full-surface click dispatcher across all three betting spots."""
+        if not self.interactive_bankroll:
+            return None
+        x, y = event.x, event.y
+        shift = bool(getattr(event, "state", 0) & 0x0001)
+        amt = 25 if shift else 5
+
+        # 1. Left Flanking Spot: Perfect Pairs
+        if self._point_in_spot(x, y, self.pp_cx, self.pp_cy, self.pp_rx, self.pp_ry):
+            if is_right_click:
+                self.trigger_side_bet_clear("perfect_pairs")
+            else:
+                self.trigger_side_bet_click("perfect_pairs", amt)
+            return "break"
+
+        # 2. Right Flanking Spot: 21+3
+        if self._point_in_spot(x, y, self.t13_cx, self.t13_cy, self.t13_rx, self.t13_ry):
+            if is_right_click:
+                self.trigger_side_bet_clear("21_plus_3")
+            else:
+                self.trigger_side_bet_click("21_plus_3", amt)
+            return "break"
+
+        # 3. Center Main Betting Spot
+        if self._point_in_spot(x, y, self.cx, self.cy, self.rx, self.ry):
+            if is_right_click:
+                self.trigger_spot_clear()
+            else:
+                self.trigger_spot_click(amt)
+            return "break"
+
+        return None
+
+    def _on_canvas_motion(self, event):
+        """Dynamic cursor hover feedback when moving across betting spots."""
+        if not self.interactive_bankroll:
+            return
+        x, y = event.x, event.y
+        in_any_spot = (
+            self._point_in_spot(x, y, self.pp_cx, self.pp_cy, self.pp_rx, self.pp_ry)
+            or self._point_in_spot(x, y, self.t13_cx, self.t13_cy, self.t13_rx, self.t13_ry)
+            or self._point_in_spot(x, y, self.cx, self.cy, self.rx, self.ry)
+        )
+        if in_any_spot:
+            try:
+                self.configure(cursor="hand2")
+            except Exception:
+                pass
+        elif self._hovered_denom is None:
+            try:
+                self.configure(cursor="")
+            except Exception:
+                pass
 
     def _on_pile_enter(self, _event, denom: int):
         if not self.interactive_bankroll:
@@ -426,6 +634,111 @@ class ChipVisualizer(tkinter.Canvas):
         else:
             self.render_stacks(amount)
 
+    def set_side_bet(self, bet_type: str, amount: int, animate: bool = True):
+        """Updates the visualized side bet amount ('perfect_pairs' or '21_plus_3')."""
+        self.side_bets[bet_type] = max(0, amount)
+        self.render_side_bet_stacks(bet_type, self.side_bets[bet_type])
+
+    def clear_side_bets_display(self):
+        """Clears all side bet visual stacks and badges."""
+        self.side_bets = {"perfect_pairs": 0, "21_plus_3": 0}
+        self.delete("sb_chip_perfect_pairs")
+        self.delete("sb_chip_21_plus_3")
+        self.delete("floating_sb_perfect_pairs")
+        self.delete("floating_sb_21_plus_3")
+        self.itemconfigure("pp_badge", text="")
+        self.itemconfigure("t13_badge", text="")
+
+    def render_side_bet_stacks(self, bet_type: str, amount: int):
+        """Procedurally draws compact 2.5D chip stacks representing the side bet amount."""
+        tag = f"sb_chip_{bet_type}"
+        badge_tag = "pp_badge" if bet_type == "perfect_pairs" else "t13_badge"
+        self.delete(tag)
+        self.delete(f"anim_{tag}")
+
+        title = "PAIRS" if bet_type == "perfect_pairs" else "21+3"
+        if amount <= 0:
+            self.itemconfigure(badge_tag, text="")
+            return
+
+        self.itemconfigure(badge_tag, text=f"{title}: ${amount:,}")
+
+        breakdown = breakdown_chips(amount)
+        if not breakdown:
+            return
+
+        w, h = self.canvas_width, self.canvas_height
+        sx = w / float(getattr(self, "base_width", 260))
+        sy = h / float(getattr(self, "base_height", 140))
+
+        spot_cx = getattr(self, "pp_cx", self.cx) if bet_type == "perfect_pairs" else getattr(self, "t13_cx", self.cx)
+        spot_cy = getattr(self, "pp_cy", self.cy) if bet_type == "perfect_pairs" else getattr(self, "t13_cy", self.cy)
+
+        num_stacks = len(breakdown)
+        spacing = int(18 * sx)
+        total_span = (num_stacks - 1) * spacing
+        start_x = spot_cx - (total_span // 2)
+        base_y = spot_cy + int(6 * sy)
+
+        spot_tag = "pp_spot_interactive" if bet_type == "perfect_pairs" else "t13_spot_interactive"
+        for s_idx, (denom, count) in enumerate(breakdown):
+            stack_x = start_x + (s_idx * spacing)
+            style = CHIP_STYLES.get(denom, CHIP_STYLES[5])
+            visible_count = min(count, 5)
+            for c_idx in range(visible_count):
+                chip_y = base_y - int(c_idx * 3 * sy)
+                is_top = (c_idx == visible_count - 1)
+                self._draw_single_chip(
+                    stack_x, chip_y, denom, style, is_top=is_top,
+                    count=count if count > 5 and is_top else None, tags=("side_bet_chip", tag, spot_tag), compact=True
+                )
+
+    def animate_side_bet_win(self, bet_type: str, profit: int, label: str = "", animated: bool = True):
+        """Animates winning side bet payout text and collects side bet chips."""
+        self.side_bets[bet_type] = 0
+        tag = f"sb_chip_{bet_type}"
+        badge_tag = "pp_badge" if bet_type == "perfect_pairs" else "t13_badge"
+        if not animated or not self._is_animation_enabled():
+            self.delete(tag)
+            self.itemconfigure(badge_tag, text="")
+            return
+        spot_cx = getattr(self, "pp_cx", self.cx) if bet_type == "perfect_pairs" else getattr(self, "t13_cx", self.cx)
+        spot_cy = getattr(self, "pp_cy", self.cy) if bet_type == "perfect_pairs" else getattr(self, "t13_cy", self.cy)
+        sy = self.canvas_height / float(getattr(self, "base_height", 140))
+        float_tag = f"floating_sb_{bet_type}"
+        self.delete(float_tag)
+        self.create_text(
+            spot_cx, spot_cy - int(18 * sy), text=f"+${profit:,}", fill="#ffd700",
+            font=get_element_font("chip_floating_payout"), tags=float_tag
+        )
+        def float_up(frame=0):
+            if frame >= 4:
+                self._schedule(600, lambda: self.delete(float_tag))
+                self.delete(tag)
+                self.itemconfigure(badge_tag, text="")
+            else:
+                self.move(float_tag, 0, -2)
+                self._schedule(20, lambda: float_up(frame + 1))
+        float_up()
+
+    def animate_side_bet_loss(self, bet_type: str, animated: bool = True):
+        """Animates side bet chips swept away on loss."""
+        self.side_bets[bet_type] = 0
+        tag = f"sb_chip_{bet_type}"
+        badge_tag = "pp_badge" if bet_type == "perfect_pairs" else "t13_badge"
+        if not animated or not self._is_animation_enabled():
+            self.delete(tag)
+            self.itemconfigure(badge_tag, text="")
+            return
+        def sweep(frame=0):
+            if frame >= 4:
+                self.delete(tag)
+                self.itemconfigure(badge_tag, text="")
+            else:
+                self.move(tag, 0, -14)
+                self._schedule(16, lambda: sweep(frame + 1))
+        sweep()
+
     def render_stacks(self, amount: int):
         """Procedurally draws 2.5D chip stacks representing the specified amount."""
         self.delete("chip")
@@ -466,7 +779,7 @@ class ChipVisualizer(tkinter.Canvas):
                 is_top = (c_idx == visible_count - 1)
                 self._draw_single_chip(
                     stack_x, chip_y, denom, style, is_top=is_top,
-                    count=count if count > 6 and is_top else None, tags="chip"
+                    count=count if count > 6 and is_top else None, tags=("chip", "spot_interactive")
                 )
 
     def _draw_single_chip(self, x: int, y: int, denom: int, style: dict, is_top: bool = False, count: int = None, tags="chip", compact: bool = False):
@@ -523,6 +836,8 @@ class ChipVisualizer(tkinter.Canvas):
         self.itemconfigure("badge", text=f"BET: ${new_total:,}")
         self.clear_timers()
         self.delete("anim_chip")
+        if new_total <= added_amount:
+            self.delete("chip")
 
         if not animated or not self._is_animation_enabled():
             self.render_stacks(new_total)
@@ -552,13 +867,14 @@ class ChipVisualizer(tkinter.Canvas):
         self._schedule(16, frame1)
 
     def animate_clear(self, animated: bool = True):
-        """Animates chips sliding downwards off the table when bet is cleared."""
+        """Animates chips sliding downwards off the table when main bet is cleared."""
         self.current_bet = 0
+        self.clear_timers()
+        self.itemconfigure("badge", text="")
         if not animated or not self._is_animation_enabled():
             self.delete("chip")
             self.delete("anim_chip")
             self.delete("floating_text")
-            self.itemconfigure("badge", text="")
             return
 
         def step(count=0):
@@ -566,7 +882,6 @@ class ChipVisualizer(tkinter.Canvas):
                 self.delete("chip")
                 self.delete("anim_chip")
                 self.delete("floating_text")
-                self.itemconfigure("badge", text="")
             else:
                 self.move("chip", 0, 14)
                 self.move("anim_chip", 0, 14)

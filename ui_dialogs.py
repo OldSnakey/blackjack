@@ -503,6 +503,12 @@ class SettingsDialog(tkinter.Toplevel):
         )
         self.lbl_counting.pack(fill="x", pady=1)
 
+        self.lbl_side_bets = tkinter.Label(
+            self.stats_frame, text="", font=get_body_font(11),
+            fg="#e0e0e0", background=PANEL_BACKGROUND_COLOR, anchor="w"
+        )
+        self.lbl_side_bets.pack(fill="x", pady=1)
+
         self.lbl_exorcist = tkinter.Label(
             self.stats_frame, text="", font=get_body_font(11),
             fg="#e0e0e0", background=PANEL_BACKGROUND_COLOR, anchor="w"
@@ -552,6 +558,13 @@ class SettingsDialog(tkinter.Toplevel):
         curr_cnt = getattr(hs, "counting_streak", 0)
         self.lbl_counting.configure(
             text=f"• Card Counting Drill Streak: {curr_cnt} (All-Time Best: {best_cnt})"
+        )
+        sb_played = getattr(hs, "side_bets_played", 0)
+        sb_won = getattr(hs, "side_bets_won", 0)
+        sb_max = getattr(hs, "biggest_side_bet_win", 0)
+        sb_pct = (sb_won / sb_played * 100.0) if sb_played > 0 else 0.0
+        self.lbl_side_bets.configure(
+            text=f"• Side Bets Won / Played: {sb_won:,} / {sb_played:,} ({sb_pct:.1f}% Win Rate)  (Best Win: ${sb_max:,})"
         )
         exorcist_str = "✦ UNLOCKED (Cursed Stakes Active)" if data.achievements.exorcist else "Locked (Survive Hell's Table)"
         self.lbl_exorcist.configure(
@@ -848,6 +861,8 @@ class ShortcutsDialog(tkinter.Toplevel):
         add_row(panel_betting, ["keyboard_3"], "Bet $100", "(Green chip)")
         add_row(panel_betting, ["keyboard_4"], "Bet $500", "(Black & Gold chip)")
         add_row(panel_betting, ["keyboard_5"], "Bet $1,000", "(Platinum chip)")
+        add_row(panel_betting, ["keyboard_q"], "Perfect Pairs +$5", "(Left spot / 6)")
+        add_row(panel_betting, ["keyboard_e"], "21+3 Poker +$5", "(Right spot / 7)")
         add_row(panel_betting, ["keyboard_a"], "All In", "(Wager entire bankroll)")
         add_row(panel_betting, ["keyboard_c"], "Clear Bet", "(Reset bet to $0)")
 

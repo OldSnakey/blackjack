@@ -27,6 +27,8 @@ class GameEventType(Enum):
     INSURANCE_TAKEN = "insurance_taken"
     INSURANCE_DECLINED = "insurance_declined"
     SHOE_RESHUFFLED = "shoe_reshuffled"
+    SIDE_BET_STAGED = "side_bet_staged"
+    SIDE_BET_RESOLVED = "side_bet_resolved"
 
 
 @dataclass(frozen=True)

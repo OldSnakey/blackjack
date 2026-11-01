@@ -85,10 +85,172 @@ class TestChipVisualizerInteractions(unittest.TestCase):
         self.assertEqual(self.deducted, [25])
 
     def test_spot_click_clears_bet(self):
-        """Clicking the center betting spot calls on_spot_click."""
+        """Clicking the center betting spot calls on_spot_click in legacy 0-arg configuration."""
         self.assertFalse(self.spot_cleared)
         self.viz.trigger_spot_click()
         self.assertTrue(self.spot_cleared)
+
+    def test_spot_symmetric_add_and_clear(self):
+        """Center spot supports left-click add and right-click clear."""
+        main_added = []
+        main_cleared = []
+        sb_added = []
+        sb_cleared = []
+
+        viz = ChipVisualizer(
+            self.root,
+            width=260,
+            height=140,
+            on_spot_click=lambda amt: main_added.append(amt),
+            on_spot_clear=lambda: main_cleared.append(True),
+            on_side_bet_click=lambda b, amt: sb_added.append((b, amt)),
+            on_side_bet_clear=lambda b: sb_cleared.append(b),
+        )
+        viz.pack()
+        viz.set_bankroll(1000, interactive=True)
+        self.root.update_idletasks()
+
+        # Left-click on center spot adds $5
+        viz.trigger_spot_click(5)
+        self.assertEqual(main_added, [5])
+
+        # Right-click on center spot clears main bet
+        viz.trigger_spot_clear()
+        self.assertEqual(main_cleared, [True])
+
+        # Side bets also support left-click add and right-click clear symmetrically
+        viz.trigger_side_bet_click("perfect_pairs", 5)
+        self.assertEqual(sb_added, [("perfect_pairs", 5)])
+
+        viz.trigger_side_bet_clear("perfect_pairs")
+        self.assertEqual(sb_cleared, ["perfect_pairs"])
+
+        viz.destroy()
+
+    def test_canvas_event_full_surface_and_chip_hit_detection(self):
+        """Synthetic canvas events on spots and stacked chips correctly route to actions without dead pixels."""
+        main_added = []
+        main_cleared = []
+        sb_added = []
+        sb_cleared = []
+
+        viz = ChipVisualizer(
+            self.root,
+            width=260,
+            height=140,
+            on_spot_click=lambda amt: main_added.append(amt),
+            on_spot_clear=lambda: main_cleared.append(True),
+            on_side_bet_click=lambda b, amt: sb_added.append((b, amt)),
+            on_side_bet_clear=lambda b: sb_cleared.append(b),
+        )
+        viz.pack()
+        viz.set_bankroll(1000, interactive=True)
+        # Render chips on all spots
+        viz.render_stacks(25)
+        viz.render_side_bet_stacks("perfect_pairs", 15)
+        viz.render_side_bet_stacks("21_plus_3", 10)
+        self.root.update_idletasks()
+
+        # Simulate left-click directly on Perfect Pairs spot center
+        ev_pp_left = type("Event", (), {"x": viz.pp_cx, "y": viz.pp_cy, "state": 0})()
+        viz._on_canvas_click(ev_pp_left, is_right_click=False)
+        self.assertEqual(sb_added, [("perfect_pairs", 5)])
+
+        # Simulate left-click on Perfect Pairs chip stack (slightly elevated above center)
+        ev_pp_chip = type("Event", (), {"x": viz.pp_cx, "y": viz.pp_cy - 8, "state": 0})()
+        viz._on_canvas_click(ev_pp_chip, is_right_click=False)
+        self.assertEqual(sb_added, [("perfect_pairs", 5), ("perfect_pairs", 5)])
+
+        # Simulate right-click on Perfect Pairs chips
+        viz._on_canvas_click(ev_pp_chip, is_right_click=True)
+        self.assertEqual(sb_cleared, ["perfect_pairs"])
+
+        # Simulate left-click on center Main Bet chips (elevated above center)
+        ev_main_chip = type("Event", (), {"x": viz.cx, "y": viz.cy - 10, "state": 0x0001})()  # Shift held -> 25
+        viz._on_canvas_click(ev_main_chip, is_right_click=False)
+        self.assertEqual(main_added, [25])
+
+        # Simulate right-click on center Main Bet
+        viz._on_canvas_click(ev_main_chip, is_right_click=True)
+        self.assertEqual(main_cleared, [True])
+
+        # Simulate click on 21+3 spot
+        ev_t13 = type("Event", (), {"x": viz.t13_cx, "y": viz.t13_cy, "state": 0})()
+        viz._on_canvas_click(ev_t13, is_right_click=False)
+        self.assertEqual(sb_added[-1], ("21_plus_3", 5))
+
+        viz.destroy()
+
+    def test_no_double_firing_on_tagged_elements(self):
+        """Clicks directly on watermark text, badges, or chips must invoke callback exactly once for $5, never $10."""
+        self.root.deiconify()
+        try:
+            main_added = []
+            viz = ChipVisualizer(
+                self.root,
+                width=260,
+                height=140,
+                on_spot_click=lambda amt: main_added.append(amt),
+            )
+            viz.pack()
+            viz.set_bankroll(1000, interactive=True)
+            self.root.update()
+
+            # Watermark coords
+            wm_items = viz.find_withtag("watermark")
+            self.assertTrue(len(wm_items) > 0)
+            wm_coords = viz.coords(wm_items[0])
+
+            # Event generation on the canvas
+            viz.event_generate("<Button-1>", x=int(wm_coords[0]), y=int(wm_coords[1]))
+            self.root.update()
+
+            # Must be called exactly once with 5, never [5, 5] ($10)
+            self.assertEqual(main_added, [5], f"Expected exactly [5] but got {main_added} (double-firing detected)")
+
+            viz.destroy()
+        finally:
+            self.root.withdraw()
+
+    def test_clear_followed_immediately_by_add_resets_accurately(self):
+        """Immediately adding chips after clear resets badge text and renders fresh bet without resurrecting old bet."""
+        viz = ChipVisualizer(
+            self.root,
+            width=260,
+            height=140,
+        )
+        viz.pack()
+        viz.set_bankroll(1000, interactive=True)
+        self.root.update_idletasks()
+
+        # Rapidly add chips up to 50
+        for amt in (10, 20, 30, 40, 50):
+            viz.animate_chip_drop(10, amt)
+
+        self.assertEqual(viz.current_bet, 50)
+        self.assertEqual(viz.itemcget("badge", "text"), "BET: $50")
+
+        # Clear bet
+        viz.animate_clear()
+        self.assertEqual(viz.current_bet, 0)
+        # Badge must be cleared immediately, not delayed
+        self.assertEqual(viz.itemcget("badge", "text"), "")
+
+        # Immediately left click to add 5
+        viz.animate_chip_drop(5, 5)
+        self.assertEqual(viz.current_bet, 5)
+        self.assertEqual(viz.itemcget("badge", "text"), "BET: $5")
+
+        # Wait out any animation ticks
+        for _ in range(5):
+            self.root.after(20)
+            self.root.update_idletasks()
+
+        # After all ticks complete, total must still be 5, never old bet (50) + 5
+        self.assertEqual(viz.current_bet, 5)
+        self.assertEqual(viz.itemcget("badge", "text"), "BET: $5")
+
+        viz.destroy()
 
     def test_interactions_suppressed_when_non_interactive(self):
         """Clicks and hover are ignored when interactive_bankroll is False."""

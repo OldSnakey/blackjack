@@ -437,10 +437,28 @@ class BlackjackApp:
             if hasattr(self, "card_counting_hud"):
                 self._refresh_strategy_hint()
 
+        def _on_side_bet_staged(ev: GameEvent):
+            b_type = ev.payload.get("bet_type", "")
+            amt = ev.payload.get("amount", 0)
+            act = ev.payload.get("action", "")
+            if hasattr(self, "chip_visualizer"):
+                if b_type == "all" and amt == 0:
+                    self.chip_visualizer.clear_side_bets_display()
+                elif b_type in ("perfect_pairs", "21_plus_3"):
+                    self.chip_visualizer.set_side_bet(b_type, amt, animate=True)
+            self._update_bankroll_display()
+            self._update_betting_controls()
+            if hasattr(self, "sound_manager"):
+                if act == "add":
+                    self.sound_manager.play_chip_add()
+                elif act in ("clear", "deduct"):
+                    self.sound_manager.play_chip_clear()
+
         self.event_bus.subscribe(GameEventType.BET_STAGED, _on_bet_staged)
         self.event_bus.subscribe(GameEventType.BET_COMMITTED, _on_bet_committed)
         self.event_bus.subscribe(GameEventType.CARD_DEALT, _on_card_dealt)
         self.event_bus.subscribe(GameEventType.PHASE_CHANGED, _on_phase_changed)
+        self.event_bus.subscribe(GameEventType.SIDE_BET_STAGED, _on_side_bet_staged)
 
     def __init__(
         self,
@@ -1009,7 +1027,11 @@ class BlackjackApp:
             background=PANEL_BACKGROUND_COLOR,
             on_chip_click=self._add_chip_bet,
             on_chip_deduct=self._deduct_chip_bet,
-            on_spot_click=self._clear_bet,
+            on_spot_click=lambda amt=5: self._add_chip_bet(amt),
+            on_spot_clear=self._clear_main_bet,
+            on_side_bet_click=self._add_side_bet,
+            on_side_bet_deduct=self._deduct_side_bet,
+            on_side_bet_clear=self._clear_single_side_bet,
         )
         self.chip_visualizer.grid(**get_grid_options("chip_visualizer"))
         if not self.chips_mode_var.get():
@@ -1240,6 +1262,12 @@ class BlackjackApp:
         }
         for k, amt in chip_keys.items():
             self.root.bind(k, lambda e, a=amt: self._on_key_chip(a))
+
+        # Side bet shortcuts during betting phase: Q/6=Perfect Pairs, E/7=21+3
+        for key in ("<q>", "<Q>", "<Key-6>", "<KP_6>"):
+            self.root.bind(key, lambda e: self._add_side_bet("perfect_pairs", 5))
+        for key in ("<e>", "<E>", "<Key-7>", "<KP_7>"):
+            self.root.bind(key, lambda e: self._add_side_bet("21_plus_3", 5))
 
     def _on_key_action(self, action_fn, button=None):
         """Invokes an action function if the corresponding button is currently enabled and not dealing."""
@@ -2867,6 +2895,12 @@ class BlackjackApp:
         if hasattr(self, "announcement_hud"):
             self.announcement_hud.dismiss()
 
+        # Reset side bets for the fresh round (side bets do not carry over)
+        if hasattr(self, "engine"):
+            self.engine.clear_side_bets(sound_hint="reset")
+        elif hasattr(self, "chip_visualizer"):
+            self.chip_visualizer.clear_side_bets_display()
+
         # 1. Reset deck/shoe and hands
         if not self.deck or self.shoe_needs_reshuffle or len(self.deck) < 15:
             self.deck = build_shoe(self.all_cards, self.deck_count)
@@ -2994,6 +3028,10 @@ class BlackjackApp:
         self._deal_card_to_dealer(is_hole_card=False)
         self._deal_card_to_dealer(is_hole_card=True)
 
+        # Settle side bets immediately after the initial deal
+        if self.chips_mode_var.get() and hasattr(self, "engine"):
+            self._resolve_side_bets()
+
         # Check if player immediately busted on deal (e.g. Cursed Card 13)
         player_score = self._score_player_hand(self.player_hands[0])
         if player_score > BLACKJACK_TARGET:
@@ -3087,23 +3125,76 @@ class BlackjackApp:
             self.engine.stage_bet(new_bet, sound_hint="add")
 
     def _deduct_chip_bet(self, amount: int):
-        """Deducts chip denomination from the staged bet, bounded by current bet amount."""
+        """Deducts chip denomination from the staged bet, or active side bets if main bet is 0."""
         if not self.fsm.trigger("stage_bet"):
             return
         current_bet = self.current_bet_var.get()
-        if current_bet <= 0:
-            return
-        deduct_amt = min(current_bet, amount)
-        new_bet = current_bet - deduct_amt
-        self.current_bet_var.set(new_bet)
-        self.engine.stage_bet(new_bet, sound_hint="deduct")
+        if current_bet > 0:
+            deduct_amt = min(current_bet, amount)
+            new_bet = current_bet - deduct_amt
+            self.current_bet_var.set(new_bet)
+            self.engine.stage_bet(new_bet, sound_hint="deduct")
+        elif hasattr(self, "engine") and hasattr(self.engine, "staged_side_bets"):
+            sb_t13 = self.engine.staged_side_bets.get("21_plus_3", 0)
+            sb_pp = self.engine.staged_side_bets.get("perfect_pairs", 0)
+            if sb_t13 > 0:
+                new_t13 = max(0, sb_t13 - amount)
+                self.engine.stage_side_bet("21_plus_3", new_t13, sound_hint="deduct")
+            elif sb_pp > 0:
+                new_pp = max(0, sb_pp - amount)
+                self.engine.stage_side_bet("perfect_pairs", new_pp, sound_hint="deduct")
 
-    def _clear_bet(self):
-        """Resets the staged bet back to 0."""
+    def _clear_single_side_bet(self, bet_type: str):
+        """Clears a single staged side bet back to $0 and refreshes displays."""
+        if not self.is_betting_phase or not hasattr(self, "engine"):
+            return
+        self.engine.stage_side_bet(bet_type, 0, sound_hint="clear")
+        if hasattr(self, "chip_visualizer"):
+            self.chip_visualizer.set_side_bet(bet_type, 0)
+        self._update_bankroll_display()
+        self._update_betting_controls()
+        if hasattr(self, "sound_manager"):
+            self.sound_manager.play_chip_clear()
+
+    def _clear_main_bet(self):
+        """Resets only the staged main bet back to 0, leaving side bets intact."""
         if not self.fsm.trigger("stage_bet"):
             return
         self.current_bet_var.set(0)
         self.engine.stage_bet(0, sound_hint="clear")
+        self._update_bankroll_display()
+        self._update_betting_controls()
+        if hasattr(self, "sound_manager"):
+            self.sound_manager.play_chip_clear()
+
+    def _clear_bet(self):
+        """Resets the staged bet and all staged side bets back to 0."""
+        if not self.fsm.trigger("stage_bet"):
+            return
+        self.current_bet_var.set(0)
+        self.engine.stage_bet(0, sound_hint="clear")
+        self._clear_side_bets()
+
+    def _add_side_bet(self, bet_type: str, amount: int = 5):
+        """Adds chip amount to specified staged side bet."""
+        if not self.is_betting_phase or not hasattr(self, "engine"):
+            return
+        curr = self.engine.staged_side_bets.get(bet_type, 0)
+        self.engine.stage_side_bet(bet_type, curr + amount, sound_hint="add")
+
+    def _deduct_side_bet(self, bet_type: str, amount: int = 5):
+        """Deducts chip amount from specified staged side bet."""
+        if not self.is_betting_phase or not hasattr(self, "engine"):
+            return
+        curr = self.engine.staged_side_bets.get(bet_type, 0)
+        self.engine.stage_side_bet(bet_type, max(0, curr - amount), sound_hint="deduct")
+
+    def _clear_side_bets(self):
+        """Clears all staged side bets."""
+        if hasattr(self, "engine"):
+            self.engine.clear_side_bets()
+        if hasattr(self, "chip_visualizer"):
+            self.chip_visualizer.clear_side_bets_display()
 
     def _all_in(self):
         """Sets the staged bet to the player's full remaining bankroll."""
@@ -3115,18 +3206,50 @@ class BlackjackApp:
             self.engine.stage_bet(bankroll, sound_hint="all_in")
 
     def _deal_hand_with_bet(self):
-        """Commits the staged bet, deducts it from bankroll, and begins the deal."""
+        """Commits the staged bet and side bets, deducts them from bankroll, and begins the deal."""
         if not self.fsm.trigger("deal"):
             return
         bet = self.current_bet_var.get()
         bankroll = self.bankroll_var.get()
-        if bet < MINIMUM_BET or bet > bankroll:
+        total_side = sum(self.engine.staged_side_bets.values()) if hasattr(self, "engine") else 0
+        if bet < MINIMUM_BET or (bet + total_side) > bankroll:
             return
+        if hasattr(self, "engine"):
+            self.engine.commit_side_bets()
         self.engine.commit_staged_bet(bet)
         self.bankroll_var.set(self.engine.bankroll)
         self.hand_bets = [bet]
         self.is_betting_phase = False
         self._start_round_deal()
+
+    def _resolve_side_bets(self):
+        """Evaluates active side bets immediately following the initial 4-card deal."""
+        if not hasattr(self, "engine") or not getattr(self.engine, "active_side_bets", None):
+            return
+        if not any(self.engine.active_side_bets.values()):
+            return
+        d_up = self.dealer_hand[0] if self.dealer_hand else None
+        results = self.engine.resolve_side_bets(self.player_hands[0], d_up)
+        side_notes = []
+        for b_type, res in results.items():
+            if res.bet > 0:
+                if hasattr(self, "save_manager"):
+                    self.save_manager.record_side_bet(res.bet_type, res.outcome, res.bet, res.profit, res.won)
+                if res.won:
+                    self.bankroll_var.set(self.engine.bankroll)
+                    if hasattr(self, "chip_visualizer"):
+                        self.chip_visualizer.animate_side_bet_win(res.bet_type, res.profit, res.label)
+                    if hasattr(self, "sound_manager"):
+                        self.sound_manager.play_payout()
+                    side_notes.append(f"{res.label}: +${res.profit}")
+                else:
+                    if hasattr(self, "chip_visualizer"):
+                        self.chip_visualizer.animate_side_bet_loss(res.bet_type)
+
+        if side_notes:
+            announcement = " | ".join(side_notes)
+            self.result_var.set(f"Side Bet Won! {announcement}")
+            self.set_dealer_speech(f"Side bet payout: {announcement}!", stream=True)
 
     def _rebuy(self):
         """Replenishes player bankroll if it drops below the minimum bet."""
@@ -3142,12 +3265,13 @@ class BlackjackApp:
         if not hasattr(self, "bankroll_label"):
             return
         bankroll = self.bankroll_var.get()
-        bet = self.current_bet_var.get() if self.is_betting_phase else sum(self.hand_bets)
+        total_side = sum(self.engine.staged_side_bets.values()) if hasattr(self, "engine") and self.is_betting_phase else 0
+        bet = (self.current_bet_var.get() + total_side) if self.is_betting_phase else sum(self.hand_bets)
         self.bankroll_label.configure(
             text=f"BANKROLL: ${bankroll:,}  |  BET: ${bet:,}"
         )
         if hasattr(self, "chip_visualizer"):
-            available = max(0, bankroll - self.current_bet_var.get()) if self.is_betting_phase else max(0, bankroll)
+            available = max(0, bankroll - self.current_bet_var.get() - total_side) if self.is_betting_phase else max(0, bankroll)
             self.chip_visualizer.set_bankroll(available, interactive=self.is_betting_phase)
 
     def _update_betting_controls(self):
@@ -3157,7 +3281,8 @@ class BlackjackApp:
 
         bankroll = self.bankroll_var.get()
         staged_bet = self.current_bet_var.get()
-        remaining = max(0, bankroll - staged_bet)
+        total_side = sum(self.engine.staged_side_bets.values()) if hasattr(self, "engine") and self.is_betting_phase else 0
+        remaining = max(0, bankroll - staged_bet - total_side)
         if hasattr(self, "chip_visualizer"):
             avail = remaining if self.is_betting_phase else max(0, bankroll)
             self.chip_visualizer.set_bankroll(avail, interactive=self.is_betting_phase)
@@ -3168,7 +3293,7 @@ class BlackjackApp:
                 btn.configure(state="normal" if remaining >= denom else "disabled")
             if hasattr(self, "all_in_button"):
                 self.all_in_button.configure(state="normal" if bankroll >= MINIMUM_BET and staged_bet < bankroll else "disabled")
-            self.clear_bet_button.configure(state="normal" if staged_bet > 0 else "disabled")
+            self.clear_bet_button.configure(state="normal" if (staged_bet > 0 or total_side > 0) else "disabled")
             self.deal_bet_button.configure(state="normal" if staged_bet >= MINIMUM_BET else "disabled")
             if bankroll < MINIMUM_BET and staged_bet < MINIMUM_BET:
                 self.rebuy_button.configure(state="normal")
