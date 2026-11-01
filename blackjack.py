@@ -265,7 +265,7 @@ class BlackjackApp:
                 wrapped.append(hand_obj)
         self.engine.player_hands = wrapped if wrapped else [Hand()]
         if any(len(h) > 0 for h in self.engine.player_hands):
-            if hasattr(self, "fsm") and self.fsm.phase == RoundPhase.BETTING:
+            if hasattr(self, "fsm") and self.fsm.phase in (RoundPhase.BETTING, RoundPhase.ROUND_OVER):
                 self.fsm.transition_to(RoundPhase.PLAYER_TURN, force=True)
         if hasattr(self, "_hand_bets_proxy"):
             self._hand_bets_proxy.sync_from_engine()
@@ -4541,11 +4541,14 @@ class BlackjackApp:
             return old_card
 
         # Update active deck and hands
+        prev_phase = self.fsm.phase if hasattr(self, "fsm") else None
         self.deck = [find_updated_card(c) for c in self.deck]
         self.dealer_hand = [find_updated_card(c) for c in self.dealer_hand]
         if self.dealer_hole_card:
             self.dealer_hole_card = find_updated_card(self.dealer_hole_card)
         self.player_hands = [[find_updated_card(c) for c in h] for h in self.player_hands]
+        if prev_phase is not None and hasattr(self, "fsm"):
+            self.fsm.transition_to(prev_phase, force=True)
 
     def toggle_fullscreen(self, event=None):
         """Toggles native Tkinter fullscreen mode and automatically upscales interface to 2x for full screens."""

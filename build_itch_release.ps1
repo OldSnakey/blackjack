@@ -41,9 +41,9 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# 2. Run automated test suite
-Write-Host "`n[2/5] Running automated test suite..." -ForegroundColor Yellow
-python -m unittest discover tests
+# 2. Run automated full system test suite
+Write-Host "`n[2/5] Running full automated system test suite..." -ForegroundColor Yellow
+python run_tests.py full
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Test suite failed! Aborting build to protect release quality." -ForegroundColor Red
     exit 1

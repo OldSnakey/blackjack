@@ -346,9 +346,25 @@ The card counting trainer (`card_counter.py`, `card_counting_hud.py`) models the
 The project includes an exhaustive automated test suite with **350+ unit tests** written with Python's built-in `unittest` framework, validating domain logic, Tkinter GUI widgets, audio fallbacks, and rendering geometry.
 
 ### Running the Tests
-To run all tests with verbose output:
+Use the tiered test runner (`run_tests.py`) to run fast smoke checks, subsystem suites, or the full system regression suite:
 
 ```bash
+# Fast Smoke Suite (~10-15s) - Default for iterative development
+python run_tests.py smoke
+
+# Subsystem Suites (~30-90s) - Targeted domain verification
+python run_tests.py core
+python run_tests.py betting
+python run_tests.py dealer
+python run_tests.py haunted
+python run_tests.py gui
+
+# List all available test tiers and module counts
+python run_tests.py --list
+
+# Full System & Regression Suite (~5-6m) - Pre-release verification
+python run_tests.py full
+# Or via standard unittest discovery:
 python -m unittest discover tests -v
 ```
 
@@ -391,6 +407,7 @@ python -m unittest discover tests -v
 | [`tests/test_surrender.py`](tests/test_surrender.py) | Tests Late Surrender eligibility (initial 2 cards only, un-split), 50% wager refund, hole card reveal, and dealer win recording. |
 | [`tests/test_table_felt.py`](tests/test_table_felt.py) | Validates procedural canvas texture generation, theme switching (casino/creep/hell), and child coordinate slice extraction. |
 | [`tests/test_table_hud.py`](tests/test_table_hud.py) | Tests 2.5D animated announcement HUD popups, banner styling, and auto-dismiss timers on the table felt. |
+| [`tests/test_test_runner.py`](tests/test_test_runner.py) | Validates the tiered test runner (`run_tests.py`), tier module mappings, disk existence of configured test modules, suite construction, and CLI argument parsing. |
 | [`tests/test_typewriter_and_audio_accents.py`](tests/test_typewriter_and_audio_accents.py) | Validates typewriter dialogue streaming (25-35 ms cadence), directional speech tail rendering, fast-forward skip on click, character audio accents, and extension safety. |
 | [`tests/test_ui_geometry_and_rendering.py`](tests/test_ui_geometry_and_rendering.py) | Validates zero card clipping, beveled plaque geometry, TableAnnouncementHUD auto-dismiss, and OMEN altar color synchronization. |
 | [`tests/test_ui_layout.py`](tests/test_ui_layout.py) | Validates JSON-driven UI layout configuration (`ui_layout.py`), origin/offset resolution, grid/pack option scaling, and PIL resampling filters. |
@@ -425,6 +442,7 @@ Blackjack/
 ├── blackjack.spec                  # PyInstaller build spec for itch.io packaging
 ├── build_itch_release.bat          # Windows 1-click build batch wrapper
 ├── build_itch_release.ps1          # Automated PowerShell build, test, and zip packaging pipeline
+├── run_tests.py                    # Tiered CLI test runner (smoke, core, betting, dealer, haunted, gui, full)
 ├── import_test.py                  # External import verification test
 ├── README.md                       # Project documentation and architectural guide
 ├── README_PLAYERS.txt              # End-user player guide bundled with releases
@@ -506,6 +524,7 @@ Blackjack/
     ├── test_surrender.py
     ├── test_table_felt.py
     ├── test_table_hud.py
+    ├── test_test_runner.py
     ├── test_typewriter_and_audio_accents.py
     ├── test_ui_geometry_and_rendering.py
     ├── test_ui_layout.py
