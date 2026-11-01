@@ -1,0 +1,10 @@
+## tools/README.md
+
+No drift detected.
+
+## README.md
+
+- **Incomplete Interface Coverage (`pixel_ui.py`)**: `## Local Interface & Invariants` omits top-level public symbols `[pixel_ui.py:PALETTE]`, `[pixel_ui.py:DEFAULT_FONT_CONFIG]`, `[pixel_ui.py:load_font_config]`, `[pixel_ui.py:reload_font_config]`, `[pixel_ui.py:load_pixel_font]`, `[pixel_ui.py:get_title_font]`, `[pixel_ui.py:get_header_font]`, `[pixel_ui.py:get_display_font]`, `[pixel_ui.py:get_body_font]`, `[pixel_ui.py:get_button_font]`, `[pixel_ui.py:get_digital_font]`, `[pixel_ui.py:get_badge_font]`, `[pixel_ui.py:get_micro_font]`, `[pixel_ui.py:get_pixel_font]`, `[pixel_ui.py:get_pixel_icon]`, `[pixel_ui.py:CanvasTextLabelProxy]`, and `[pixel_ui.py:PixelButtonWidget]`.
+- **Incomplete Interface Coverage (`ui_layout.py`)**: `## Local Interface & Invariants` omits top-level public symbols `[ui_layout.py:DEFAULT_UI_CONFIG]`, `[ui_layout.py:reload_ui_config]`, `[ui_layout.py:get_table_layout]`, `[ui_layout.py:get_rail_button_layout]`, `[ui_layout.py:get_card_layout]`, `[ui_layout.py:resolve_origin]`, `[ui_layout.py:resolve_offset]`, `[ui_layout.py:get_theme_color]`, `[ui_layout.py:get_widget_style]`, `[ui_layout.py:apply_style]`, and `[ui_layout.py:get_image_scaling_config]`.
+- **Achievement Count Divergence (`save_manager.py`, `dealer_wardrobe_dialog.py`)**: `## Features` (Hall of Fame & Save Persistence) states "8 unlockable gameplay achievements", whereas `[save_manager.py:Achievements]` and `[dealer_wardrobe_dialog.py:ACHIEVEMENT_SPECS]` define 10 achievements (adding `shoe_whisperer` / *Shoe Whisperer* and `count_capitalist` / *Count Capitalist*).
+- **Modular Architecture Section Omissions (`pixel_ui.py`, `ui_layout.py`, `ui_canvases.py`, `ui_dialogs.py`)**: Section `### 8. Educational Modular Architecture & Separation of Concerns` omits module bullets for `pixel_ui.py`, `ui_layout.py`, `dealer_actor.py`, `dealer_wardrobe_dialog.py`, and `haunted_manager.py`, and omits `[ui_canvases.py:MahoganyRailCanvas]` and `[ui_dialogs.py:WelcomeSplashDialog]` from the `ui_canvases.py` and `ui_dialogs.py` descriptions.

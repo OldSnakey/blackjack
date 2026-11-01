@@ -3,6 +3,8 @@
 > 🎮 **Play the Game**: Download the standalone, zero-install Windows release on itch.io:  
 > 👉 **[https://wrehman.itch.io/blackjack-classic](https://wrehman.itch.io/blackjack-classic)** *(No Python setup required!)*
 
+## System Overview
+
 An interactive, graphical desktop implementation of the classic casino card game **Blackjack**, built with standard Python and Tkinter, featuring an **animated living dealer**, a supernatural **Haunted Halloween & Hell's Table expansion**, **2x HiDPI scaling**, and persistent **Hall of Fame & Achievements**.
 
 Designed as an educational project for Python learners and junior developers, this codebase demonstrates how to transition from basic procedural scripting to clean, production-quality Python: eliminating global variables with Object-Oriented Programming (OOP), managing non-blocking animations without freezing the GUI event loop, decoupling stage canvas rendering from table felt geometry, separating pure mathematical game rules into zero-GUI modules, and authoring exhaustive automated regression tests (300+ unit tests).
@@ -10,6 +12,7 @@ Designed as an educational project for Python learners and junior developers, th
 ---
 
 ## Table of Contents
+- [System Overview](#system-overview)
 - [Play Online / Download (itch.io)](#play-online--download-itchio)
 - [Features](#features)
 - [How to Run (Developers)](#how-to-run-developers)
@@ -28,6 +31,11 @@ Designed as an educational project for Python learners and junior developers, th
   - [10. Real-Time Hi-Lo Card Counting Engine & Invariant State](#10-real-time-hi-lo-card-counting-engine--invariant-state)
 - [Automated Testing](#automated-testing)
 - [File Structure](#file-structure)
+- [Local Interface & Invariants](#local-interface--invariants)
+- [Subdirectories & System Boundaries](#subdirectories--system-boundaries)
+- [Global Invariants](#global-invariants)
+- [Global Side Effects](#global-side-effects)
+- [System Verification](#system-verification)
 
 ---
 
@@ -351,6 +359,7 @@ python -m unittest discover tests -v
 | [`tests/test_betting.py`](tests/test_betting.py) | Tests pure payout calculations (3:2, 1:1, push, loss, surrender), 2:1 insurance payouts with odd-bet breakeven guarantees, chip denomination breakdowns, ChipVisualizer state sync/animations, default Chips Mode, and bankroll tracking. |
 | [`tests/test_card_counter.py`](tests/test_card_counter.py) | Unit tests for pure Hi-Lo card counting logic: tag values (+1, 0, -1), Running Count accumulation, cut-card penetration shoe resets, decks remaining calculation with 0.5 minimum clamp, True Count estimation, bet spread sizing, and quiz verification. |
 | [`tests/test_card_counting_hud.py`](tests/test_card_counting_hud.py) | Verifies CardCountingHud container rendering, dynamic felt theme synchronization, pack/grid integration, floating count badge particle animations (+1, -1, 0), mid-shoe interactive quiz dialogs, and shortcut key bindings (`K`, `Shift+C`). |
+| [`tests/test_chip_visualizer_interactions.py`](tests/test_chip_visualizer_interactions.py) | Validates interactive bankroll chip pile left-click staging, right-click deduction, betting spot click actions, and hover hitbox stability on `ChipVisualizer`. |
 | [`tests/test_dealer_actor.py`](tests/test_dealer_actor.py) | Unit tests for DealerActor sprite compositing, layer positioning, dynamic scale adjustments, and mouth/eye state changes. |
 | [`tests/test_dealer_actor_layers.py`](tests/test_dealer_actor_layers.py) | Validates layer coordinate math, anchor positioning, and costume asset resolution across all supported outfits. |
 | [`tests/test_dealer_stage_canvas.py`](tests/test_dealer_stage_canvas.py) | Verifies panoramic 1000px/2000px stage backdrop scaling, sconce compositing, and stage lighting across themes. |
@@ -366,6 +375,7 @@ python -m unittest discover tests -v
 | [`tests/test_hand.py`](tests/test_hand.py) | Modular domain unit tests for the pure `Hand` class: card accumulation, soft/hard scoring, sequence protocol (`len`, `getitem`, `iter`), equality, and string formatting. |
 | [`tests/test_haunted_mode.py`](tests/test_haunted_mode.py) | Validates Haunted Halloween phase transitions, Card 13 manifestation & immediate deal bust handling, candle snuffing, gravestone rising, Pit Fiend composite, Soul Meter animations, and relic mechanics. |
 | [`tests/test_living_animations.py`](tests/test_living_animations.py) | Validates DealerActor autonomous idle breathing, blinking cadence, typewriter speech timers, and gesture transitions. |
+| [`tests/test_pixel_ui.py`](tests/test_pixel_ui.py) | Verifies pixel art UI primitives (`CanvasPixelPanel`, `PixelPlaqueFrame`, `PixelDialogueFrame`, `CanvasPixelButton`), pixel font loading, and integer scaling invariants. |
 | [`tests/test_puppet_multi_layer_actor.py`](tests/test_puppet_multi_layer_actor.py) | Tests discrete multi-layer puppet rigging (shadow, torso, neck, head, eyes, mouth, arms), high-contrast dummy asset integrity, Tiffany 2.0 puppet integration, phonetic viseme mapping ('a', 'o', 'e', 'f', 'talk'), Z-order compositing, and backward-compatible costume fallback. |
 | [`tests/test_roster_puppet_conversion.py`](tests/test_roster_puppet_conversion.py) | Validates universal puppet conversion across the dealer cast, 19-layer discrete puppet strata for new personas Selene and Vladimir, phonetic mouth visemes, and achievement-locked wardrobe progression. |
 | [`tests/test_save_manager.py`](tests/test_save_manager.py) | Validates blank-slate defaults, persistent file I/O, career stats, costume unlocks, corruption recovery, and user preference retention (including default Chips Mode). |
@@ -382,6 +392,7 @@ python -m unittest discover tests -v
 | [`tests/test_table_hud.py`](tests/test_table_hud.py) | Tests 2.5D animated announcement HUD popups, banner styling, and auto-dismiss timers on the table felt. |
 | [`tests/test_typewriter_and_audio_accents.py`](tests/test_typewriter_and_audio_accents.py) | Validates typewriter dialogue streaming (25-35 ms cadence), directional speech tail rendering, fast-forward skip on click, character audio accents, and extension safety. |
 | [`tests/test_ui_geometry_and_rendering.py`](tests/test_ui_geometry_and_rendering.py) | Validates zero card clipping, beveled plaque geometry, TableAnnouncementHUD auto-dismiss, and OMEN altar color synchronization. |
+| [`tests/test_ui_layout.py`](tests/test_ui_layout.py) | Validates JSON-driven UI layout configuration (`ui_layout.py`), origin/offset resolution, grid/pack option scaling, and PIL resampling filters. |
 | [`tests/test_universal_puppet_faceplates.py`](tests/test_universal_puppet_faceplates.py) | Verifies universal 7-layer mannequin faceplate de-occlusion (blank eye sockets and mouth apertures), isolated eye socket layers, distinct articulated arm poses (`arm_idle`, `arm_deal`, `arm_peek`), and multi-layer puppet kinematics across all 8 dealers. |
 | [`tests/test_version.py`](tests/test_version.py) | Enforces single source of truth for versioning across `blackjack.py`, specifications, and documentation. |
 | [`tests/test_welcome_splash_dialog.py`](tests/test_welcome_splash_dialog.py) | Verifies WelcomeSplashDialog lifecycle, retro pixel art logo, dealer greeting banner, interactive selection across 3 modes (Casual, Betting, Training), dynamic display bounds, persistent save settings, and live basic strategy hint reflection. |
@@ -402,12 +413,14 @@ Blackjack/
 ├── event_bus.py                    # Synchronous pub-sub EventHub and GameEvent domain events
 ├── game_engine.py                  # Pure headless BlackjackEngine and RoundResult domain state manager
 ├── haunted_manager.py              # Haunted Halloween narrative state: phases, altar candles, relics
+├── pixel_ui.py                     # Retro pixel art UI primitives, beveled plaques, and GDI pixel font loader
 ├── rules.py                        # Pure stateless Blackjack math, Card, Hand, and RoundPhase (zero GUI imports)
 ├── save_manager.py                 # Persistent save data, stats tracking, and achievement unlocks
 ├── state_machine.py                # Formal Finite State Machine (GameStateMachine) for RoundPhase transitions
 ├── audio_assets.py                 # Polyphonic SoundManager, AssetScaler & KeyboardIconLoader
-├── ui_canvases.py                  # Custom 2.5D Canvas components (Chips, Altar, Stage, Felt)
-├── ui_dialogs.py                   # Modal Toplevel dialogs (Shortcuts, Settings, Story, Draft)
+├── ui_canvases.py                  # Custom 2.5D Canvas components (Chips, Altar, Stage, Felt, Rail)
+├── ui_dialogs.py                   # Modal Toplevel dialogs (Shortcuts, Settings, Story, Draft, Welcome)
+├── ui_layout.py                    # Declarative UI geometry, scaling options, and resampling configuration
 ├── blackjack.spec                  # PyInstaller build spec for itch.io packaging
 ├── build_itch_release.bat          # Windows 1-click build batch wrapper
 ├── build_itch_release.ps1          # Automated PowerShell build, test, and zip packaging pipeline
@@ -418,17 +431,20 @@ Blackjack/
 ├── cards/                          # 52 playing card PNG images + back.png and Card 13 of Skulls
 ├── audio/                          # 42 tactile casino .ogg audio files (slides, chips, shuffles, organ chimes)
 ├── assets/                         # Release packaging assets
+│   ├── fonts/                      # Bundled TrueType pixel fonts and font_config.json
 │   ├── haunted/                    # Panoramic room backdrops (casino, crypt, creep, hell, celestial) and character puppet strata
-│   ├── overlay_icons/              # 21 curated 64x64 PNG keyboard & mouse prompt icons
+│   ├── overlay_icons/              # Curated 64x64 PNG keyboard & mouse prompt icons
 │   ├── pixel_logo_blackjack.png    # Retro pixel art game logo (468x84)
 │   ├── pixel_logo_blackjack_2x.png # HiDPI retro pixel art game logo (936x168)
 │   ├── icon.ico / icon.png         # Window and executable icons
 │   ├── cover_itch.png              # Storefront marketing cover art
 │   └── screenshots/                # High-resolution gameplay captures
 ├── tools/
+│   ├── README.md                   # Component contract for offline asset generation and GDI capture tools
 │   ├── build_character_layers.py   # Sprite layer slicer and coordinate extractor for dealer actors
 │   ├── build_character_roster_assets.py # Texture generator for dealer costumes and facial assets
 │   ├── build_dummy_puppet_assets.py # Generator for multi-layer puppet rig test assets
+│   ├── build_font_comparison_specimen.py # Candidate pixel font comparison sheet generator
 │   ├── build_haunted_assets.py     # Procedural asset generator for altar, candles, and gravestones
 │   ├── build_pixel_logo.py         # Procedural generator for 1x and 2x retro pixel art game logo assets
 │   ├── build_roster_puppet_assets.py # Texture synthesis pipeline for full roster puppet conversion & expansion
@@ -436,23 +452,26 @@ Blackjack/
 │   ├── build_tiffany_puppet_assets.py # Pipeline tool for extracting, de-occluding, and generating Tiffany 2.0 discrete puppet layers
 │   ├── capture_dialogs_verification.py # Automation tool for capturing Settings, Shortcuts, and Wardrobe Hall of Fame dialog verifications
 │   ├── capture_puppet_demo.py      # Automation tool for capturing puppet exploded layers, visemes, and stage verification
+│   ├── capture_retro_pixel_verification.py # Automation tool for capturing retro pixel betting, play, and cursed stakes phases
 │   ├── capture_tiffany_puppet_demo.py # Automation tool for capturing Tiffany puppet exploded layers, phonetic visemes, arms, and live stage verification
 │   ├── capture_typewriter_demo.py  # Automation tool for capturing dialogue and stage screenshots
 │   ├── capture_universal_puppet_audit.py # Visual contact sheet generator for universal 7-layer dealer puppets & poses
 │   ├── capture_wardrobe_dummy_demo.py # Automation tool for capturing wardrobe dialog with dummy puppet
+│   ├── capture_wardrobe_redesign_verification.py # Automation tool for capturing Wardrobe Closet and Hall of Fame tabs
 │   ├── capture_welcome_splash_verification.py # Automation tool for capturing WelcomeSplashDialog and table mode verifications
 │   ├── deocclude_dealer_faceplates.py # Pipeline tool for de-occluding mannequin faceplates, isolating eye sockets, and building articulated arm poses
 │   └── test_counting_simulation.py # Monte Carlo simulation runner validating Hi-Lo card counting invariants across 10,000 deals
 ├── docs/
 │   ├── ARCHITECTURE_CRC.md         # Class-Responsibility-Collaboration (CRC) architecture & review
 │   └── ITCH_IO_GUIDE.md            # itch.io deployment, store copy, and release guide
-└── tests/                          # Automated test suite (350+ unit tests)
+└── tests/                          # Automated test suite (300+ unit tests)
     ├── __init__.py
     ├── test_architectural_integration.py
     ├── test_basic_strategy.py
     ├── test_betting.py
     ├── test_card_counter.py
     ├── test_card_counting_hud.py
+    ├── test_chip_visualizer_interactions.py
     ├── test_dealer_actor.py
     ├── test_dealer_actor_layers.py
     ├── test_dealer_stage_canvas.py
@@ -468,6 +487,7 @@ Blackjack/
     ├── test_hand.py
     ├── test_haunted_mode.py
     ├── test_living_animations.py
+    ├── test_pixel_ui.py
     ├── test_puppet_multi_layer_actor.py
     ├── test_roster_puppet_conversion.py
     ├── test_save_manager.py
@@ -484,7 +504,63 @@ Blackjack/
     ├── test_table_hud.py
     ├── test_typewriter_and_audio_accents.py
     ├── test_ui_geometry_and_rendering.py
+    ├── test_ui_layout.py
     ├── test_universal_puppet_faceplates.py
     ├── test_version.py
     └── test_welcome_splash_dialog.py
 ```
+
+---
+
+## Local Interface & Invariants
+
+### Public Symbols (Root Modules)
+- **Application Coordinator (`blackjack.py`)**: `[blackjack.py:__version__]`, `[blackjack.py:APP_VERSION]`, `[blackjack.py:BlackjackApp]`, `[blackjack.py:BlackjackApp.new_game]`, `[blackjack.py:BlackjackApp.apply_play_mode]`, `[blackjack.py:BlackjackApp.get_current_strategy_hint]`, `[blackjack.py:BlackjackApp.clear_player_save_data]`, `[blackjack.py:BlackjackApp.play_dealer_accent]`, `[blackjack.py:BlackjackApp.set_dealer_speech]`, `[blackjack.py:BlackjackApp.clear_dealer_speech]`, `[blackjack.py:BlackjackApp.on_hit]`, `[blackjack.py:BlackjackApp.on_stand]`, `[blackjack.py:BlackjackApp.on_double_down]`, `[blackjack.py:BlackjackApp.on_split]`, `[blackjack.py:BlackjackApp.on_surrender]`, `[blackjack.py:BlackjackApp.toggle_scale_mode]`, `[blackjack.py:BlackjackApp.toggle_fullscreen]`, `[blackjack.py:BlackjackApp.exit_fullscreen]`, `[blackjack.py:play_game]`
+- **Configuration & Theme Palettes (`config.py`)**: `[config.py:BLACKJACK_TARGET]`, `[config.py:DEALER_STAND_THRESHOLD]`, `[config.py:DEFAULT_DECK_COUNT]`, `[config.py:CUT_CARD_PENETRATION]`, `[config.py:STARTING_BANKROLL]`, `[config.py:MINIMUM_BET]`, `[config.py:CHIP_DENOMINATIONS]`, `[config.py:INSURANCE_PAYOUT_RATIO]`, `[config.py:DEALER_DRAW_DELAY_MS]`, `[config.py:DEFAULT_WINDOW_WIDTH]`, `[config.py:DEFAULT_WINDOW_HEIGHT]`, `[config.py:MIN_WINDOW_WIDTH]`, `[config.py:MIN_WINDOW_HEIGHT]`, `[config.py:CARD_WIDTH]`, `[config.py:CARD_HEIGHT]`, `[config.py:get_base_dir]`, `[config.py:BASE_DIR]`, `[config.py:ASSETS_DIR]`, `[config.py:AUDIO_DIR]`, `[config.py:OVERLAY_ICONS_DIR]`, `[config.py:HAUNTED_ASSETS_DIR]`, `[config.py:HAUNTED_AUDIO_DIR]`, `[config.py:FONTS_DIR]`, `[config.py:hex_to_rgb]`, `[config.py:ThemePalette]`, `[config.py:get_creep_theme]`, `[config.py:get_phase_palette]`
+- **Domain Rules & Math (`rules.py`)**: `[rules.py:RoundPhase]`, `[rules.py:Card]`, `[rules.py:Hand]`, `[rules.py:score_hand]`, `[rules.py:is_soft_hand]`, `[rules.py:dealer_should_hit]`, `[rules.py:can_split]`, `[rules.py:determine_outcome]`, `[rules.py:calculate_payout]`, `[rules.py:calculate_insurance_payout]`, `[rules.py:breakdown_chips]`, `[rules.py:breakdown_bankroll_piles]`, `[rules.py:build_shoe]`, `[rules.py:BasicStrategyDecision]`, `[rules.py:get_basic_strategy_decision]`
+- **State Machine, Event Bus & Headless Engine (`state_machine.py`, `event_bus.py`, `game_engine.py`)**: `[state_machine.py:InvalidStateTransitionError]`, `[state_machine.py:VALID_TRANSITIONS]`, `[state_machine.py:GameStateMachine]`, `[event_bus.py:GameEventType]`, `[event_bus.py:GameEvent]`, `[event_bus.py:EventHub]`, `[game_engine.py:RoundResult]`, `[game_engine.py:BlackjackEngine]`
+- **Card Counting Subsystem (`card_counter.py`, `card_counting_hud.py`)**: `[card_counter.py:HiLoCardCounter]`, `[card_counting_hud.py:FloatingCountBadge]`, `[card_counting_hud.py:CardCountingHud]`, `[card_counting_hud.py:CardCountingQuizDialog]`
+- **Haunted Narrative & Persistence (`haunted_manager.py`, `save_manager.py`)**: `[haunted_manager.py:Phase]`, `[haunted_manager.py:Blessing]`, `[haunted_manager.py:BlessingDetails]`, `[haunted_manager.py:BLESSING_REGISTRY]`, `[haunted_manager.py:HauntedManager]`, `[save_manager.py:HighScores]`, `[save_manager.py:Achievements]`, `[save_manager.py:SaveData]`, `[save_manager.py:SaveManager]`
+- **Living Dealer, Wardrobe & Voice Synthesis (`dealer_actor.py`, `dealer_wardrobe_dialog.py`, `dialogue_voice_engine.py`)**: `[dealer_actor.py:CostumeVariant]`, `[dealer_actor.py:CharacterProfile]`, `[dealer_actor.py:CHARACTERS]`, `[dealer_actor.py:COSTUME_ALIASES]`, `[dealer_actor.py:VISEME_STATES]`, `[dealer_actor.py:map_char_to_viseme]`, `[dealer_actor.py:DealerActor]`, `[dealer_wardrobe_dialog.py:DealerCardPanel]`, `[dealer_wardrobe_dialog.py:MysteryDealerCardPanel]`, `[dealer_wardrobe_dialog.py:WardrobeDialog]`, `[dialogue_voice_engine.py:VOICE_PROFILES]`, `[dialogue_voice_engine.py:SUPPORTED_VISEMES]`, `[dialogue_voice_engine.py:synthesize_viseme_pcm]`, `[dialogue_voice_engine.py:AnimaleseVoiceEngine]`
+- **Audio, Canvases, Dialogs & Pixel UI (`audio_assets.py`, `ui_canvases.py`, `ui_dialogs.py`, `pixel_ui.py`, `ui_layout.py`)**: `[audio_assets.py:AssetScaler]`, `[audio_assets.py:load_images]`, `[audio_assets.py:SoundManager]`, `[audio_assets.py:KeyboardIconLoader]`, `[ui_canvases.py:ChipVisualizer]`, `[ui_canvases.py:SoulMeterCanvas]`, `[ui_canvases.py:TableAnnouncementHUD]`, `[ui_canvases.py:HauntedAltarCanvas]`, `[ui_canvases.py:DealerStageCanvas]`, `[ui_canvases.py:TableFeltCanvas]`, `[ui_canvases.py:MahoganyRailCanvas]`, `[ui_dialogs.py:StoryDialogueDialog]`, `[ui_dialogs.py:AngelicDraftDialog]`, `[ui_dialogs.py:SettingsDialog]`, `[ui_dialogs.py:ShortcutsDialog]`, `[ui_dialogs.py:WelcomeSplashDialog]`, `[pixel_ui.py:load_all_pixel_fonts]`, `[pixel_ui.py:get_role_font]`, `[pixel_ui.py:get_element_font]`, `[pixel_ui.py:CanvasPixelPanel]`, `[pixel_ui.py:PixelPlaqueFrame]`, `[pixel_ui.py:PixelDialogueFrame]`, `[pixel_ui.py:CanvasPixelButton]`, `[pixel_ui.py:ChipButtonProxy]`, `[ui_layout.py:load_ui_config]`, `[ui_layout.py:get_ui_layout]`, `[ui_layout.py:get_grid_options]`, `[ui_layout.py:get_pack_options]`, `[ui_layout.py:resolve_pil_resample]`
+
+### Local Invariants
+- `[blackjack.py:__version__]`: Single source of truth for application semantic version (`"1.4.0"`), aliased as `APP_VERSION`.
+- `[rules.py:score_hand]`: Sums card values with Aces counted as `1` and promotes at most one Ace by `+10` iff `1 in values and score + 10 <= BLACKJACK_TARGET`.
+- `[rules.py:determine_outcome]` and `[rules.py:calculate_payout]`: Split hands (`is_split=True`) with 2-card 21 evaluate as `PLAYER_WINS` (`1:1`), never `NATURAL_BLACKJACK` (`3:2`); `[rules.py:calculate_insurance_payout]` rounds odd-bet insurance profit via `max(main_bet, insurance_bet * INSURANCE_PAYOUT_RATIO)` when `insurance_bet == main_bet // 2`.
+- `[state_machine.py:GameStateMachine.transition_to]`: Enforces `VALID_TRANSITIONS` across `RoundPhase` and raises `InvalidStateTransitionError` on illegal jumps unless `force=True`.
+- `[card_counter.py:HiLoCardCounter.decks_remaining]` and `[blackjack.py:BlackjackApp._deal_card_to_dealer]`: Clamps remaining decks to `max(0.5, round(cards_remaining / 52.0, 1))` and withholds the dealer hole card from the Running Count (`_hole_card_observed`) until revealed face-up in `_reveal_dealer_hole_card()`.
+- `[haunted_manager.py:HauntedManager.on_new_hand]` and `[blackjack.py:BlackjackApp._start_round_deal]`: Mortal hands progress through `NORMAL` (1–6), `CREEP` (7–12), `OMEN` (13), and `SNUFFING` (>13 until `candles_remaining == 0` triggers `HELL_TABLE`); an initial 2-card deal exceeding `BLACKJACK_TARGET` (such as Cursed Card 13) immediately disables action buttons, flips the dealer hole card, and concludes the round.
+- `[dealer_actor.py:DealerActor.get_composite_image]`: Composites 7 puppet strata in fixed bottom-to-top Z-order (`shadow`, `neck`, `torso`, `head`, `eyes_<state>`, `mouth_<state>`, `arm_<state>`) with kinematic offsets clamped in `set_layer_offsets`.
+- `[pixel_ui.py:get_role_font]`, `[pixel_ui.py:CanvasPixelButton.grid_configure]`, and `[blackjack.py:BlackjackApp._update_ui_scaling]`: Enforce negative pixel font sizing (`-abs(int(final_size))`) and verify `bool(widget.grid_info())` (`_is_mapped`) before calling `grid_configure` so widgets hidden via `grid_remove()` are never accidentally remapped.
+
+---
+
+## Subdirectories & System Boundaries
+
+- `tools`: [`./tools/README.md`](./tools/README.md) — Offline procedural asset generators, 19-layer dealer puppet slicers and faceplate de-occluders, and Win32 GDI (`PrintWindow`) visual verification capture scripts.
+- `.agents/skills/package-itch-release`: [`./.agents/skills/package-itch-release/SKILL.md`](./.agents/skills/package-itch-release/SKILL.md) — Standalone PyInstaller packaging and itch.io distribution workflow skill.
+
+---
+
+## Global Invariants
+
+- **OOP State Encapsulation & Zero Global Mutable Game State**: All active deck, hand, bankroll, timer, and round states are encapsulated on `[blackjack.py:BlackjackApp]` and `[game_engine.py:BlackjackEngine]`.
+- **Non-Blocking Tkinter Event Loop**: UI animations and dealer turns (`[blackjack.py:BlackjackApp._dealer_step]`, `[blackjack.py:BlackjackApp._stream_typewriter_step]`) schedule asynchronous callbacks via `root.after(...)` and cancel all active timer IDs in `[blackjack.py:BlackjackApp._cancel_all_active_timers]` and `[blackjack.py:BlackjackApp._on_close]`.
+- **Horizon Stage vs. Card Table Felt Decoupling**: Upper stage rendering (`[ui_canvases.py:DealerStageCanvas]`) is strictly isolated from lower felt card/chip/altar accessories (`[ui_canvases.py:TableFeltCanvas]`, `[ui_canvases.py:HauntedAltarCanvas]`, `[ui_canvases.py:ChipVisualizer]`), which synchronize background slices via `get_felt_slice()`.
+- **Headless Test Save Isolation**: `[blackjack.py:BlackjackApp.__init__]` automatically isolates `[save_manager.py:SaveManager]` to an ephemeral temporary file (`tempfile.mkdtemp()`) whenever `unittest` is loaded in `sys.modules` and no explicit `save_path` is passed, protecting production `blackjack_save.json`.
+- **Dynamic Dialog Clamping & Adaptive Scrollbars**: Modal dialogs (`[ui_dialogs.py:SettingsDialog]`, `[ui_dialogs.py:ShortcutsDialog]`, `[ui_dialogs.py:WelcomeSplashDialog]`, `[dealer_wardrobe_dialog.py:WardrobeDialog]`) derive dimensions from live screen bounds (`screen_h - 80`) and auto-hide scrollbars via `pack_forget()` when `float(first) <= 0.0 and float(last) >= 1.0`.
+
+---
+
+## Global Side Effects
+
+- **Persistent Save File I/O**: `[save_manager.py:SaveManager.save]` serializes career statistics, achievements, and mode preferences to `blackjack_save.json` via atomic `.tmp` file replacement (`Path.replace()`).
+- **Audio & Procedural Voice Playback**: `[audio_assets.py:SoundManager]` and `[dialogue_voice_engine.py:AnimaleseVoiceEngine]` initialize `pygame.mixer` (`44100` Hz, 16-bit, 16 channels) to play `.ogg` samples from `audio/` and `audio/haunted/` as well as in-memory synthesized 16-bit PCM WAV voice blips, degrading silently when audio hardware or `pygame` is unavailable.
+- **Private Font Registration & Asset Caching**: `[pixel_ui.py:load_all_pixel_fonts]` registers bundled `.ttf` pixel fonts from `assets/fonts/` into Windows GDI (`AddFontResourceExW` with `FR_PRIVATE=0x10`), and `[audio_assets.py:AssetScaler]` / `[dealer_actor.py:DealerActor]` load and cache PNG sprites from `cards/` and `assets/`.
+
+---
+
+## System Verification
+
+- Run: `python -m unittest discover tests`
