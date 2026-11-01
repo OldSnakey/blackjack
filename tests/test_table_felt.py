@@ -108,7 +108,7 @@ class TestTableFeltCanvas(unittest.TestCase):
         self.assertEqual(spot_fill, "", "spot_base should have empty fill to show felt texture")
 
     def test_cards_frames_do_not_obscure_table_during_betting(self):
-        """Dealer and player cards frames do not expand across the full table with sticky nsew when empty."""
+        """Dealer and player cards frames are retired; card sprites are cleared from canvas when hands are empty."""
         # Clear hands for betting phase
         self.app.dealer_hand = []
         self.app.player_hands = [[]]
@@ -116,20 +116,13 @@ class TestTableFeltCanvas(unittest.TestCase):
         self.app._render_player_cards()
         self.root.update_idletasks()
 
-        d_frame = self.app.dealer_cards_frame
-        p_frame = self.app.player_cards_frame
+        # Retired frame containers must no longer exist on app
+        self.assertFalse(hasattr(self.app, "dealer_cards_frame"))
+        self.assertFalse(hasattr(self.app, "player_cards_frame"))
 
-        # Must not have sticky='nsew' stretching them across the entire grid cell
-        d_sticky = d_frame.grid_info().get("sticky", "")
-        p_sticky = p_frame.grid_info().get("sticky", "")
-        self.assertNotIn("n", d_sticky)
-        self.assertNotIn("s", d_sticky)
-        self.assertNotIn("e", d_sticky)
-        self.assertNotIn("w", d_sticky)
-
-        # Width of empty frames must be minimal (< 50px), not 600+ px
-        self.assertLess(d_frame.winfo_width(), 50)
-        self.assertLess(p_frame.winfo_width(), 50)
+        # Canvas must have zero card sprite items
+        card_sprites = self.app.card_table_frame.find_withtag("card_sprite")
+        self.assertEqual(len(card_sprites), 0)
 
     def test_dealer_is_always_enabled(self):
         """Dealer view is always enabled and cannot be disabled."""
@@ -141,16 +134,50 @@ class TestTableFeltCanvas(unittest.TestCase):
         self.assertFalse(bool(self.app.dealer_view_button.grid_info()))
 
     def test_empty_cards_frames_do_not_render_solid_boxes(self):
-        """When hands are cleared for betting, cards frames are unmapped to prevent solid green patches."""
+        """When hands are cleared for betting, no card sprites or decorations exist on TableFeltCanvas."""
         self.app.dealer_hand = []
         self.app.player_hands = [[]]
         self.app._render_dealer_cards()
         self.app._render_player_cards()
         self.root.update_idletasks()
 
-        # Frames should either be unmapped or have 0 geometry
-        self.assertFalse(bool(self.app.dealer_cards_frame.winfo_ismapped()))
-        self.assertFalse(bool(self.app.player_cards_frame.winfo_ismapped()))
+        table = self.app.card_table_frame
+        self.assertEqual(len(table.find_withtag("card_sprite")), 0)
+        self.assertEqual(len(table.find_withtag("dealer_card_decor")), 0)
+        self.assertEqual(len(table.find_withtag("player_card_decor")), 0)
+
+    def test_compute_slide_trajectory(self):
+        """Quadratic Bezier slide trajectory calculates smooth curve from shoe mouth to target."""
+        table = self.app.card_table_frame
+        shoe_x, shoe_y = table.get_shoe_mouth_coords()
+        dest_x, dest_y = 300, 200
+        trajectory = table.compute_slide_trajectory(shoe_x, shoe_y, dest_x, dest_y, steps=9, arc_lift=18)
+        self.assertEqual(len(trajectory), 9)
+        # Final point should arrive at destination coords
+        self.assertEqual(trajectory[-1], (dest_x, dest_y))
+        # Midpoint should have upward lift (lower y in screen coords) relative to linear progression
+        mid_x, mid_y = trajectory[4]
+        t = 5.0 / 9.0
+        u = 1.0 - (1.0 - t) * (1.0 - t)
+        linear_y_at_u = (1.0 - u) * shoe_y + u * dest_y
+        self.assertLess(mid_y, linear_y_at_u)
+
+    def test_animate_card_slide_and_cancel(self):
+        """animate_card_slide schedules timer and cancel_card_animations snaps to target and executes completion."""
+        table = self.app.card_table_frame
+        item_id = table.draw_card_sprite(self.app.back_image, 100, 100)
+        completed = [False]
+        def _done():
+            completed[0] = True
+        table.animate_card_slide(item_id, 800, 50, 200, 150, on_complete=_done, force_animate=True)
+        self.assertTrue(table.has_active_card_animations())
+        table.cancel_card_animations()
+        self.assertFalse(table.has_active_card_animations())
+        self.root.update_idletasks()
+        self.assertTrue(completed[0])
+        # Verify sprite snapped to target coords
+        coords = table.coords(item_id)
+        self.assertEqual((int(coords[0]), int(coords[1])), (200, 150))
 
     def test_chip_visualizer_slice_has_no_black_pixels(self):
         """ChipVisualizer felt slice contains no pure black (0,0,0) pixels from out-of-bounds crop."""

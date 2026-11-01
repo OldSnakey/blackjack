@@ -104,6 +104,7 @@ from audio_assets import (
 
 # Re-exported 2.5D Canvas components & HUD overlays
 from ui_canvases import (
+    CanvasCardSpriteProxy,
     ChipVisualizer,
     SoulMeterCanvas,
     TableAnnouncementHUD,
@@ -285,8 +286,9 @@ class BlackjackApp:
 
         # Dealer Hole Card Tracking (Face-down card mechanics)
         self.dealer_hole_card = None        # Card of the hidden card
-        self.dealer_hole_widget = None      # Tkinter Label displaying the card back
+        self.dealer_hole_widget = None      # CanvasCardSpriteProxy / Canvas item displaying the card back
         self.back_image = None              # PhotoImage for cards/back.png
+        self._dealing: bool = False         # Re-entrancy guard during in-flight card slide animations
 
         # Reactive GUI Variables
         self.dealer_wins_var = tkinter.IntVar(value=0)
@@ -731,9 +733,6 @@ class BlackjackApp:
         self.dealer_title_label = self.dealer_header_frame.title_label
         self.dealer_score_label = self.dealer_header_frame.score_label
 
-        self.dealer_cards_frame = tkinter.Frame(card_table_frame, background=PANEL_BACKGROUND_COLOR)
-        self.dealer_cards_frame.grid(**get_grid_options("card_table", "dealer_cards"))
-
         # In-Table Floating Dialog Overlay (unmapped when empty, floats over center when active)
         self.announcement_hud = TableAnnouncementHUD(
             card_table_frame, background=PANEL_BACKGROUND_COLOR
@@ -750,9 +749,6 @@ class BlackjackApp:
         self.player_header_frame.grid(**get_grid_options("card_table", "player_header"))
         self.player_title_label = self.player_header_frame.title_label
         self.player_score_label = self.player_header_frame.score_label
-
-        self.player_cards_frame = tkinter.Frame(card_table_frame, background=PANEL_BACKGROUND_COLOR)
-        self.player_cards_frame.grid(**get_grid_options("card_table", "player_cards"))
 
         # 2.5D Casino Felt Betting Spot Visualizer (visible in Chips Mode)
         self.chip_visualizer = ChipVisualizer(
@@ -993,7 +989,9 @@ class BlackjackApp:
             self.root.bind(k, lambda e, a=amt: self._on_key_chip(a))
 
     def _on_key_action(self, action_fn, button=None):
-        """Invokes an action function if the corresponding button is currently enabled."""
+        """Invokes an action function if the corresponding button is currently enabled and not dealing."""
+        if getattr(self, "_dealing", False):
+            return "break"
         if button is not None:
             try:
                 if str(button.cget("state")) != "normal":
@@ -1017,6 +1015,8 @@ class BlackjackApp:
         3. If player's turn -> hits if Hit is enabled.
         4. If round is over -> deals a new game.
         """
+        if getattr(self, "_dealing", False):
+            return "break"
         phase = getattr(self, "round_phase", None)
 
         if phase == RoundPhase.INSURANCE:
@@ -2144,22 +2144,6 @@ class BlackjackApp:
             if btn is not None:
                 btn.configure(background=bg_pnl, activebackground=bg_tbl)
 
-        # Card container frames (dealer & player)
-        for frame_attr in ("dealer_cards_frame", "player_cards_frame"):
-            cf = getattr(self, frame_attr, None)
-            if cf is not None:
-                cf.configure(background=bg_pnl)
-                for child in cf.winfo_children():
-                    try:
-                        child.configure(background=bg_pnl)
-                        for sub in child.winfo_children():
-                            try:
-                                sub.configure(background=bg_pnl)
-                            except Exception:
-                                pass
-                    except Exception:
-                        pass
-
         # Card table felt canvas
         if hasattr(self, "card_table_frame"):
             if isinstance(self.card_table_frame, TableFeltCanvas):
@@ -2595,14 +2579,13 @@ class BlackjackApp:
         self.dealer_hole_widget = None
         self.is_hole_card_hidden = False
         self._hole_card_observed = False
+        self._dealing = False
 
-        # 2. Clear card visuals from frames and unmap them to keep table felt clean during betting
-        for child in self.dealer_cards_frame.winfo_children():
-            child.destroy()
-        for child in self.player_cards_frame.winfo_children():
-            child.destroy()
-        self.dealer_cards_frame.grid_remove()
-        self.player_cards_frame.grid_remove()
+        # 2. Clear canvas card sprites and decorations to keep table felt clean during betting
+        if hasattr(self, "card_table_frame"):
+            self.card_table_frame.clear_card_sprites("card_sprite")
+            self.card_table_frame.delete("player_card_decor")
+            self.card_table_frame.delete("dealer_card_decor")
 
 
         # 3. Reset scores and status
@@ -3143,25 +3126,17 @@ class BlackjackApp:
                 self.sound_manager.play_haunted_sound("angel_chime")
             self.result_var.set("✦ Seraph's Grace! Busting card banished and redrawn!")
 
-        self._render_player_cards()
+        self._render_player_cards(animate_new_card=True, target_hand_index=hand_index)
         self._update_player_score_display()
         if hasattr(self, "dealer_actor") and self.root.winfo_exists() and self.root.state() != "withdrawn":
             self._trigger_dealer_deal_gesture()
         if hasattr(self, "sound_manager"):
             self.sound_manager.play_card_deal()
 
-    def _get_or_create_dealer_cards_container(self, bg_pnl: str) -> tkinter.Frame:
-        """Returns or creates the centered container for dealer cards."""
-        self.dealer_cards_frame.grid()
-        if not hasattr(self, "_dealer_cards_container") or not self._dealer_cards_container.winfo_exists():
-            self._dealer_cards_container = tkinter.Frame(self.dealer_cards_frame, background=bg_pnl)
-            self._dealer_cards_container.pack(anchor="center")
-        return self._dealer_cards_container
-
     def _deal_card_to_dealer(self, is_hole_card=False):
         """
         Deals one card to the dealer.
-        If `is_hole_card` is True, renders `back.png` and hides its score until Stand.
+        If `is_hole_card` is True, renders `back.png` (or halo if Eye of Providence) and hides score until Stand.
         """
         card = self._draw_card()
         self.dealer_hand.append(card)
@@ -3181,124 +3156,119 @@ class BlackjackApp:
         if hasattr(self, "sound_manager"):
             self.sound_manager.play_card_deal()
 
-        bg_pnl = self.card_table_frame["background"] if hasattr(self, "card_table_frame") else PANEL_BACKGROUND_COLOR
-        container = self._get_or_create_dealer_cards_container(bg_pnl)
-        card_cfg = get_card_layout()
-        padx = int(card_cfg.get("dealer_card_padx", 2) * self.scale_factor)
-
         if is_hole_card:
-            # Face-down hole card
             self.dealer_hole_card = card
             self.is_hole_card_hidden = True
-            if getattr(self, "haunted", None) and Blessing.EYE in self.haunted.equipped_blessings:
-                # Eye of Providence Blessing reveals hole card immediately in halo!
-                self.dealer_hole_widget = tkinter.Label(
-                    container, image=card[1],
-                    relief="solid", borderwidth=1, highlightthickness=1,
-                    highlightbackground="#00e5ff", background=bg_pnl
-                )
-                self.dealer_hole_widget.pack(side="left", padx=padx)
+
+        self._render_dealer_cards(animate_new_card=True)
+
+        if is_hole_card:
+            if eye_revealed:
                 self.dealer_score_var.set(f"{score_hand(self.dealer_hand)} (Revealed)")
             else:
-                back_img = self.haunted_assets.get("back_haunted") if (getattr(self, "haunted", None) and self.haunted.phase == Phase.HELL_TABLE) else self.back_image
-                self.dealer_hole_widget = tkinter.Label(
-                    container, image=back_img or self.back_image,
-                    relief="flat", borderwidth=0, highlightthickness=0,
-                    background=bg_pnl
-                )
-                self.dealer_hole_widget.pack(side="left", padx=padx)
                 upcard_score = score_hand([self.dealer_hand[0]])
                 self.dealer_score_var.set(f"{upcard_score} + ?")
         else:
-            # Face-up card
-            tkinter.Label(
-                container, image=card[1],
-                relief="flat", borderwidth=0, highlightthickness=0,
-                background=bg_pnl
-            ).pack(side="left", padx=padx)
             self.dealer_score_var.set(str(score_hand(self.dealer_hand)))
 
-    def _render_dealer_cards(self):
-        """Renders visual card labels for dealer hand centered according to current scale factor."""
-        for child in self.dealer_cards_frame.winfo_children():
-            child.destroy()
-        if hasattr(self, "_dealer_cards_container"):
-            delattr(self, "_dealer_cards_container")
+    def _render_dealer_cards(self, animate_new_card: bool = False):
+        """Renders visual canvas card sprites for dealer hand centered on TableFeltCanvas."""
+        if not hasattr(self, "card_table_frame"):
+            return
 
-        bg_pnl = self.card_table_frame["background"] if hasattr(self, "card_table_frame") else PANEL_BACKGROUND_COLOR
+        canvas = self.card_table_frame
+        if not isinstance(self.dealer_hand, Hand):
+            canvas.clear_card_sprites("dealer_card")
+            self.dealer_hand = Hand(self.dealer_hand)
         card_cfg = get_card_layout()
         padx = int(card_cfg.get("dealer_card_padx", 2) * self.scale_factor)
         compress_threshold = card_cfg.get("multi_card_compress_threshold", 4)
+        card_w = getattr(self, "card_width", CARD_WIDTH)
+        card_h = getattr(self, "card_height", CARD_HEIGHT)
+        s = self.scale_factor
 
         num_cards = len(self.dealer_hand)
         if num_cards == 0:
-            self.dealer_cards_frame.configure(width=1, height=1)
-            self.dealer_cards_frame.grid_remove()
-            try:
-                self.dealer_cards_frame.place(x=0, y=0, width=1, height=1)
-                self.root.update_idletasks()
-                self.dealer_cards_frame.place_forget()
-            except Exception:
-                pass
+            canvas.clear_card_sprites("dealer_card")
+            canvas.delete("dealer_card_decor")
+            if hasattr(self.dealer_hand, "sprite_ids") and self.dealer_hand.sprite_ids is not None:
+                self.dealer_hand.sprite_ids.clear()
+            self.dealer_hole_widget = None
             return
-        self.dealer_cards_frame.grid()
-        container = self._get_or_create_dealer_cards_container(bg_pnl)
 
-        if num_cards > compress_threshold:
-            # Overlapping layout for 5+ cards to prevent table felt overflow
-            card_w = getattr(self, "card_width", CARD_WIDTH)
-            card_h = getattr(self, "card_height", CARD_HEIGHT)
-            overlap = self._calculate_hand_overlap(num_cards, is_split=False)
-            frame_width = card_w + (num_cards - 1) * overlap
-            container.configure(width=frame_width, height=card_h)
-            container.pack_propagate(False)
-            for i, card in enumerate(self.dealer_hand):
-                if i == 1 and getattr(self, "is_hole_card_hidden", False):
+        # Determine target area: between column 0 plaque (~130px) and column 2 accessories (~270px from right)
+        tbl_w = max(300, canvas.winfo_width() if canvas.winfo_width() > 20 else getattr(canvas, "canvas_width", 900))
+        left_bound = int(140 * s)
+        right_bound = tbl_w - int(280 * s)
+        avail_w = max(card_w, right_bound - left_bound)
+        center_x = left_bound + avail_w // 2
+
+        overlap = self._calculate_hand_overlap(num_cards, is_split=False) if num_cards > compress_threshold else (card_w + padx)
+        total_hand_w = card_w + (num_cards - 1) * overlap
+        start_x = max(left_bound, center_x - total_hand_w // 2)
+        dealer_y = int(card_cfg.get("dealer_y_offset", 6) * s)
+
+        # Clear decorations
+        canvas.delete("dealer_card_decor")
+
+        # Reuse or recreate sprites
+        old_sprites = list(getattr(self.dealer_hand, "sprite_ids", []))
+        new_sprites: list[int] = []
+
+        eye_revealed = bool(
+            getattr(self, "haunted", None)
+            and Blessing.EYE in self.haunted.equipped_blessings
+        )
+
+        for i, card in enumerate(self.dealer_hand):
+            target_x = start_x + i * overlap
+            target_y = dealer_y
+
+            is_hole = (i == 1 and getattr(self, "is_hole_card_hidden", False))
+            if is_hole:
+                if eye_revealed:
+                    img = card[1]
+                else:
                     back_img = self.haunted_assets.get("back_haunted") if (getattr(self, "haunted", None) and self.haunted.phase == Phase.HELL_TABLE) else self.back_image
-                    self.dealer_hole_widget = tkinter.Label(
-                        container, image=back_img or self.back_image,
-                        relief="flat", borderwidth=0, highlightthickness=0,
-                        background=bg_pnl
+                    img = back_img or self.back_image
+            else:
+                img = card[1]
+
+            if i < len(old_sprites) and canvas.type(old_sprites[i]) == "image":
+                item_id = old_sprites[i]
+                canvas.itemconfigure(item_id, image=img)
+                canvas.move_card_sprite(item_id, target_x, target_y)
+            else:
+                item_id = canvas.draw_card_sprite(img, target_x, target_y, tags=("card_sprite", "dealer_card"))
+                if animate_new_card and (i == num_cards - 1):
+                    shoe_x, shoe_y = canvas.get_shoe_mouth_coords()
+                    self._dealing = True
+                    def _on_done():
+                        self._dealing = False
+                    canvas.animate_card_slide(item_id, shoe_x, shoe_y, target_x, target_y, on_complete=_on_done)
+
+            new_sprites.append(item_id)
+
+            if is_hole:
+                self.dealer_hole_widget = CanvasCardSpriteProxy(canvas, item_id)
+                if eye_revealed:
+                    # Draw halo border around revealed hole card
+                    canvas.create_rectangle(
+                        target_x - 1, target_y - 1, target_x + card_w + 1, target_y + card_h + 1,
+                        outline="#00e5ff", width=max(1, int(2 * s)), tags="dealer_card_decor"
                     )
-                    self.dealer_hole_widget.place(x=i * overlap, y=0, width=card_w, height=card_h)
-                else:
-                    lbl = tkinter.Label(
-                        container, image=card[1],
-                        relief="flat", borderwidth=0, highlightthickness=0,
-                        background=bg_pnl
-                    )
-                    lbl.place(x=i * overlap, y=0, width=card_w, height=card_h)
-                    if i == 1 and not getattr(self, "is_hole_card_hidden", False):
-                        self.dealer_hole_widget = lbl
-        else:
-            container.pack_propagate(True)
-            for i, card in enumerate(self.dealer_hand):
-                if i == 1 and getattr(self, "is_hole_card_hidden", False):
-                    # Hole card face down (or revealed with halo by Eye of Providence)
-                    if getattr(self, "haunted", None) and Blessing.EYE in self.haunted.equipped_blessings:
-                        self.dealer_hole_widget = tkinter.Label(
-                            container, image=card[1],
-                            relief="solid", borderwidth=1, highlightthickness=1,
-                            highlightbackground="#00e5ff", background=bg_pnl
-                        )
-                        self.dealer_hole_widget.pack(side="left", padx=padx)
-                    else:
-                        back_img = self.haunted_assets.get("back_haunted") if (getattr(self, "haunted", None) and self.haunted.phase == Phase.HELL_TABLE) else self.back_image
-                        self.dealer_hole_widget = tkinter.Label(
-                            container, image=back_img or self.back_image,
-                            relief="flat", borderwidth=0, highlightthickness=0,
-                            background=bg_pnl
-                        )
-                        self.dealer_hole_widget.pack(side="left", padx=padx)
-                else:
-                    lbl = tkinter.Label(
-                        container, image=card[1],
-                        relief="flat", borderwidth=0, highlightthickness=0,
-                        background=bg_pnl
-                    )
-                    lbl.pack(side="left", padx=padx)
-                    if i == 1 and not getattr(self, "is_hole_card_hidden", False):
-                        self.dealer_hole_widget = lbl
+
+        # Remove extra old sprites if hand shrank
+        if len(old_sprites) > len(new_sprites):
+            for leftover in old_sprites[len(new_sprites):]:
+                canvas.delete(leftover)
+
+        if hasattr(self.dealer_hand, "sprite_ids"):
+            self.dealer_hand.sprite_ids = new_sprites
+
+        # If not hole card hidden and i == 1, update proxy if exists
+        if not getattr(self, "is_hole_card_hidden", False) and len(new_sprites) > 1:
+            self.dealer_hole_widget = CanvasCardSpriteProxy(canvas, new_sprites[1])
 
     def _calculate_hand_overlap(self, num_cards: int, is_split: bool) -> int:
         """Dynamically compresses card overlap offset when hand has many cards to prevent right-edge overflow."""
@@ -3315,78 +3285,114 @@ class BlackjackApp:
         min_overlap = int(card_cfg.get("min_overlap", 12) * self.scale_factor)
         return max(min_overlap, compressed)
 
-    def _render_player_cards(self):
-        """Renders visual card labels and hand frames for player hand(s) centered on table felt."""
-        for child in self.player_cards_frame.winfo_children():
-            child.destroy()
-
-        if not any(len(h) > 0 for h in self.player_hands):
-            self.player_cards_frame.configure(width=1, height=1)
-            self.player_cards_frame.grid_remove()
-            try:
-                self.player_cards_frame.place(x=0, y=0, width=1, height=1)
-                self.root.update_idletasks()
-                self.player_cards_frame.place_forget()
-            except Exception:
-                pass
+    def _render_player_cards(self, animate_new_card: bool = False, target_hand_index: Optional[int] = None):
+        """Renders visual canvas card sprites and hand badges for player hand(s) on TableFeltCanvas."""
+        if not hasattr(self, "card_table_frame"):
             return
 
-        self.player_cards_frame.grid()
-        is_split = len(self.player_hands) > 1
-        bg_pnl = self.card_table_frame["background"] if hasattr(self, "card_table_frame") else PANEL_BACKGROUND_COLOR
+        canvas = self.card_table_frame
+        for idx in range(len(self.player_hands)):
+            if not isinstance(self.player_hands[idx], Hand):
+                canvas.clear_card_sprites("player_card")
+                self.player_hands[idx] = Hand(self.player_hands[idx])
+        s = self.scale_factor
         card_cfg = get_card_layout()
-        split_gap = card_cfg.get("split_hand_gap", 10)
-        container_pad = card_cfg.get("container_pad", {"padx": 6, "pady": 4})
+        split_gap = int(card_cfg.get("split_hand_gap", 10) * s)
+        card_w = getattr(self, "card_width", CARD_WIDTH)
+        card_h = getattr(self, "card_height", CARD_HEIGHT)
+        player_base_y = int(card_cfg.get("player_y_offset", 124) * s)
 
-        player_container = tkinter.Frame(self.player_cards_frame, background=bg_pnl)
+        has_any_cards = any(len(h) > 0 for h in self.player_hands)
+        if not has_any_cards:
+            canvas.clear_card_sprites("player_card")
+            canvas.delete("player_card_decor")
+            for h in self.player_hands:
+                if hasattr(h, "sprite_ids") and h.sprite_ids is not None:
+                    h.sprite_ids.clear()
+            return
 
-        player_container.pack(anchor="center")
+        canvas.delete("player_card_decor")
+
+        tbl_w = max(300, canvas.winfo_width() if canvas.winfo_width() > 20 else getattr(canvas, "canvas_width", 900))
+        left_bound = int(140 * s)
+        right_bound = tbl_w - int(280 * s)
+        avail_w = max(card_w, right_bound - left_bound)
+        center_x = left_bound + avail_w // 2
+
+        is_split = len(self.player_hands) > 1
+
+        # Calculate width of each hand
+        hand_widths: list[int] = []
+        hand_overlaps: list[int] = []
+        for hand in self.player_hands:
+            num = len(hand)
+            overlap = self._calculate_hand_overlap(num, is_split)
+            hand_overlaps.append(overlap)
+            if num == 0:
+                hand_widths.append(card_w)
+            else:
+                hand_widths.append(card_w + (num - 1) * overlap)
+
+        total_all_hands_w = sum(hand_widths) + (len(self.player_hands) - 1) * split_gap
+        current_x = max(left_bound, center_x - total_all_hands_w // 2)
 
         for idx, hand in enumerate(self.player_hands):
             is_active = (idx == self.active_hand_index)
-            container = tkinter.Frame(
-                player_container,
-                background=bg_pnl,
-                padx=container_pad.get("padx", 6),
-                pady=container_pad.get("pady", 4),
-                relief="groove" if is_split else "flat",
-                borderwidth=2 if is_split else 0
-            )
-            container.pack(side="left", padx=split_gap if is_split else 0)
+            h_width = hand_widths[idx]
+            overlap = hand_overlaps[idx]
 
+            hand_y = player_base_y
             if is_split:
+                # Draw split badge and box
+                badge_h = int(card_cfg.get("split_badge_height", 18) * s)
                 status_suffix = " (Active)" if is_active else ""
                 title = f"Hand {idx + 1}{status_suffix}"
                 fg_color = "#ffeb3b" if is_active else "#cfd8dc"
-                tkinter.Label(
-                    container, text=title, font=get_badge_font(11),
-                    background=bg_pnl, fg=fg_color
-                ).pack(anchor="w", pady=(0, 2))
+                outline_color = "#ffd700" if is_active else "#37474f"
 
-            num_cards = len(hand)
-            card_w = getattr(self, "card_width", CARD_WIDTH)
-            card_h = getattr(self, "card_height", CARD_HEIGHT)
-            overlap = self._calculate_hand_overlap(num_cards, is_split)
+                # Outer container groove/border
+                canvas.create_rectangle(
+                    current_x - 4, hand_y - badge_h - 4,
+                    current_x + h_width + 4, hand_y + card_h + 4,
+                    outline=outline_color, width=max(1, int(2 * s)), tags="player_card_decor"
+                )
+                # Badge title
+                canvas.create_text(
+                    current_x + 2, hand_y - (badge_h // 2) - 2,
+                    text=title, fill=fg_color, font=get_badge_font(max(9, int(11 * s))),
+                    anchor="w", tags="player_card_decor"
+                )
 
-            if num_cards == 0:
-                frame_width = card_w
-            else:
-                frame_width = card_w + (num_cards - 1) * overlap
-
-            cards_frame = tkinter.Frame(
-                container, background=bg_pnl,
-                width=frame_width, height=card_h
-            )
-            cards_frame.pack(side="top")
-            cards_frame.pack_propagate(False)
+            old_sprites = list(getattr(hand, "sprite_ids", []))
+            new_sprites: list[int] = []
 
             for i, card in enumerate(hand):
-                lbl = tkinter.Label(
-                    cards_frame, image=card[1],
-                    relief="flat", borderwidth=0, highlightthickness=0,
-                    background=bg_pnl
-                )
-                lbl.place(x=i * overlap, y=0, width=card_w, height=card_h)
+                card_x = current_x + i * overlap
+                card_y = hand_y
+
+                if i < len(old_sprites) and canvas.type(old_sprites[i]) == "image":
+                    item_id = old_sprites[i]
+                    canvas.itemconfigure(item_id, image=card[1])
+                    canvas.move_card_sprite(item_id, card_x, card_y)
+                else:
+                    item_id = canvas.draw_card_sprite(card[1], card_x, card_y, tags=("card_sprite", "player_card"))
+                    should_anim = animate_new_card and (target_hand_index is None or target_hand_index == idx) and (i == len(hand) - 1)
+                    if should_anim:
+                        shoe_x, shoe_y = canvas.get_shoe_mouth_coords()
+                        self._dealing = True
+                        def _on_done():
+                            self._dealing = False
+                        canvas.animate_card_slide(item_id, shoe_x, shoe_y, card_x, card_y, on_complete=_on_done)
+
+                new_sprites.append(item_id)
+
+            if len(old_sprites) > len(new_sprites):
+                for leftover in old_sprites[len(new_sprites):]:
+                    canvas.delete(leftover)
+
+            if hasattr(hand, "sprite_ids"):
+                hand.sprite_ids = new_sprites
+            current_x += h_width + split_gap
 
     def _update_player_score_display(self):
         """Updates the reactive player score variable."""
@@ -4315,6 +4321,9 @@ class BlackjackApp:
     def _cancel_all_active_timers(self):
         """Safely cancels all registered background and animation timers across subsystems."""
         self._cancel_blink_timers()
+        if hasattr(self, "card_table_frame") and hasattr(self.card_table_frame, "cancel_card_animations"):
+            self.card_table_frame.cancel_card_animations()
+        self._dealing = False
         for attr in (
             "_dealer_idle_timer_id",
             "_dealer_blink_timer_id",

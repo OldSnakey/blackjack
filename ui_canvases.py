@@ -2011,6 +2011,53 @@ class DealerStageCanvas(tkinter.Canvas):
 # 6. TableFeltCanvas
 # ============================================================================
 
+class CanvasCardSpriteProxy:
+    """
+    Lightweight compatibility proxy for canvas card sprites (e.g., dealer_hole_widget).
+    Exposes cget('image'), __getitem__('image'), and configure(image=...) to maintain
+    100% backward compatibility with tests/callers that inspected tkinter.Label widgets.
+    """
+
+    def __init__(self, canvas: tkinter.Canvas, item_id: int):
+        self._canvas = canvas
+        self._item_id = item_id
+
+    @property
+    def item_id(self) -> int:
+        return self._item_id
+
+    def cget(self, key: str) -> Any:
+        if key == "image":
+            return self._canvas.itemcget(self._item_id, "image")
+        try:
+            return self._canvas.itemcget(self._item_id, key)
+        except Exception:
+            return ""
+
+    def __getitem__(self, key: str) -> Any:
+        return self.cget(key)
+
+    def configure(self, **kwargs) -> None:
+        opts = {}
+        for k, v in kwargs.items():
+            if k in ("image", "tags"):
+                opts[k] = v
+        if opts:
+            try:
+                self._canvas.itemconfigure(self._item_id, **opts)
+            except Exception:
+                pass
+
+    def config(self, **kwargs) -> None:
+        self.configure(**kwargs)
+
+    def destroy(self) -> None:
+        try:
+            self._canvas.delete(self._item_id)
+        except Exception:
+            pass
+
+
 class TableFeltCanvas(tkinter.Canvas):
     """
     Panoramic Casino Table Felt Canvas.
@@ -2078,6 +2125,9 @@ class TableFeltCanvas(tkinter.Canvas):
         self._shoe_visible: bool = False
         self._shoe_remaining: int = 208
         self._shoe_total: int = 208
+        self._card_anim_timers: dict[int, str] = {}
+        self._card_anim_targets: dict[int, tuple[int, int]] = {}
+        self._card_anim_callbacks: dict[int, Any] = {}
 
         self.bind("<Configure>", self._on_resize)
         self._redraw_felt()
@@ -2364,6 +2414,51 @@ class TableFeltCanvas(tkinter.Canvas):
     # ------------------------------------------------------------------------
     # Layer 3: Canvas Card Sprites
     # ------------------------------------------------------------------------
+    # ------------------------------------------------------------------------
+    # Layer 3: Canvas Card Sprites & Slide Trajectories
+    # ------------------------------------------------------------------------
+    def get_shoe_mouth_coords(self) -> tuple[int, int]:
+        """Calculates the (x, y) exit mouth coordinates of the acrylic card shoe."""
+        s = self.scale_factor
+        w = max(20, self.canvas_width)
+        shoe_cfg = get_ui_layout("table_felt", "shoe_tray")
+        sw = int(shoe_cfg.get("width", 82) * s)
+        sx = w - sw - int(shoe_cfg.get("offset_right", 12) * s)
+        sy = int(shoe_cfg.get("offset_top", 2) * s)
+        # Exit mouth is on the left side of the shoe tray
+        exit_x = sx + int(3 * s)
+        exit_y = sy + int(14 * s)
+        return (exit_x, exit_y)
+
+    @staticmethod
+    def compute_slide_trajectory(
+        start_x: int, start_y: int, target_x: int, target_y: int,
+        steps: int = 9, arc_lift: int = 18
+    ) -> list[tuple[int, int]]:
+        """
+        Calculates a smooth quadratic Bezier trajectory with ease-out interpolation
+        from (start_x, start_y) to (target_x, target_y).
+        Control point elevates the card slightly above the direct line.
+        """
+        if steps <= 1:
+            return [(target_x, target_y)]
+
+        ctrl_x = int((start_x + target_x) / 2.0)
+        ctrl_y = int(min(start_y, target_y) - arc_lift)
+
+        points: list[tuple[int, int]] = []
+        for step in range(1, steps + 1):
+            t = step / float(steps)
+            # Quadratic ease-out: u = 1 - (1 - t)^2
+            u = 1.0 - (1.0 - t) * (1.0 - t)
+            bx = (1.0 - u) * (1.0 - u) * start_x + 2.0 * (1.0 - u) * u * ctrl_x + u * u * target_x
+            by = (1.0 - u) * (1.0 - u) * start_y + 2.0 * (1.0 - u) * u * ctrl_y + u * u * target_y
+            points.append((int(round(bx)), int(round(by))))
+
+        # Guarantee exact endpoint arrival on the final frame
+        points[-1] = (target_x, target_y)
+        return points
+
     def draw_card_sprite(self, image: Any, x: int, y: int, tags: str = "card_sprite") -> int:
         """Renders a card image item directly onto the felt canvas."""
         return self.create_image(x, y, image=image, anchor="nw", tags=tags)
@@ -2372,8 +2467,107 @@ class TableFeltCanvas(tkinter.Canvas):
         """Reposition a card sprite on the felt canvas."""
         self.coords(item_id, target_x, target_y)
 
+    def animate_card_slide(
+        self,
+        item_id: int,
+        start_x: int,
+        start_y: int,
+        target_x: int,
+        target_y: int,
+        duration_ms: int = 144,
+        interval_ms: int = 16,
+        on_complete: Optional[Callable[[], None]] = None,
+        force_animate: bool = False,
+    ) -> None:
+        """
+        Animates a card sprite along a quadratic trajectory to (target_x, target_y).
+        When the window is mapped or force_animate is True, runs 16ms non-blocking ticks.
+        Otherwise (headless/withdrawn test mode), snaps immediately to target_x, target_y.
+        """
+        # Cancel any previous animation for this item
+        self.cancel_card_animation(item_id)
+
+        # Immediate snap condition
+        is_mapped = bool(self.winfo_exists() and self.winfo_ismapped())
+        if not is_mapped and not force_animate:
+            self.move_card_sprite(item_id, target_x, target_y)
+            if on_complete:
+                try:
+                    on_complete()
+                except Exception:
+                    pass
+            return
+
+        steps = max(2, int(duration_ms / max(1, interval_ms)))
+        s = getattr(self, "scale_factor", 1.0)
+        arc_lift = int(18 * s)
+        trajectory = self.compute_slide_trajectory(start_x, start_y, target_x, target_y, steps=steps, arc_lift=arc_lift)
+
+        self._card_anim_targets[item_id] = (target_x, target_y)
+        if on_complete:
+            self._card_anim_callbacks[item_id] = on_complete
+
+        # Position at starting point
+        self.move_card_sprite(item_id, start_x, start_y)
+
+        def _step_anim(traj_index: int = 0):
+            if item_id not in self._card_anim_targets:
+                return
+            if traj_index < len(trajectory):
+                cur_x, cur_y = trajectory[traj_index]
+                self.move_card_sprite(item_id, cur_x, cur_y)
+                timer_id = self.after(interval_ms, lambda: _step_anim(traj_index + 1))
+                self._card_anim_timers[item_id] = timer_id
+            else:
+                self.move_card_sprite(item_id, target_x, target_y)
+                cb = self._card_anim_callbacks.pop(item_id, None)
+                self._card_anim_timers.pop(item_id, None)
+                self._card_anim_targets.pop(item_id, None)
+                if cb:
+                    try:
+                        cb()
+                    except Exception:
+                        pass
+
+        timer_id = self.after(interval_ms, lambda: _step_anim(0))
+        self._card_anim_timers[item_id] = timer_id
+
+    def cancel_card_animation(self, item_id: int):
+        """Cancels an active slide animation for a specific card sprite."""
+        timer_id = self._card_anim_timers.pop(item_id, None)
+        if timer_id:
+            try:
+                self.after_cancel(timer_id)
+            except Exception:
+                pass
+        target = self._card_anim_targets.pop(item_id, None)
+        if target:
+            self.move_card_sprite(item_id, target[0], target[1])
+        cb = self._card_anim_callbacks.pop(item_id, None)
+        if cb:
+            try:
+                cb()
+            except Exception:
+                pass
+
+    def cancel_card_animations(self):
+        """Cancels all active card slide animation timers, snapping sprites to target coordinates."""
+        for item_id in list(self._card_anim_timers.keys()):
+            self.cancel_card_animation(item_id)
+        self._card_anim_timers.clear()
+        self._card_anim_targets.clear()
+        self._card_anim_callbacks.clear()
+
+    def has_active_card_animations(self) -> bool:
+        """Returns True if any card slide animations are currently in-flight."""
+        return bool(self._card_anim_timers)
+
     def clear_card_sprites(self, tag: str = "card_sprite"):
-        """Removes canvas card sprites matching the specified tag."""
+        """Removes canvas card sprites matching the specified tag, cancelling active animations."""
+        # Find item IDs matching tag
+        items = self.find_withtag(tag)
+        for item_id in items:
+            self.cancel_card_animation(item_id)
         self.delete(tag)
 
 

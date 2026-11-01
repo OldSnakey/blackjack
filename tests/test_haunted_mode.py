@@ -426,9 +426,6 @@ class TestHauntedGui(unittest.TestCase):
         self.assertGreaterEqual(r1["minsize"], 118)
         self.assertGreaterEqual(r1["weight"], 1)
 
-        self.assertEqual(self.app.dealer_cards_frame.grid_info()["row"], 0)
-        self.assertEqual(self.app.player_cards_frame.grid_info()["row"], 1)
-
     def test_dialog_overlay_hidden_when_empty_and_placed_when_message_set(self):
         """Announcement HUD overlay must be completely unmapped when empty, and placed when active."""
         self.app.result_var.set("")

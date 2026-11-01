@@ -61,7 +61,8 @@ class TestLateSurrender(unittest.TestCase):
             card_hole,
         ]
         self.app.dealer_hole_card = card_hole
-        self.app.dealer_hole_widget = tkinter.Label(self.app.dealer_cards_frame, image=self.app.back_image)
+        self.app.is_hole_card_hidden = True
+        self.app._render_dealer_cards()
 
         initial_dealer_wins = self.app.dealer_wins_var.get()
         self.app.on_surrender()
@@ -89,7 +90,8 @@ class TestLateSurrender(unittest.TestCase):
             card_hole,
         ]
         self.app.dealer_hole_card = card_hole
-        self.app.dealer_hole_widget = tkinter.Label(self.app.dealer_cards_frame, image=self.app.back_image)
+        self.app.is_hole_card_hidden = True
+        self.app._render_dealer_cards()
 
         initial_dealer_wins = self.app.dealer_wins_var.get()
         self.app.on_surrender()
@@ -99,7 +101,7 @@ class TestLateSurrender(unittest.TestCase):
         self.assertEqual(self.app.new_game_button["state"], "normal")
 
     def test_dealer_hits_remain_inside_centered_container(self):
-        """Dealer drawing on hit must keep all cards inside centered container without orphan labels."""
+        """Dealer drawing on hit must keep all cards tracked as canvas sprites without orphan widgets."""
         self.app.new_game()
         self.app.dealer_hand = [
             Card(2, self.app.all_cards[0].image, rank="2", suit="club"),
@@ -109,15 +111,15 @@ class TestLateSurrender(unittest.TestCase):
         self.app._render_dealer_cards()
         self.root.update_idletasks()
 
-        # Prior to fix, _dealer_step directly packed into self.dealer_cards_frame outside the container
+        # Execute a dealer draw step
         self.app._dealer_step()
         self.root.update_idletasks()
 
-        # All children of dealer_cards_frame must be exactly 1 container, not orphan labels
-        self.assertEqual(len(self.app.dealer_cards_frame.winfo_children()), 1)
-        container = self.app.dealer_cards_frame.winfo_children()[0]
-        # Container must hold all dealer cards
-        self.assertEqual(len(container.winfo_children()), len(self.app.dealer_hand))
+        # All dealer cards must be tracked in sprite_ids and rendered as dealer_card sprites
+        dealer_sprites = self.app.card_table_frame.find_withtag("dealer_card")
+        self.assertEqual(len(dealer_sprites), len(self.app.dealer_hand))
+        if hasattr(self.app.dealer_hand, "sprite_ids"):
+            self.assertEqual(len(self.app.dealer_hand.sprite_ids), len(self.app.dealer_hand))
 
 
 if __name__ == "__main__":

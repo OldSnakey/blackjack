@@ -98,6 +98,7 @@ class Hand:
         is_settled: bool = False,
         outcome: Optional[str] = None,
         net_payout: int = 0,
+        sprite_ids: Optional[list[int]] = None,
     ):
         self.cards: list[Card] = list(cards) if cards is not None else []
         self.bet: int = bet
@@ -108,6 +109,7 @@ class Hand:
         self.is_settled: bool = is_settled
         self.outcome: Optional[str] = outcome
         self.net_payout: int = net_payout
+        self.sprite_ids: list[int] = list(sprite_ids) if sprite_ids is not None else []
 
     # --- Sequence / list[Card] backward compatibility ---
     def __len__(self) -> int:
@@ -133,10 +135,16 @@ class Hand:
         self.add_card(card)
 
     def pop(self, index: int = -1) -> Card:
+        if self.sprite_ids:
+            try:
+                self.sprite_ids.pop(index)
+            except IndexError:
+                pass
         return self.cards.pop(index)
 
     def clear(self) -> None:
         self.cards.clear()
+        self.sprite_ids.clear()
         self.is_doubled = False
         self.is_surrendered = False
         self.is_stood = False

@@ -124,14 +124,15 @@ class TestUIGeometryAndRendering(unittest.TestCase):
         self.root.update_idletasks()
 
         felt = self.app.card_table_frame
-        p_frame = self.app.player_cards_frame
         betting = self.app.betting_frame
 
-        self.assertEqual(p_frame.winfo_manager(), "grid")
+        self.assertGreater(len(felt.find_withtag("player_card")), 0)
         self.assertEqual(betting.winfo_manager(), "grid")
 
         # Player card bottom coordinate relative to felt must not exceed felt height
-        player_bottom_in_felt = p_frame.winfo_y() + p_frame.winfo_height()
+        player_bbox = felt.bbox("player_card")
+        self.assertIsNotNone(player_bbox)
+        player_bottom_in_felt = player_bbox[3]
         felt_h = felt.winfo_height()
         self.assertLessEqual(
             player_bottom_in_felt,
@@ -140,7 +141,7 @@ class TestUIGeometryAndRendering(unittest.TestCase):
         )
 
         # Absolute screen coordinate check: player bottom must be at or above betting frame top
-        player_root_bottom = p_frame.winfo_rooty() + p_frame.winfo_height()
+        player_root_bottom = felt.winfo_rooty() + player_bottom_in_felt
         betting_root_top = betting.winfo_rooty()
         self.assertLessEqual(
             player_root_bottom,
@@ -160,10 +161,11 @@ class TestUIGeometryAndRendering(unittest.TestCase):
         self.root.update_idletasks()
 
         felt = self.app.card_table_frame
-        p_frame = self.app.player_cards_frame
         betting = self.app.betting_frame
 
-        player_bottom_in_felt = p_frame.winfo_y() + p_frame.winfo_height()
+        player_bbox = felt.bbox("player_card")
+        self.assertIsNotNone(player_bbox)
+        player_bottom_in_felt = player_bbox[3]
         felt_h = felt.winfo_height()
         self.assertLessEqual(
             player_bottom_in_felt,
@@ -184,13 +186,14 @@ class TestUIGeometryAndRendering(unittest.TestCase):
         self.root.update_idletasks()
 
         felt = self.app.card_table_frame
-        p_frame = self.app.player_cards_frame
         betting = self.app.betting_frame
 
-        self.assertEqual(p_frame.winfo_manager(), "grid")
+        self.assertGreater(len(felt.find_withtag("player_card")), 0)
         self.assertEqual(betting.winfo_manager(), "grid")
 
-        player_bottom_in_felt = p_frame.winfo_y() + p_frame.winfo_height()
+        player_bbox = felt.bbox("player_card")
+        self.assertIsNotNone(player_bbox)
+        player_bottom_in_felt = player_bbox[3]
         felt_h = felt.winfo_height()
         self.assertLessEqual(
             player_bottom_in_felt,
@@ -198,7 +201,7 @@ class TestUIGeometryAndRendering(unittest.TestCase):
             f"In 2x scale, player cards bottom ({player_bottom_in_felt}px) exceeds felt ({felt_h}px)!",
         )
 
-        player_root_bottom = p_frame.winfo_rooty() + p_frame.winfo_height()
+        player_root_bottom = felt.winfo_rooty() + player_bottom_in_felt
         betting_root_top = betting.winfo_rooty()
         self.assertLessEqual(
             player_root_bottom,

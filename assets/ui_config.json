@@ -612,7 +612,13 @@
     "multi_card_compress_threshold": 4,
     "compression_factor_single": 0.85,
     "compression_factor_split": 0.70,
-    "min_overlap": 12
+    "min_overlap": 12,
+    "dealer_y_offset": 6,
+    "player_y_offset": 124,
+    "split_badge_height": 18,
+    "slide_duration_ms": 144,
+    "slide_interval_ms": 16,
+    "slide_arc_lift": 18
   },
   "blessings_tray": {
     "grid_placement": {

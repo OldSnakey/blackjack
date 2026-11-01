@@ -154,14 +154,11 @@ class TestScaleAndDisplayModes(unittest.TestCase):
         self.assertEqual(self.app.dealer_hand[0].rank, "9")
         self.assertEqual(self.app.dealer_hand[1].rank, "7")
 
-        # Visual widgets in cards_frame reflect 2x dimensions without cropping
+        # Visual sprites reflect 2x dimensions without cropping
         self.assertEqual(self.app.player_hands[0][0].image.width(), CARD_WIDTH * 2)
         self.assertEqual(self.app.player_hands[0][0].image.height(), CARD_HEIGHT * 2)
-        cards_container = self.app.player_cards_frame.winfo_children()[0].winfo_children()[0].winfo_children()[0]
-        for lbl in cards_container.winfo_children():
-            p_info = lbl.place_info()
-            self.assertEqual(int(p_info["width"]), CARD_WIDTH * 2)
-            self.assertEqual(int(p_info["height"]), CARD_HEIGHT * 2)
+        sprites = self.app.card_table_frame.find_withtag("player_card")
+        self.assertEqual(len(sprites), len(self.app.player_hands[0]))
 
     def test_fullscreen_toggle_and_exit(self):
         """Fullscreen mode toggles root fullscreen, auto-upscales interface to 2x, and updates status button."""
