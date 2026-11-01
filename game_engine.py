@@ -9,7 +9,7 @@ settlement) with zero GUI or Tkinter dependencies.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 
 from config import (
     BLACKJACK_TARGET,
@@ -85,12 +85,53 @@ class BlackjackEngine:
         self.dealer_hand: Hand = Hand()
         self.active_hand_index: int = 0
         self.current_bet: int = 0
+        self.staged_bet: int = 0
         self.insurance_bet: int = 0
+        self.last_insurance_lost: int = 0
         self.hole_card_revealed: bool = False
 
     @property
     def phase(self) -> RoundPhase:
         return self.fsm.phase
+
+    def stage_bet(self, amount: int, sound_hint: str = "set") -> int:
+        """Sets or clamps the staged bet and emits BET_STAGED."""
+        old_bet = self.staged_bet
+        clamped = max(0, min(amount, self.bankroll))
+        self.staged_bet = clamped
+        delta = self.staged_bet - old_bet
+        self.event_bus.emit(
+            GameEventType.BET_STAGED,
+            {
+                "staged_bet": self.staged_bet,
+                "delta": delta,
+                "bankroll": self.bankroll,
+                "action": sound_hint,
+            },
+        )
+        return self.staged_bet
+
+    def commit_staged_bet(self, bet: Optional[int] = None) -> int:
+        """Deducts staged bet from bankroll and sets up player hand bet."""
+        actual_bet = self.staged_bet if bet is None else bet
+        if actual_bet < MINIMUM_BET or actual_bet > self.bankroll:
+            raise ValueError(f"Cannot commit invalid bet {actual_bet} with bankroll {self.bankroll}")
+        self.bankroll -= actual_bet
+        self.current_bet = actual_bet
+        if self.player_hands:
+            self.player_hands[0].bet = actual_bet
+        self.event_bus.emit(
+            GameEventType.BET_COMMITTED,
+            {"bet": actual_bet, "bankroll": self.bankroll},
+        )
+        return actual_bet
+
+    def rebuy(self, amount: int = STARTING_BANKROLL) -> int:
+        """Replenishes bankroll if below MINIMUM_BET."""
+        if self.bankroll < MINIMUM_BET and self.staged_bet < MINIMUM_BET:
+            self.bankroll = amount
+            self.staged_bet = 0
+        return self.bankroll
 
     def reshuffle_shoe(self) -> None:
         """Rebuilds and shuffles the shoe from template cards."""
@@ -157,6 +198,7 @@ class BlackjackEngine:
             raise ValueError(f"Invalid insurance wager {bet_amount}")
         self.bankroll -= bet_amount
         self.insurance_bet = bet_amount
+        self.last_insurance_lost = 0
         self.event_bus.emit(
             GameEventType.INSURANCE_TAKEN,
             {"bet": bet_amount, "bankroll": self.bankroll},
@@ -169,13 +211,18 @@ class BlackjackEngine:
         if self.phase != RoundPhase.INSURANCE:
             raise ValueError(f"Insurance can only be declined during INSURANCE phase, current: {self.phase.value}")
         self.insurance_bet = 0
+        self.last_insurance_lost = 0
         self.event_bus.emit(GameEventType.INSURANCE_DECLINED, {})
         self._conclude_insurance_phase()
 
     def _conclude_insurance_phase(self) -> None:
         p_hand = self.player_hands[0]
         d_hand = self.dealer_hand
-        if d_hand.score == BLACKJACK_TARGET or p_hand.score >= BLACKJACK_TARGET:
+        dealer_has_bj = (len(d_hand) == 2 and d_hand.score == BLACKJACK_TARGET)
+        if not dealer_has_bj and self.insurance_bet > 0:
+            self.last_insurance_lost = self.insurance_bet
+            self.insurance_bet = 0
+        if dealer_has_bj or p_hand.score >= BLACKJACK_TARGET:
             self.reveal_hole_card()
             self.fsm.transition_to(RoundPhase.RESOLUTION)
         else:
@@ -270,7 +317,11 @@ class BlackjackEngine:
             return card
         return None
 
-    def resolve_outcomes(self) -> List[RoundResult]:
+    def resolve_outcomes(
+        self,
+        player_score_fn: Optional[Callable[[Hand], int]] = None,
+        chips_mode: bool = True,
+    ) -> List[RoundResult]:
         """Completes any remaining dealer draws, settles all player hands, and updates bankroll."""
         if self.phase == RoundPhase.DEALER_TURN:
             while dealer_should_hit(self.dealer_hand):
@@ -281,27 +332,72 @@ class BlackjackEngine:
         is_split_round = len(self.player_hands) > 1
 
         # Settle insurance side bet if placed
+        ins_profit = 0
+        ins_str = ""
         if self.insurance_bet > 0:
             dealer_has_bj = len(self.dealer_hand) == 2 and self.dealer_hand.score == BLACKJACK_TARGET
             ins_payout = calculate_insurance_payout(dealer_has_bj, self.insurance_bet, self.current_bet)
-            self.bankroll += ins_payout
+            if chips_mode:
+                self.bankroll += ins_payout
+            if dealer_has_bj:
+                ins_profit = ins_payout - self.insurance_bet
+                ins_str = f" | Insurance won (+${ins_profit})"
+            self.insurance_bet = 0
+        elif self.last_insurance_lost > 0:
+            ins_str = f" | Insurance lost (-${self.last_insurance_lost})"
+            self.last_insurance_lost = 0
+
+        outcomes: List[str] = []
+        messages: List[str] = []
+        payouts: List[int] = []
+        profits: List[int] = []
 
         for idx, hand in enumerate(self.player_hands):
             if hand.is_surrendered:
                 outcome, msg = "SURRENDER", "Surrendered."
             else:
-                outcome, msg = determine_outcome(hand, self.dealer_hand, is_split=is_split_round or hand.is_split)
+                score_override = player_score_fn(hand) if player_score_fn else None
+                outcome, msg = determine_outcome(
+                    hand,
+                    self.dealer_hand,
+                    is_split=is_split_round or hand.is_split,
+                    player_score_override=score_override,
+                )
             payout = calculate_payout(outcome, hand.bet)
+            profit = payout - hand.bet
             hand.outcome = outcome
             hand.net_payout = payout
             hand.is_settled = True
-            self.bankroll += payout
+            if chips_mode:
+                self.bankroll += payout
             res = RoundResult(hand_index=idx, outcome=outcome, message=msg, bet=hand.bet, payout=payout)
             results.append(res)
-            self.event_bus.emit(
-                GameEventType.ROUND_RESOLVED,
-                {"hand_index": idx, "outcome": outcome, "payout": payout, "bankroll": self.bankroll},
-            )
+            outcomes.append(outcome)
+            messages.append(msg)
+            payouts.append(payout)
+            profits.append(profit)
 
-        self.fsm.transition_to(RoundPhase.ROUND_OVER)
+        total_profit = sum(profits)
+        net_round = total_profit + ins_profit
+
+        self.event_bus.emit(
+            GameEventType.ROUND_RESOLVED,
+            {
+                "hand_index": 0,
+                "outcome": outcomes[0] if outcomes else "",
+                "payout": payouts[0] if payouts else 0,
+                "results": results,
+                "outcomes": outcomes,
+                "messages": messages,
+                "payouts": payouts,
+                "profits": profits,
+                "ins_profit": ins_profit,
+                "ins_str": ins_str,
+                "net_round": net_round,
+                "bankroll": self.bankroll,
+                "chips_mode": chips_mode,
+            },
+        )
+
+        self.fsm.transition_to(RoundPhase.ROUND_OVER, force=True)
         return results

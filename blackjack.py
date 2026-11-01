@@ -181,12 +181,266 @@ from state_machine import GameStateMachine
 # ============================================================================
 
 
+class HandBetsProxy(list):
+    """
+    Transparent list proxy over self.engine.player_hands that synchronizes
+    hand.bet on reads and writes while supporting list operations.
+    """
+    def __init__(self, engine: BlackjackEngine):
+        self._engine = engine
+        initial = [getattr(h, "bet", 0) for h in engine.player_hands] if getattr(engine, "player_hands", None) else [0]
+        super().__init__(initial)
+
+    def sync_from_engine(self):
+        if getattr(self._engine, "player_hands", None):
+            engine_bets = [getattr(h, "bet", 0) for h in self._engine.player_hands]
+            if any(b > 0 for b in engine_bets) or len(engine_bets) > 1:
+                super().clear()
+                super().extend(engine_bets)
+            elif not self:
+                super().clear()
+                super().extend(engine_bets)
+
+    def sync_to_engine(self):
+        if getattr(self._engine, "player_hands", None):
+            for i, val in enumerate(self):
+                if i < len(self._engine.player_hands):
+                    self._engine.player_hands[i].bet = val
+        if self:
+            self._engine.current_bet = self[0]
+
+    def __setitem__(self, index, value):
+        super().__setitem__(index, value)
+        if getattr(self._engine, "player_hands", None) and index < len(self._engine.player_hands):
+            self._engine.player_hands[index].bet = value
+        if index == 0:
+            self._engine.current_bet = value
+
+    def append(self, value):
+        super().append(value)
+        idx = len(self) - 1
+        if getattr(self._engine, "player_hands", None) and idx < len(self._engine.player_hands):
+            self._engine.player_hands[idx].bet = value
+
+    def extend(self, values):
+        for v in values:
+            self.append(v)
+
+    def clear(self):
+        super().clear()
+        if getattr(self._engine, "player_hands", None):
+            for h in self._engine.player_hands:
+                h.bet = 0
+        self._engine.current_bet = 0
+
+
 class BlackjackApp:
     """
     Encapsulates the Blackjack GUI, card state, and game lifecycle.
     Eliminates all global variables by storing state in instance attributes.
     Supports hand splitting with independent turn progression and outcome resolution.
     """
+
+    # ------------------------------------------------------------------------
+    # Delegated Properties to BlackjackEngine and GameStateMachine
+    # ------------------------------------------------------------------------
+
+    @property
+    def player_hands(self) -> List[Hand]:
+        return self.engine.player_hands
+
+    @player_hands.setter
+    def player_hands(self, hands: Any) -> None:
+        wrapped: List[Hand] = []
+        for i, h in enumerate(hands or []):
+            if isinstance(h, Hand):
+                wrapped.append(h)
+            else:
+                existing_bet = 0
+                if hasattr(self, "_hand_bets_proxy") and i < len(self._hand_bets_proxy):
+                    existing_bet = self._hand_bets_proxy[i]
+                elif hasattr(self, "engine") and i < len(self.engine.player_hands):
+                    existing_bet = self.engine.player_hands[i].bet
+                hand_obj = Hand(h, bet=existing_bet)
+                wrapped.append(hand_obj)
+        self.engine.player_hands = wrapped if wrapped else [Hand()]
+        if any(len(h) > 0 for h in self.engine.player_hands):
+            if hasattr(self, "fsm") and self.fsm.phase == RoundPhase.BETTING:
+                self.fsm.transition_to(RoundPhase.PLAYER_TURN, force=True)
+        if hasattr(self, "_hand_bets_proxy"):
+            self._hand_bets_proxy.sync_from_engine()
+        if hasattr(self, "card_table_frame") and hasattr(self.card_table_frame, "clear_card_sprites"):
+            self.card_table_frame.clear_card_sprites("player_card")
+
+    @property
+    def player_hand(self) -> Hand:
+        """Backward-compatible singular alias for tests inspecting player_hand directly."""
+        return self.engine.player_hands[0] if self.engine.player_hands else Hand()
+
+    @player_hand.setter
+    def player_hand(self, cards: Any) -> None:
+        if isinstance(cards, Hand):
+            self.player_hands = [cards]
+        else:
+            self.player_hands = [Hand(cards or [])]
+
+    @property
+    def dealer_hand(self) -> Hand:
+        return self.engine.dealer_hand
+
+    @dealer_hand.setter
+    def dealer_hand(self, hand: Any) -> None:
+        if isinstance(hand, Hand):
+            self.engine.dealer_hand = hand
+        else:
+            self.engine.dealer_hand = Hand(hand or [])
+        if hasattr(self, "card_table_frame") and hasattr(self.card_table_frame, "clear_card_sprites"):
+            self.card_table_frame.clear_card_sprites("dealer_card")
+
+    @property
+    def active_hand_index(self) -> int:
+        return self.engine.active_hand_index
+
+    @active_hand_index.setter
+    def active_hand_index(self, index: int) -> None:
+        self.engine.active_hand_index = int(index)
+
+    @property
+    def hand_bets(self) -> HandBetsProxy:
+        if not hasattr(self, "_hand_bets_proxy"):
+            self._hand_bets_proxy = HandBetsProxy(self.engine)
+        self._hand_bets_proxy.sync_from_engine()
+        return self._hand_bets_proxy
+
+    @hand_bets.setter
+    def hand_bets(self, values: Any) -> None:
+        if not hasattr(self, "_hand_bets_proxy"):
+            self._hand_bets_proxy = HandBetsProxy(self.engine)
+        super(HandBetsProxy, self._hand_bets_proxy).clear()
+        if values is not None:
+            super(HandBetsProxy, self._hand_bets_proxy).extend(values)
+        self._hand_bets_proxy.sync_to_engine()
+
+    @property
+    def round_phase(self) -> RoundPhase:
+        return self.fsm.phase
+
+    @round_phase.setter
+    def round_phase(self, phase: RoundPhase) -> None:
+        self.fsm.transition_to(phase, force=True)
+
+    @property
+    def is_betting_phase(self) -> bool:
+        return self.fsm.is_betting_phase
+
+    @is_betting_phase.setter
+    def is_betting_phase(self, active: bool) -> None:
+        if active and self.fsm.phase != RoundPhase.BETTING:
+            self.fsm.transition_to(RoundPhase.BETTING, force=True)
+        elif not active and self.fsm.phase == RoundPhase.BETTING:
+            self.fsm.transition_to(RoundPhase.PLAYER_TURN, force=True)
+
+    @property
+    def is_insurance_phase(self) -> bool:
+        return self.fsm.is_insurance_phase
+
+    @is_insurance_phase.setter
+    def is_insurance_phase(self, active: bool) -> None:
+        if active and self.fsm.phase != RoundPhase.INSURANCE:
+            self.fsm.transition_to(RoundPhase.INSURANCE, force=True)
+        elif not active and self.fsm.phase == RoundPhase.INSURANCE:
+            self.fsm.transition_to(RoundPhase.PLAYER_TURN, force=True)
+
+    @property
+    def _dealing(self) -> bool:
+        return self.fsm.in_flight
+
+    @_dealing.setter
+    def _dealing(self, value: bool) -> None:
+        self.fsm.in_flight = bool(value)
+
+    @property
+    def insurance_bet(self) -> int:
+        return self.engine.insurance_bet
+
+    @insurance_bet.setter
+    def insurance_bet(self, value: int) -> None:
+        self.engine.insurance_bet = int(value)
+
+    @property
+    def last_insurance_lost(self) -> int:
+        return self.engine.last_insurance_lost
+
+    @last_insurance_lost.setter
+    def last_insurance_lost(self, value: int) -> None:
+        self.engine.last_insurance_lost = int(value)
+
+    @property
+    def deck(self) -> List[Card]:
+        return self.engine.shoe
+
+    @deck.setter
+    def deck(self, cards: Any) -> None:
+        self.engine.shoe = list(cards or [])
+
+    @property
+    def all_cards(self) -> List[Card]:
+        return self.engine.template_cards
+
+    @all_cards.setter
+    def all_cards(self, cards: Any) -> None:
+        self.engine.template_cards = list(cards or [])
+
+    def _register_event_subscribers(self):
+        """Registers EventHub subscribers for decoupled view, audio, and state synchronization."""
+        def _on_bet_staged(ev: GameEvent):
+            payload = ev.payload
+            staged = payload.get("staged_bet", 0)
+            action = payload.get("action", "set")
+            delta = payload.get("delta", 0)
+
+            if hasattr(self, "chip_visualizer"):
+                if action == "add":
+                    self.chip_visualizer.animate_chip_drop(abs(delta), staged)
+                elif action in ("clear", "deduct") or staged <= 0:
+                    self.chip_visualizer.animate_clear()
+                elif action == "all_in":
+                    self.chip_visualizer.set_bet(staged, animate=False)
+                else:
+                    self.chip_visualizer.set_bet(staged, animate=True)
+
+            self._update_bankroll_display()
+            self._update_betting_controls()
+
+            if hasattr(self, "sound_manager"):
+                if action == "add":
+                    self.sound_manager.play_chip_add()
+                elif action in ("clear", "deduct"):
+                    self.sound_manager.play_chip_clear()
+                elif action == "all_in":
+                    self.sound_manager.play_chip_stack()
+
+        def _on_bet_committed(ev: GameEvent):
+            bet = ev.payload.get("bet", 0)
+            if hasattr(self, "chip_visualizer"):
+                self.chip_visualizer.set_bet(bet, animate=False)
+            self._update_bankroll_display()
+            self._update_betting_controls()
+
+        def _on_card_dealt(ev: GameEvent):
+            if hasattr(self, "card_table_frame") and hasattr(self.card_table_frame, "update_shoe_penetration"):
+                total = max(1, len(self.all_cards) * self.deck_count if self.all_cards else self.deck_count * 52)
+                self.card_table_frame.update_shoe_penetration(len(self.deck), total, cut_notice=getattr(self, "shoe_needs_reshuffle", False))
+            self._update_shoe_display()
+
+        def _on_phase_changed(ev: GameEvent):
+            if hasattr(self, "card_counting_hud"):
+                self._refresh_strategy_hint()
+
+        self.event_bus.subscribe(GameEventType.BET_STAGED, _on_bet_staged)
+        self.event_bus.subscribe(GameEventType.BET_COMMITTED, _on_bet_committed)
+        self.event_bus.subscribe(GameEventType.CARD_DEALT, _on_card_dealt)
+        self.event_bus.subscribe(GameEventType.PHASE_CHANGED, _on_phase_changed)
 
     def __init__(
         self,
@@ -263,22 +517,15 @@ class BlackjackApp:
             event_bus=self.event_bus,
         )
         self.fsm = self.engine.fsm
+        self._hand_bets_proxy = HandBetsProxy(self.engine)
+        self._register_event_subscribers()
 
-        # Game State Collections
+        # Game State Collections (Delegated to self.engine / self.fsm)
         self.deck = []
         self.all_cards = []
         self.player_hands = [Hand()]
         self.active_hand_index = 0
         self.dealer_hand = Hand()
-        self.engine.player_hands = self.player_hands
-        self.engine.dealer_hand = self.dealer_hand
-
-        # EventHub Subscribers
-        def _on_card_dealt_sync(ev: GameEvent):
-            if hasattr(self, "card_table_frame") and hasattr(self.card_table_frame, "update_shoe_penetration"):
-                total = max(1, len(self.all_cards) * self.deck_count if self.all_cards else self.deck_count * 52)
-                self.card_table_frame.update_shoe_penetration(len(self.deck), total, cut_notice=self.shoe_needs_reshuffle)
-        self.event_bus.subscribe(GameEventType.CARD_DEALT, _on_card_dealt_sync)
 
         # Hi-Lo Card Counting Trainer Subsystem
         self.card_counter = HiLoCardCounter(deck_count=self.deck_count)
@@ -324,13 +571,19 @@ class BlackjackApp:
         self.chips_mode_var = tkinter.BooleanVar(value=initial_chips_mode)
         self.play_mode_var = tkinter.StringVar(value=self.play_mode)
         self.bankroll_var = tkinter.IntVar(value=STARTING_BANKROLL)
+        self.engine.bankroll = self.bankroll_var.get()
+        self.bankroll_var.trace_add(
+            "write",
+            lambda *args: setattr(self.engine, "bankroll", self.bankroll_var.get())
+            if hasattr(self, "engine") and hasattr(self, "bankroll_var") else None
+        )
         self.current_bet_var = tkinter.IntVar(value=0)
         self.hand_bets = [0]
         self.is_betting_phase = False
         self.insurance_bet = 0
         self.last_insurance_lost = 0
         self.is_insurance_phase = False
-        self.round_phase: RoundPhase = RoundPhase.BETTING if initial_chips_mode else RoundPhase.PLAYER_TURN
+        self.round_phase = RoundPhase.BETTING if initial_chips_mode else RoundPhase.PLAYER_TURN
         self.chip_buttons = []
         self._last_was_double = False
         self._ambient_timer_id = None
@@ -2517,26 +2770,28 @@ class BlackjackApp:
             self._set_action_buttons_state("disabled")
             return
 
-        # Hit & Stand are available for active hand
-        self.hit_button.configure(state="normal")
-        self.stand_button.configure(state="normal")
-
-        # Double Down: exactly 2 cards in current hand, and sufficient bankroll if in Chips Mode
+        # Action button states governed strictly by GameStateMachine
         can_double = (len(hand) == 2)
         if can_double and self.chips_mode_var.get() and self.hand_bets:
             current_bet = self.hand_bets[self.active_hand_index] if self.active_hand_index < len(self.hand_bets) else 0
             can_double = (self.bankroll_var.get() >= current_bet and current_bet > 0)
-        self.double_button.configure(state="normal" if can_double else "disabled")
 
         # Split: only on initial 2 cards of non-split hand, matching rank, and sufficient bankroll
         can_sp = (len(self.player_hands) == 1 and can_split(self.player_hands[0]))
         if can_sp and self.chips_mode_var.get() and self.hand_bets:
             can_sp = (self.bankroll_var.get() >= self.hand_bets[0])
-        self.split_button.configure(state="normal" if can_sp else "disabled")
 
         # Surrender: only on initial 2 cards of non-split hand (before any hit, double, or split)
         can_surr = (len(self.player_hands) == 1 and len(self.player_hands[0]) == 2)
-        self.surrender_button.configure(state="normal" if can_surr else "disabled")
+
+        states = self.fsm.expected_action_button_states(
+            can_double=can_double, can_split=can_sp, can_surrender=can_surr
+        )
+        self.hit_button.configure(state=states["hit"])
+        self.stand_button.configure(state=states["stand"])
+        self.double_button.configure(state=states["double"])
+        self.split_button.configure(state=states["split"])
+        self.surrender_button.configure(state=states["surrender"])
 
         self._refresh_strategy_hint()
 
@@ -2764,23 +3019,18 @@ class BlackjackApp:
 
     def _add_chip_bet(self, amount: int):
         """Adds chip amount to the staged bet, bounded by available bankroll."""
-        if not self.is_betting_phase:
+        if not self.fsm.trigger("stage_bet"):
             return
         current_bet = self.current_bet_var.get()
         bankroll = self.bankroll_var.get()
         if current_bet + amount <= bankroll:
             new_bet = current_bet + amount
             self.current_bet_var.set(new_bet)
-            if hasattr(self, "chip_visualizer"):
-                self.chip_visualizer.animate_chip_drop(amount, new_bet)
-            self._update_bankroll_display()
-            self._update_betting_controls()
-            if hasattr(self, "sound_manager"):
-                self.sound_manager.play_chip_add()
+            self.engine.stage_bet(new_bet, sound_hint="add")
 
     def _deduct_chip_bet(self, amount: int):
         """Deducts chip denomination from the staged bet, bounded by current bet amount."""
-        if not self.is_betting_phase:
+        if not self.fsm.trigger("stage_bet"):
             return
         current_bet = self.current_bet_var.get()
         if current_bet <= 0:
@@ -2788,62 +3038,36 @@ class BlackjackApp:
         deduct_amt = min(current_bet, amount)
         new_bet = current_bet - deduct_amt
         self.current_bet_var.set(new_bet)
-        if hasattr(self, "chip_visualizer"):
-            if new_bet <= 0:
-                self.chip_visualizer.animate_clear()
-            else:
-                self.chip_visualizer.set_bet(new_bet, animate=True)
-        self._update_bankroll_display()
-        self._update_betting_controls()
-        if hasattr(self, "sound_manager"):
-            self.sound_manager.play_chip_clear()
+        self.engine.stage_bet(new_bet, sound_hint="deduct")
 
     def _clear_bet(self):
         """Resets the staged bet back to 0."""
-        if not self.is_betting_phase:
+        if not self.fsm.trigger("stage_bet"):
             return
         self.current_bet_var.set(0)
-        if hasattr(self, "chip_visualizer"):
-            self.chip_visualizer.animate_clear()
-        self._update_bankroll_display()
-        self._update_betting_controls()
-        if hasattr(self, "sound_manager"):
-            self.sound_manager.play_chip_clear()
+        self.engine.stage_bet(0, sound_hint="clear")
 
     def _all_in(self):
         """Sets the staged bet to the player's full remaining bankroll."""
-        if not self.is_betting_phase:
+        if not self.fsm.trigger("stage_bet"):
             return
         bankroll = self.bankroll_var.get()
         if bankroll >= MINIMUM_BET:
             self.current_bet_var.set(bankroll)
-            if hasattr(self, "chip_visualizer"):
-                self.chip_visualizer.set_bet(bankroll, animate=False)
-            self._update_bankroll_display()
-            self._update_betting_controls()
-            if hasattr(self, "sound_manager"):
-                self.sound_manager.play_chip_stack()
+            self.engine.stage_bet(bankroll, sound_hint="all_in")
 
     def _deal_hand_with_bet(self):
         """Commits the staged bet, deducts it from bankroll, and begins the deal."""
-        if not self.is_betting_phase:
+        if not self.fsm.trigger("deal"):
             return
         bet = self.current_bet_var.get()
         bankroll = self.bankroll_var.get()
         if bet < MINIMUM_BET or bet > bankroll:
             return
-        self.bankroll_var.set(bankroll - bet)
+        self.engine.commit_staged_bet(bet)
+        self.bankroll_var.set(self.engine.bankroll)
         self.hand_bets = [bet]
         self.is_betting_phase = False
-        if hasattr(self, "engine"):
-            self.engine.current_bet = bet
-            self.engine.bankroll = self.bankroll_var.get()
-        if hasattr(self, "event_bus") and self.event_bus:
-            self.event_bus.emit(GameEventType.BET_COMMITTED, {"bet": bet, "bankroll": self.bankroll_var.get()})
-        if hasattr(self, "chip_visualizer"):
-            self.chip_visualizer.set_bet(bet, animate=False)
-        self._update_bankroll_display()
-        self._update_betting_controls()
         self._start_round_deal()
 
     def _rebuy(self):
@@ -3004,7 +3228,7 @@ class BlackjackApp:
 
     def _on_take_insurance(self):
         """Handles player taking insurance."""
-        if not self.is_insurance_phase:
+        if not self.fsm.trigger("take_insurance"):
             return
         main_bet = self.hand_bets[0] if self.hand_bets else 0
         insurance_cost = main_bet // 2
@@ -3018,7 +3242,7 @@ class BlackjackApp:
 
     def _on_decline_insurance(self):
         """Handles player declining insurance."""
-        if not self.is_insurance_phase:
+        if not self.fsm.trigger("decline_insurance"):
             return
         self.insurance_bet = 0
         self._resolve_insurance_decision()
@@ -3497,6 +3721,8 @@ class BlackjackApp:
         into two independent hands and deals one card to each.
         In Chips Mode, requires and deducts a matching wager for the second hand.
         """
+        if not self.fsm.trigger("split"):
+            return
         if not can_split(self.player_hands[0]):
             return
 
@@ -3542,6 +3768,8 @@ class BlackjackApp:
         Handles the 'Double' player action.
         Doubles the wager on the active hand, deals exactly 1 card, and automatically stands (or busts).
         """
+        if not self.fsm.trigger("double"):
+            return
         hand = self.player_hands[self.active_hand_index]
         if len(hand) != 2:
             return
@@ -3610,6 +3838,8 @@ class BlackjackApp:
         Handles the 'Surrender' player action (Late Surrender).
         Forfeits the hand after dealer checks for Blackjack, recovering 50% of the initial bet.
         """
+        if not self.fsm.trigger("surrender"):
+            return
         if len(self.player_hands) != 1 or len(self.player_hands[0]) != 2:
             return
 
@@ -3643,6 +3873,8 @@ class BlackjackApp:
         Handles the 'Hit' player action.
         Deals a card to the currently active hand, checks for bust or 21.
         """
+        if not self.fsm.trigger("hit"):
+            return
         self.double_button.configure(state="disabled")
         self.split_button.configure(state="disabled")
         self.surrender_button.configure(state="disabled")
@@ -3691,6 +3923,8 @@ class BlackjackApp:
         If playing split hands and Hand 1 stands, advances to Hand 2.
         Once all player hands have stood, begins dealer turn.
         """
+        if not self.fsm.trigger("stand"):
+            return
         self.double_button.configure(state="disabled")
         self.split_button.configure(state="disabled")
         self.surrender_button.configure(state="disabled")

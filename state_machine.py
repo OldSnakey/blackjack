@@ -65,6 +65,27 @@ VALID_TRANSITIONS: Dict[RoundPhase, Set[RoundPhase]] = {
     },
 }
 
+ACTION_ALLOWED_PHASES: Dict[str, Set[RoundPhase]] = {
+    "stage_bet": {RoundPhase.BETTING},
+    "deal": {RoundPhase.BETTING},
+    "take_insurance": {RoundPhase.INSURANCE},
+    "decline_insurance": {RoundPhase.INSURANCE},
+    "hit": {RoundPhase.PLAYER_TURN},
+    "stand": {RoundPhase.PLAYER_TURN},
+    "double": {RoundPhase.PLAYER_TURN},
+    "split": {RoundPhase.PLAYER_TURN},
+    "surrender": {RoundPhase.PLAYER_TURN},
+    "dealer_step": {RoundPhase.DEALER_TURN},
+    "resolve": {
+        RoundPhase.INITIAL_DEAL,
+        RoundPhase.INSURANCE,
+        RoundPhase.PLAYER_TURN,
+        RoundPhase.DEALER_TURN,
+        RoundPhase.RESOLUTION,
+    },
+    "new_game": set(RoundPhase),
+}
+
 
 class GameStateMachine:
     """Formal state machine governing Blackjack round phases."""
@@ -76,10 +97,66 @@ class GameStateMachine:
     ):
         self._phase: RoundPhase = initial_phase
         self._event_bus: Optional[EventHub] = event_bus
+        self._in_flight: bool = False
 
     @property
     def phase(self) -> RoundPhase:
         return self._phase
+
+    @property
+    def current_phase(self) -> RoundPhase:
+        return self._phase
+
+    @property
+    def in_flight(self) -> bool:
+        return self._in_flight
+
+    @in_flight.setter
+    def in_flight(self, value: bool) -> None:
+        self._in_flight = bool(value)
+
+    def can_trigger(self, action: str) -> bool:
+        """Returns True if action is legally allowed in current phase and not locked in-flight."""
+        if action == "new_game":
+            return True
+        if self._in_flight:
+            return False
+        allowed = ACTION_ALLOWED_PHASES.get(action)
+        if allowed is None:
+            return False
+        return self._phase in allowed
+
+    def trigger(self, action: str, target_phase: Optional[RoundPhase] = None) -> bool:
+        """
+        Validates action against current phase and in_flight lock.
+        If valid and target_phase is provided, transitions to target_phase.
+        Returns True if successful, False if blocked.
+        """
+        if not self.can_trigger(action):
+            return False
+        if action == "new_game":
+            self._in_flight = False
+        if target_phase is not None:
+            self.transition_to(target_phase, force=True)
+        return True
+
+    def expected_action_button_states(
+        self,
+        can_double: bool = False,
+        can_split: bool = False,
+        can_surrender: bool = False,
+    ) -> Dict[str, str]:
+        """Computes authoritative button states ('normal' vs 'disabled') strictly from current phase & in_flight."""
+        is_player_turn = (self._phase == RoundPhase.PLAYER_TURN) and not self._in_flight
+        is_round_over = (self._phase in (RoundPhase.ROUND_OVER, RoundPhase.RESOLUTION)) and not self._in_flight
+        return {
+            "hit": "normal" if is_player_turn else "disabled",
+            "stand": "normal" if is_player_turn else "disabled",
+            "double": "normal" if (is_player_turn and can_double) else "disabled",
+            "split": "normal" if (is_player_turn and can_split) else "disabled",
+            "surrender": "normal" if (is_player_turn and can_surrender) else "disabled",
+            "new_game": "normal" if is_round_over else "disabled",
+        }
 
     def can_transition(self, target_phase: RoundPhase) -> bool:
         """Returns True if transitioning from current phase to `target_phase` is permitted."""

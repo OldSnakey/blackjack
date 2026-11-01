@@ -182,6 +182,60 @@ class TestBlackjackEngineModular(unittest.TestCase):
         event_types = [e.event_type for e in self.events]
         self.assertIn(GameEventType.SHOE_RESHUFFLED, event_types)
 
+    def test_ten_thousand_automated_rounds_headless_simulation(self):
+        """Runs 10,000 automated rounds directly through BlackjackEngine with zero GUI instantiation."""
+        engine = BlackjackEngine(bankroll=1000)
+        rounds_played = 0
+
+        for r in range(10_000):
+            if engine.bankroll < 25:
+                engine.rebuy(1000)
+            bet = min(25, engine.bankroll)
+            engine.stage_bet(bet)
+
+            # Deal round
+            p_hand, d_hand = engine.deal_round(bet=bet)
+
+            # Handle insurance phase if triggered
+            if engine.phase == RoundPhase.INSURANCE:
+                ins_amt = bet // 2
+                if ins_amt > 0 and engine.bankroll >= ins_amt and (r % 3 == 0):
+                    engine.take_insurance(ins_amt)
+                else:
+                    engine.decline_insurance()
+
+            # Handle player turn
+            while engine.phase == RoundPhase.PLAYER_TURN:
+                idx = engine.active_hand_index
+                h = engine.player_hands[idx]
+
+                # Splitting
+                if len(h) == 2 and h.can_split and engine.bankroll >= h.bet and (r % 7 == 0):
+                    engine.split(idx)
+                    continue
+
+                # Doubling down
+                if len(h) == 2 and h.can_double and engine.bankroll >= h.bet and h.score in (10, 11):
+                    engine.double_down(idx)
+                    continue
+
+                # Hit or Stand basic heuristic
+                if h.score < 17:
+                    engine.hit(idx)
+                else:
+                    engine.stand(idx)
+
+            # Conclude round
+            if engine.phase in (RoundPhase.DEALER_TURN, RoundPhase.RESOLUTION):
+                results = engine.resolve_outcomes(chips_mode=True)
+                self.assertGreaterEqual(len(results), 1)
+
+            self.assertEqual(engine.phase, RoundPhase.ROUND_OVER)
+            self.assertGreaterEqual(engine.bankroll, 0)
+            rounds_played += 1
+
+        self.assertEqual(rounds_played, 10_000)
+
 
 if __name__ == "__main__":
     unittest.main()

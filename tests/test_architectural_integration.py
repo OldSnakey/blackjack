@@ -147,6 +147,89 @@ class TestArchitecturalIntegration(unittest.TestCase):
         canvas.clear_card_sprites(tag="test_card")
         self.assertEqual(len(canvas.find_withtag("test_card")), 0)
 
+    def test_zero_parallel_state_duplication(self):
+        """Domain and phase variables are delegated properties, not duplicate keys in app.__dict__."""
+        dict_keys = set(self.app.__dict__.keys())
+        delegated_fields = {
+            "player_hands",
+            "dealer_hand",
+            "hand_bets",
+            "is_betting_phase",
+            "is_insurance_phase",
+            "round_phase",
+            "_dealing",
+            "deck",
+            "all_cards",
+            "insurance_bet",
+            "last_insurance_lost",
+            "active_hand_index",
+        }
+        for field in delegated_fields:
+            self.assertNotIn(
+                field,
+                dict_keys,
+                f"Field '{field}' should be a delegated @property, not a duplicate instance attribute!",
+            )
+
+    def test_strict_fsm_action_validation_and_reentrancy_guard(self):
+        """Calling actions outside legal phase or while in_flight is rejected by FSM with zero mutation."""
+        # 1. During BETTING phase, player actions (hit, stand, double, split, surrender) are rejected
+        self.app.round_phase = RoundPhase.BETTING
+        initial_hands_len = len(self.app.player_hands[0])
+        self.app.on_hit()
+        self.assertEqual(len(self.app.player_hands[0]), initial_hands_len)
+        self.assertEqual(self.app.round_phase, RoundPhase.BETTING)
+
+        # 2. Re-entrancy guard: when in_flight (_dealing = True), actions are rejected
+        self.app.round_phase = RoundPhase.PLAYER_TURN
+        self.app.player_hands = [Hand([Card(10, None, "10", "heart"), Card(6, None, "6", "spade")])]
+        self.app._dealing = True
+        self.assertTrue(self.app.fsm.in_flight)
+
+        # Attempt to hit while dealing
+        self.app.on_hit()
+        # Hand must still only have 2 cards because in_flight blocked the action
+        self.assertEqual(len(self.app.player_hands[0]), 2)
+
+        # Reset in_flight
+        self.app._dealing = False
+        self.assertFalse(self.app.fsm.in_flight)
+
+    def test_action_button_synchronization_with_fsm_phase(self):
+        """Action button states strictly match GameStateMachine.current_phase."""
+        # Betting phase: all play action buttons disabled
+        self.app.round_phase = RoundPhase.BETTING
+        self.app._update_action_buttons()
+        self.assertEqual(self.app.hit_button["state"], "disabled")
+        self.assertEqual(self.app.stand_button["state"], "disabled")
+        self.assertEqual(self.app.double_button["state"], "disabled")
+        self.assertEqual(self.app.split_button["state"], "disabled")
+        self.assertEqual(self.app.surrender_button["state"], "disabled")
+
+        # Player turn phase with eligible 2-card hand: Hit & Stand normal
+        self.app.round_phase = RoundPhase.PLAYER_TURN
+        self.app.player_hands = [Hand([Card(10, None, "10", "heart"), Card(6, None, "6", "spade")])]
+        self.app._update_action_buttons()
+        self.assertEqual(self.app.hit_button["state"], "normal")
+        self.assertEqual(self.app.stand_button["state"], "normal")
+
+    def test_event_hub_view_observers(self):
+        """EventHub subscribers respond to BET_STAGED, BET_COMMITTED, and HAND_SPLIT."""
+        staged_events = []
+        committed_events = []
+        self.app.event_bus.subscribe(GameEventType.BET_STAGED, lambda ev: staged_events.append(ev))
+        self.app.event_bus.subscribe(GameEventType.BET_COMMITTED, lambda ev: committed_events.append(ev))
+
+        self.app.round_phase = RoundPhase.BETTING
+        self.app._clear_bet()
+        self.app._add_chip_bet(25)
+        self.assertGreaterEqual(len(staged_events), 1)
+        self.assertEqual(staged_events[-1].payload.get("staged_bet"), 25)
+
+        self.app._deal_hand_with_bet()
+        self.assertGreaterEqual(len(committed_events), 1)
+        self.assertEqual(committed_events[-1].payload.get("bet"), 25)
+
 
 if __name__ == "__main__":
     unittest.main()
