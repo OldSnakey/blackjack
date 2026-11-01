@@ -219,6 +219,119 @@ class TestCardCounter(unittest.TestCase):
             )
             self.assertTrue(sm.data.achievements.count_capitalist)
 
+    def test_illustrious_18_rules_catalogue_completeness(self):
+        """The Illustrious 18 matrix contains all 18 standard indexed plays with ranks 1..18."""
+        from card_counter import ILLUSTRIOUS_18_RULES
+        self.assertEqual(len(ILLUSTRIOUS_18_RULES), 18)
+        rule_ids = {r.rule_id for r in ILLUSTRIOUS_18_RULES}
+        expected_ids = {
+            "insurance", "16_vs_10", "15_vs_10", "10_10_vs_5", "10_10_vs_6",
+            "10_vs_10", "12_vs_3", "12_vs_2", "11_vs_A", "9_vs_2",
+            "10_vs_A", "9_vs_7", "16_vs_9", "13_vs_2", "12_vs_4",
+            "12_vs_5", "12_vs_6", "13_vs_3",
+        }
+        self.assertEqual(rule_ids, expected_ids)
+        ranks = [r.rank_order for r in ILLUSTRIOUS_18_RULES]
+        self.assertEqual(ranks, list(range(1, 19)))
+
+    def test_illustrious_18_all_thresholds_exact_boundaries(self):
+        """Exact TC boundary evaluation for all 18 Illustrious rules."""
+        from card_counter import ILLUSTRIOUS_18_RULES
+
+        for rule in ILLUSTRIOUS_18_RULES:
+            idx = rule.index_tc
+            # Just below threshold
+            dev_below = self.counter.evaluate_rule(rule.rule_id, true_count=idx - 0.1)
+            self.assertEqual(dev_below.recommended_action, rule.action_below)
+            self.assertEqual(dev_below.is_deviation_active, (rule.action_below != rule.basic_action))
+
+            # Exactly at threshold
+            dev_exact = self.counter.evaluate_rule(rule.rule_id, true_count=idx)
+            self.assertEqual(dev_exact.recommended_action, rule.action_at_or_above)
+            self.assertEqual(dev_exact.is_deviation_active, (rule.action_at_or_above != rule.basic_action))
+
+            # Above threshold
+            dev_above = self.counter.evaluate_rule(rule.rule_id, true_count=idx + 1.0)
+            self.assertEqual(dev_above.recommended_action, rule.action_at_or_above)
+            self.assertEqual(dev_above.is_deviation_active, (rule.action_at_or_above != rule.basic_action))
+
+    def test_evaluate_hand_deviation_matrix(self):
+        """Evaluates live Card hand matchups against dealer upcards using Illustrious 18 rules."""
+        # 1. Insurance vs Ace (TC >= +3.0)
+        c_10 = Card(10, None, "10", "spade")
+        c_6 = Card(6, None, "6", "heart")
+        c_a = Card(1, None, "ace", "diamond")
+        c_5 = Card(5, None, "5", "club")
+
+        # Hand total doesn't matter for insurance, is_insurance_phase=True
+        dev_ins_high = self.counter.evaluate_hand_deviation(
+            player_hand=[c_10, c_6], dealer_upcard=c_a, true_count=3.0, is_insurance_phase=True
+        )
+        self.assertIsNotNone(dev_ins_high)
+        self.assertTrue(dev_ins_high.is_deviation_active)
+        self.assertEqual(dev_ins_high.recommended_action, "INSURANCE")
+
+        dev_ins_low = self.counter.evaluate_hand_deviation(
+            player_hand=[c_10, c_6], dealer_upcard=c_a, true_count=2.9, is_insurance_phase=True
+        )
+        self.assertIsNotNone(dev_ins_low)
+        self.assertFalse(dev_ins_low.is_deviation_active)
+        self.assertEqual(dev_ins_low.recommended_action, "DECLINE")
+
+        # 2. Hard 16 vs 10: Stand at TC >= 0
+        dev_16_0 = self.counter.evaluate_hand_deviation([c_10, c_6], c_10, true_count=0.0)
+        self.assertIsNotNone(dev_16_0)
+        self.assertTrue(dev_16_0.is_deviation_active)
+        self.assertEqual(dev_16_0.recommended_action, "STAND")
+
+        dev_16_neg = self.counter.evaluate_hand_deviation([c_10, c_6], c_10, true_count=-0.5)
+        self.assertIsNotNone(dev_16_neg)
+        self.assertFalse(dev_16_neg.is_deviation_active)
+        self.assertEqual(dev_16_neg.recommended_action, "HIT")
+
+        # 3. Soft 16 (A + 5) must NOT trigger Hard 16 vs 10 deviation
+        dev_soft16 = self.counter.evaluate_hand_deviation([c_a, c_5], c_10, true_count=2.0)
+        self.assertIsNone(dev_soft16)
+
+        # 4. 10-10 Pair vs 5: Split at TC >= +5 (Normally Stand)
+        c_10_2 = Card(10, None, "king", "club")
+        dev_1010_5 = self.counter.evaluate_hand_deviation([c_10, c_10_2], c_5, true_count=5.0, can_split=True)
+        self.assertIsNotNone(dev_1010_5)
+        self.assertTrue(dev_1010_5.is_deviation_active)
+        self.assertEqual(dev_1010_5.recommended_action, "SPLIT")
+
+        dev_1010_5_low = self.counter.evaluate_hand_deviation([c_10, c_10_2], c_5, true_count=4.5, can_split=True)
+        self.assertIsNotNone(dev_1010_5_low)
+        self.assertFalse(dev_1010_5_low.is_deviation_active)
+        self.assertEqual(dev_1010_5_low.recommended_action, "STAND")
+
+        # 5. Negative Index: Hard 13 vs 2 (Index -1.0; Stand at TC >= -1, Hit if TC < -1)
+        c_3 = Card(3, None, "3", "club")
+        c_2 = Card(2, None, "2", "diamond")
+        dev_13_2_norm = self.counter.evaluate_hand_deviation([c_10, c_3], c_2, true_count=-0.5)
+        self.assertIsNotNone(dev_13_2_norm)
+        self.assertFalse(dev_13_2_norm.is_deviation_active)
+        self.assertEqual(dev_13_2_norm.recommended_action, "STAND")
+
+        dev_13_2_hit = self.counter.evaluate_hand_deviation([c_10, c_3], c_2, true_count=-1.5)
+        self.assertIsNotNone(dev_13_2_hit)
+        self.assertTrue(dev_13_2_hit.is_deviation_active)
+        self.assertEqual(dev_13_2_hit.recommended_action, "HIT")
+
+    def test_deviation_quiz_generation_and_verification(self):
+        """Generates Illustrious 18 quiz questions and verifies answers accurately."""
+        q = self.counter.generate_deviation_question(rule_id="16_vs_10", true_count=2.0)
+        self.assertEqual(q.rule_id, "16_vs_10")
+        self.assertEqual(q.correct_action, "STAND")
+        self.assertTrue(self.counter.verify_deviation_quiz_answer(q, "STAND"))
+        self.assertTrue(self.counter.verify_deviation_quiz_answer(q, "stand"))
+        self.assertFalse(self.counter.verify_deviation_quiz_answer(q, "HIT"))
+
+        q_neg = self.counter.generate_deviation_question(rule_id="13_vs_2", true_count=-3.0)
+        self.assertEqual(q_neg.correct_action, "HIT")
+        self.assertTrue(self.counter.verify_deviation_quiz_answer(q_neg, "HIT"))
+        self.assertFalse(self.counter.verify_deviation_quiz_answer(q_neg, "STAND"))
+
 
 if __name__ == "__main__":
     unittest.main()

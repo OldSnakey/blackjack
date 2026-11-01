@@ -274,7 +274,7 @@ class CardCountingHud(tkinter.Frame):
         self.bet_guide_label.pack(side="left", padx=(2, 0))
         self.bet_guide_label.bind("<Button-1>", lambda e: self._on_stage_bet_click())
 
-        # Basic Strategy Advisor Hint
+        # Basic Strategy Advisor Hint & Illustrious 18 Deviation Badge
         self.strategy_frame = tkinter.Frame(self.bar_frame, background="#141a1d")
         self.strategy_frame.pack(side="left", padx=3)
         tkinter.Label(
@@ -284,6 +284,21 @@ class CardCountingHud(tkinter.Frame):
             self.strategy_frame, text="-", font=f_val, fg="#b0bec5", background="#141a1d"
         )
         self.strategy_label.pack(side="left", padx=(2, 0))
+
+        # Deviation indicator badge (Illustrious 18)
+        self.deviation_badge = tkinter.Label(
+            self.strategy_frame,
+            text="",
+            font=f_val,
+            fg="#ffd700",
+            background="#261c0a",
+            padx=5,
+            pady=0,
+            relief="solid",
+            borderwidth=1,
+            highlightbackground="#ffb300",
+            highlightthickness=1,
+        )
 
     def _on_quiz_click(self):
         if self.on_quiz_request:
@@ -316,38 +331,59 @@ class CardCountingHud(tkinter.Frame):
             self.is_visible = True
         return self.is_visible
 
-    def update_strategy_hint(self, hint: Optional[Any] = None, text: Optional[str] = None):
+    def update_strategy_hint(
+        self,
+        hint: Optional[Any] = None,
+        text: Optional[str] = None,
+        deviation: Optional[Any] = None,
+    ):
         """
-        Updates the Basic Strategy recommendation label with color-coded feedback.
+        Updates the Basic Strategy recommendation label and Illustrious 18 deviation badge.
         Supports BasicStrategyDecision dataclass or raw string text.
         """
         if not hasattr(self, "strategy_label") or not self.strategy_label.winfo_exists():
             return
+
+        self._last_hint = hint
+        self._last_hint_text = text
+        self._last_deviation = deviation
+
+        # 1. Update Basic Strategy label text
         if text:
             display_text = text if len(text) <= 28 else text[:26] + "…"
             self.strategy_label.configure(text=display_text, fg="#ffffff")
-            return
-        if hint is None:
+        elif hint is None:
             self.strategy_label.configure(text="-", fg="#78909c")
-            return
+        else:
+            action_name = getattr(hint, "action_name", None)
+            if action_name is None:
+                action_name = str(hint.action.value if hasattr(hint.action, "value") else hint.action)
 
-        action_name = getattr(hint, "action_name", None)
-        if action_name is None:
-            action_name = str(hint.action.value if hasattr(hint.action, "value") else hint.action)
+            color_palette = {
+                "HIT": "#4fc3f7",        # Sky Blue
+                "STAND": "#ffb74d",      # Amber Orange
+                "DOUBLE": "#69f0ae",     # Neon Emerald
+                "SPLIT": "#ea80fc",      # Neon Violet
+                "SURRENDER": "#ff5252",  # Vivid Coral
+            }
+            fg_col = color_palette.get(action_name, "#ffffff")
+            reason = getattr(hint, "reason", "")
+            display_text = f"{action_name} ({reason})" if reason else action_name
+            if len(display_text) > 28:
+                display_text = display_text[:26] + "…"
+            self.strategy_label.configure(text=display_text, fg=fg_col)
 
-        color_palette = {
-            "HIT": "#4fc3f7",        # Sky Blue
-            "STAND": "#ffb74d",      # Amber Orange
-            "DOUBLE": "#69f0ae",     # Neon Emerald
-            "SPLIT": "#ea80fc",      # Neon Violet
-            "SURRENDER": "#ff5252",  # Vivid Coral
-        }
-        fg_col = color_palette.get(action_name, "#ffffff")
-        reason = getattr(hint, "reason", "")
-        display_text = f"{action_name} ({reason})" if reason else action_name
-        if len(display_text) > 28:
-            display_text = display_text[:26] + "…"
-        self.strategy_label.configure(text=display_text, fg=fg_col)
+        # 2. Update Illustrious 18 deviation badge
+        if hasattr(self, "deviation_badge"):
+            is_active_dev = bool(deviation and getattr(deviation, "is_deviation_active", False))
+            badge_txt = getattr(deviation, "badge_text", "") if is_active_dev else ""
+            if is_active_dev and badge_txt and not self.drill_mode:
+                self.deviation_badge.configure(text=badge_txt)
+                if not bool(self.deviation_badge.winfo_manager()):
+                    self.deviation_badge.pack(side="left", padx=(4, 0))
+            else:
+                if bool(self.deviation_badge.winfo_manager()):
+                    self.deviation_badge.pack_forget()
 
     def set_drill_mode(self, enabled: bool, cards_remaining: int = 208, base_bet: int = 25) -> bool:
         """Sets Drill Challenge Mode (masks live RC/TC/Edge as '?' when enabled)."""
@@ -357,6 +393,8 @@ class CardCountingHud(tkinter.Frame):
                 self.mode_btn.configure(text="🧠 Drill", foreground="#ffd54f", background="#3e2723")
             else:
                 self.mode_btn.configure(text="👁️ Assisted", foreground="#80cbc4", background="#1b382d")
+        if self.drill_mode and hasattr(self, "deviation_badge") and bool(self.deviation_badge.winfo_manager()):
+            self.deviation_badge.pack_forget()
         self.update_counts(cards_remaining=cards_remaining, base_bet=base_bet)
         return self.drill_mode
 
@@ -413,7 +451,7 @@ class CardCountingHud(tkinter.Frame):
 
 class CardCountingQuizDialog(tkinter.Toplevel):
     """
-    Modal quiz dialog testing the player's card counting estimation.
+    Modal quiz dialog testing the player's card counting estimation and Illustrious 18 deviations.
     Tracks correct answer streaks and triggers achievement unlocks.
     """
 
@@ -423,18 +461,23 @@ class CardCountingQuizDialog(tkinter.Toplevel):
         counter: HiLoCardCounter,
         cards_remaining: int,
         on_result: Optional[Callable[[bool, int, float], None]] = None,
+        quiz_mode: str = "count",
+        deviation_question: Optional[Any] = None,
     ):
         super().__init__(parent)
         self.counter = counter
         self.cards_remaining = cards_remaining
         self.on_result = on_result
+        self.quiz_mode = quiz_mode
+        self.deviation_question = deviation_question
+        self.deviation_choice_buttons: dict[str, tkinter.Button] = {}
 
         self.title("🎯 Card Counting Drill Quiz")
         self.transient(parent)
         self.resizable(False, False)
-        self.configure(background="#0a1a15", padx=16, pady=14)
+        self.configure(background="#0a1a15", padx=16, pady=12)
 
-        dialog_w, dialog_h = 420, 310
+        dialog_w, dialog_h = 460, 340
         try:
             rx = parent.winfo_rootx()
             ry = parent.winfo_rooty()
@@ -447,58 +490,90 @@ class CardCountingQuizDialog(tkinter.Toplevel):
         self._build_ui()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.bind("<Escape>", lambda e: self._on_close())
+        self.bind("<Left>", lambda e: self._switch_mode("count"))
+        self.bind("<Right>", lambda e: self._switch_mode("deviation"))
         self.focus_set()
 
     def _build_ui(self):
-        tkinter.Label(
+        # 1. Mode Tab Selector Bar
+        self.mode_bar = tkinter.Frame(self, background="#0a1a15")
+        self.mode_bar.pack(pady=(0, 6))
+
+        tab_font = get_element_font("hilo_trainer_button")
+        self.count_tab_btn = tkinter.Button(
+            self.mode_bar,
+            text="📊 Count Check",
+            font=tab_font,
+            background="#004d40" if self.quiz_mode == "count" else "#142621",
+            foreground="#ffffff" if self.quiz_mode == "count" else "#80cbc4",
+            activebackground="#00695c",
+            activeforeground="#ffffff",
+            relief="flat",
+            padx=10,
+            pady=2,
+            cursor="hand2",
+            takefocus=False,
+            command=lambda: self._switch_mode("count"),
+        )
+        self.count_tab_btn.pack(side="left", padx=3)
+
+        self.dev_tab_btn = tkinter.Button(
+            self.mode_bar,
+            text="⚡ Deviation Check",
+            font=tab_font,
+            background="#004d40" if self.quiz_mode == "deviation" else "#142621",
+            foreground="#ffffff" if self.quiz_mode == "deviation" else "#80cbc4",
+            activebackground="#00695c",
+            activeforeground="#ffffff",
+            relief="flat",
+            padx=10,
+            pady=2,
+            cursor="hand2",
+            takefocus=False,
+            command=lambda: self._switch_mode("deviation"),
+        )
+        self.dev_tab_btn.pack(side="left", padx=3)
+
+        # Title Label
+        self.header_title = tkinter.Label(
             self,
-            text="🎯 TEST YOUR COUNT",
+            text="🎯 TEST YOUR COUNT" if self.quiz_mode == "count" else "⚡ ILLUSTRIOUS 18 DEVIATION",
             font=get_element_font("dialog_title"),
             fg="#ffd700",
             background="#0a1a15",
-        ).pack(pady=(0, 8))
+        )
+        self.header_title.pack(pady=(0, 4))
 
-        tkinter.Label(
-            self,
+        # 2. Count Check Mode Frame
+        self.count_frame = tkinter.Frame(self, background="#0a1a15")
+        self.count_desc_lbl = tkinter.Label(
+            self.count_frame,
             text="Estimate the current Running Count and True Count from all revealed cards:",
             font=get_element_font("dialog_body"),
             fg="#eceff1",
             background="#0a1a15",
-            wraplength=380,
+            wraplength=400,
             justify="center",
-        ).pack(pady=(0, 12))
+        )
+        self.count_desc_lbl.pack(pady=(0, 8))
 
-        input_frame = tkinter.Frame(self, background="#0a1a15")
+        input_frame = tkinter.Frame(self.count_frame, background="#0a1a15")
         input_frame.pack(pady=4)
 
-        # Running Count input
         tkinter.Label(
             input_frame, text="Running Count (RC):", font=get_element_font("dialog_badge"), fg="#80cbc4", background="#0a1a15"
-        ).grid(row=0, column=0, sticky="e", padx=6, pady=6)
+        ).grid(row=0, column=0, sticky="e", padx=6, pady=4)
         self.rc_entry = tkinter.Entry(input_frame, width=8, font=get_element_font("hilo_trainer_value"), justify="center")
-        self.rc_entry.grid(row=0, column=1, padx=6, pady=6)
-        self.rc_entry.focus_set()
+        self.rc_entry.grid(row=0, column=1, padx=6, pady=4)
 
-        # True Count input
         tkinter.Label(
             input_frame, text="True Count (TC):", font=get_element_font("dialog_badge"), fg="#80cbc4", background="#0a1a15"
-        ).grid(row=1, column=0, sticky="e", padx=6, pady=6)
+        ).grid(row=1, column=0, sticky="e", padx=6, pady=4)
         self.tc_entry = tkinter.Entry(input_frame, width=8, font=get_element_font("hilo_trainer_value"), justify="center")
-        self.tc_entry.grid(row=1, column=1, padx=6, pady=6)
-
-        # Feedback label
-        self.feedback_var = tkinter.StringVar(value="")
-        self.feedback_label = tkinter.Label(
-            self, textvariable=self.feedback_var, font=get_element_font("dialog_body", weight_override="bold"), background="#0a1a15"
-        )
-        self.feedback_label.pack(pady=6)
-
-        # Buttons
-        btn_frame = tkinter.Frame(self, background="#0a1a15")
-        btn_frame.pack(pady=(8, 0))
+        self.tc_entry.grid(row=1, column=1, padx=6, pady=4)
 
         self.submit_btn = tkinter.Button(
-            btn_frame,
+            self.count_frame,
             text="Submit Answer",
             font=get_element_font("dialog_button"),
             background="#00695c",
@@ -506,16 +581,131 @@ class CardCountingQuizDialog(tkinter.Toplevel):
             activebackground="#00897b",
             activeforeground="#ffffff",
             relief="flat",
-            padx=12,
-            pady=4,
+            padx=14,
+            pady=3,
             cursor="hand2",
-            command=self._on_submit,
+            command=self._on_submit_count,
         )
-        self.submit_btn.pack(side="left", padx=6)
+        self.submit_btn.pack(pady=(8, 0))
 
-        self.bind("<Return>", lambda e: self._on_submit())
+        # 3. Deviation Check Mode Frame
+        self.deviation_frame = tkinter.Frame(self, background="#0a1a15")
+        if self.deviation_question is None and hasattr(self.counter, "generate_deviation_question"):
+            self.deviation_question = self.counter.generate_deviation_question()
 
-    def _on_submit(self):
+        prompt_text = getattr(self.deviation_question, "prompt", "Do you deviate from basic strategy?")
+        self.deviation_prompt_label = tkinter.Label(
+            self.deviation_frame,
+            text=prompt_text,
+            font=get_element_font("dialog_body"),
+            fg="#eceff1",
+            background="#0a1a15",
+            wraplength=400,
+            justify="center",
+        )
+        self.deviation_prompt_label.pack(pady=(4, 12))
+
+        self.choices_frame = tkinter.Frame(self.deviation_frame, background="#0a1a15")
+        self.choices_frame.pack(pady=4)
+
+        options = getattr(self.deviation_question, "options", ("HIT", "STAND"))
+        self.deviation_choice_buttons.clear()
+        for opt in options:
+            btn = tkinter.Button(
+                self.choices_frame,
+                text=opt,
+                font=get_element_font("dialog_button"),
+                background="#00695c",
+                foreground="#ffffff",
+                activebackground="#00897b",
+                activeforeground="#ffffff",
+                relief="flat",
+                padx=16,
+                pady=4,
+                cursor="hand2",
+                command=lambda a=opt: self.submit_deviation_answer(a),
+            )
+            btn.pack(side="left", padx=8)
+            self.deviation_choice_buttons[opt] = btn
+
+        # 4. Common Feedback label
+        self.feedback_var = tkinter.StringVar(value="")
+        self.feedback_label = tkinter.Label(
+            self,
+            textvariable=self.feedback_var,
+            font=get_element_font("dialog_body", weight_override="bold"),
+            background="#0a1a15",
+            wraplength=420,
+            justify="center",
+        )
+        self.feedback_label.pack(pady=(6, 0))
+
+        # Map active mode
+        if self.quiz_mode == "deviation":
+            self.deviation_frame.pack(fill="x", expand=True)
+        else:
+            self.count_frame.pack(fill="x", expand=True)
+            self.rc_entry.focus_set()
+            self.bind("<Return>", lambda e: self._on_submit_count())
+
+    def _switch_mode(self, mode: str):
+        """Switches between Count Check and Deviation Check tabs."""
+        if mode not in ("count", "deviation") or mode == self.quiz_mode:
+            return
+        self.quiz_mode = mode
+        self.feedback_var.set("")
+
+        if mode == "count":
+            self.count_tab_btn.configure(background="#004d40", foreground="#ffffff")
+            self.dev_tab_btn.configure(background="#142621", foreground="#80cbc4")
+            self.header_title.configure(text="🎯 TEST YOUR COUNT")
+            self.deviation_frame.pack_forget()
+            self.count_frame.pack(fill="x", expand=True)
+            self.rc_entry.focus_set()
+            self.bind("<Return>", lambda e: self._on_submit_count())
+        else:
+            self.count_tab_btn.configure(background="#142621", foreground="#80cbc4")
+            self.dev_tab_btn.configure(background="#004d40", foreground="#ffffff")
+            self.header_title.configure(text="⚡ ILLUSTRIOUS 18 DEVIATION")
+            self.count_frame.pack_forget()
+            if self.deviation_question is None and hasattr(self.counter, "generate_deviation_question"):
+                self.deviation_question = self.counter.generate_deviation_question()
+                if hasattr(self, "deviation_prompt_label"):
+                    self.deviation_prompt_label.configure(text=self.deviation_question.prompt)
+            self.deviation_frame.pack(fill="x", expand=True)
+            self.unbind("<Return>")
+
+    def submit_deviation_answer(self, action: str) -> bool:
+        """Validates the submitted action for the Illustrious 18 deviation drill."""
+        if not self.deviation_question:
+            return False
+
+        is_correct = self.counter.verify_deviation_quiz_answer(self.deviation_question, action)
+        actual_rc = self.counter.running_count
+        actual_tc = self.counter.true_count(self.cards_remaining)
+
+        exp = getattr(self.deviation_question, "explanation", "")
+        if is_correct:
+            self.feedback_var.set(f"★ Correct! {exp}")
+            self.feedback_label.configure(fg="#00e676")
+        else:
+            self.feedback_var.set(f"Incorrect. {exp}")
+            self.feedback_label.configure(fg="#ff5252")
+
+        # Disable choice buttons to prevent duplicate submissions
+        for btn in self.deviation_choice_buttons.values():
+            try:
+                btn.configure(state="disabled")
+            except Exception:
+                pass
+
+        if self.on_result:
+            self.on_result(is_correct, actual_rc, actual_tc)
+
+        self.after(1600, self._on_close)
+        return is_correct
+
+    def _on_submit_count(self):
         rc_str = self.rc_entry.get().strip()
         tc_str = self.tc_entry.get().strip()
 

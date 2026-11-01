@@ -248,6 +248,127 @@ class TestCardCountingIntegration(unittest.TestCase):
         self.app._reveal_dealer_hole_card()
         self.assertEqual(self.app.card_counter.running_count, 1)
 
+    def test_hud_deviation_badge_rendering_and_drill_masking(self):
+        """CardCountingHud displays deviation badge on active index plays and hides during drill mode."""
+        from card_counter import StrategyDeviation
+
+        self.assertTrue(hasattr(self.app.card_counting_hud, "deviation_badge"))
+        hud = self.app.card_counting_hud
+
+        # Initially badge is unmapped
+        self.assertFalse(bool(hud.deviation_badge.winfo_manager()))
+
+        # Active deviation badge update
+        active_dev = StrategyDeviation(
+            rule_id="16_vs_10",
+            label="16 vs 10",
+            index_tc=0.0,
+            recommended_action="STAND",
+            basic_action="HIT",
+            is_deviation_active=True,
+            condition_str="TC >= 0",
+            badge_text="⚡ DEVIATION: Stand (TC >= 0)",
+        )
+        hud.update_strategy_hint(text="Hard 16 vs 10", deviation=active_dev)
+        self.assertEqual(hud.deviation_badge.winfo_manager(), "pack")
+        self.assertIn("DEVIATION: Stand", hud.deviation_badge.cget("text"))
+
+        # Inactive deviation removes badge
+        inactive_dev = StrategyDeviation(
+            rule_id="16_vs_10",
+            label="16 vs 10",
+            index_tc=0.0,
+            recommended_action="HIT",
+            basic_action="HIT",
+            is_deviation_active=False,
+            condition_str="TC >= 0",
+            badge_text="",
+        )
+        hud.update_strategy_hint(text="Hard 16 vs 10", deviation=inactive_dev)
+        self.assertFalse(bool(hud.deviation_badge.winfo_manager()))
+
+        # When drill mode is active, active deviations are masked
+        hud.set_drill_mode(True)
+        hud.update_strategy_hint(text="Hard 16 vs 10", deviation=active_dev)
+        self.assertFalse(bool(hud.deviation_badge.winfo_manager()))
+        hud.set_drill_mode(False)
+
+    def test_card_counting_quiz_dialog_deviation_mode(self):
+        """CardCountingQuizDialog supports Deviation Check mode with question options and validation."""
+        from card_counter import DeviationQuizQuestion
+
+        q = DeviationQuizQuestion(
+            rule_id="16_vs_10",
+            true_count=3.0,
+            player_hand_desc="16",
+            dealer_upcard_desc="10",
+            prompt="True Count is +3.0. You hold 16 against Dealer 10. Do you Hit or Stand?",
+            options=("HIT", "STAND"),
+            correct_action="STAND",
+            explanation="Illustrious 18 #2: Stand on 16 vs 10 at TC >= 0 (TC is +3.0).",
+        )
+
+        result_payload = []
+        def on_quiz_result(is_correct, rc, tc):
+            result_payload.append((is_correct, rc, tc))
+
+        dlg = CardCountingQuizDialog(
+            parent=self.app.root,
+            counter=self.app.card_counter,
+            cards_remaining=104,
+            on_result=on_quiz_result,
+            quiz_mode="deviation",
+            deviation_question=q,
+        )
+
+        try:
+            self.assertEqual(dlg.quiz_mode, "deviation")
+            self.assertIn("True Count is +3.0", dlg.deviation_prompt_label.cget("text"))
+            self.assertIn("STAND", dlg.deviation_choice_buttons)
+            self.assertIn("HIT", dlg.deviation_choice_buttons)
+
+            # Submit correct answer: STAND
+            dlg.submit_deviation_answer("STAND")
+            self.assertEqual(len(result_payload), 1)
+            self.assertTrue(result_payload[0][0])
+            self.assertIn("Correct", dlg.feedback_var.get())
+        finally:
+            dlg._on_close()
+
+    def test_app_integration_deviation_hint_and_insurance(self):
+        """BlackjackApp computes active deviation hints for hand play and insurance."""
+        # 1. 16 vs 10 with TC >= 0
+        c10 = Card(10, self.app.back_image, rank="10", suit="spade")
+        c6 = Card(6, self.app.back_image, rank="6", suit="heart")
+        self.app.player_hands = [[c10, c6]]
+        self.app.dealer_hand = [c10, Card(5, self.app.back_image, rank="5", suit="club")]
+        self.app.deck = [c10] * 104  # 2 decks
+        self.app.card_counter.running_count = 2  # TC = +1.0 >= 0
+        self.app.round_phase = blackjack.RoundPhase.PLAYER_TURN
+
+        dev_hint = self.app.get_current_deviation_hint()
+        self.assertIsNotNone(dev_hint)
+        self.assertTrue(dev_hint.is_deviation_active)
+        self.assertEqual(dev_hint.recommended_action, "STAND")
+
+        # Refresh strategy hint updates HUD
+        self.app.card_counting_hud.set_visible(True)
+        self.app._refresh_strategy_hint()
+        self.assertTrue(bool(self.app.card_counting_hud.deviation_badge.winfo_manager()))
+        self.assertIn("DEVIATION: Stand", self.app.card_counting_hud.deviation_badge.cget("text"))
+
+        # 2. Insurance phase with TC >= +3
+        cA = Card(1, self.app.back_image, rank="ace", suit="diamond")
+        self.app.dealer_hand = [cA, c10]
+        self.app.is_insurance_phase = True
+        self.app.card_counter.running_count = 8  # 104 cards = 2 decks -> TC = +4.0 >= +3.0
+
+        ins_dev = self.app.get_current_deviation_hint()
+        self.assertIsNotNone(ins_dev)
+        self.assertTrue(ins_dev.is_deviation_active)
+        self.assertEqual(ins_dev.recommended_action, "INSURANCE")
+        self.app.is_insurance_phase = False
+
 
 if __name__ == "__main__":
     unittest.main()

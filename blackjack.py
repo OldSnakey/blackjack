@@ -1515,22 +1515,80 @@ class BlackjackApp:
             can_surrender=can_surr,
         )
 
+    def get_current_deviation_hint(self):
+        """Computes active Illustrious 18 Strategy Deviation for current hand or insurance phase."""
+        if not hasattr(self, "card_counter") or not self.card_counter:
+            return None
+        cards_rem = len(self.deck) if hasattr(self, "deck") else 0
+        tc = self.card_counter.true_count(cards_rem)
+
+        if getattr(self, "is_insurance_phase", False):
+            if self.dealer_hand:
+                return self.card_counter.get_active_deviation(
+                    player_hand=[],
+                    dealer_upcard=self.dealer_hand[0],
+                    true_count=tc,
+                    cards_remaining=cards_rem,
+                    is_insurance_phase=True,
+                )
+            return None
+
+        if getattr(self, "round_phase", RoundPhase.PLAYER_TURN) != RoundPhase.PLAYER_TURN:
+            return None
+        if not self.player_hands or not self.dealer_hand:
+            return None
+        if self.active_hand_index >= len(self.player_hands):
+            return None
+        player_hand = self.player_hands[self.active_hand_index]
+        if not player_hand:
+            return None
+        if self._score_player_hand(player_hand) >= BLACKJACK_TARGET:
+            return None
+
+        can_double = False
+        if hasattr(self, "double_button"):
+            try:
+                can_double = str(self.double_button.cget("state")) == "normal"
+            except Exception:
+                pass
+        can_split_act = False
+        if hasattr(self, "split_button"):
+            try:
+                can_split_act = str(self.split_button.cget("state")) == "normal"
+            except Exception:
+                pass
+
+        return self.card_counter.get_active_deviation(
+            player_hand=player_hand,
+            dealer_upcard=self.dealer_hand[0],
+            true_count=tc,
+            cards_remaining=cards_rem,
+            can_double=can_double,
+            can_split=can_split_act,
+            is_insurance_phase=False,
+        )
+
     def _refresh_strategy_hint(self):
-        """Synchronizes Basic Strategy recommendation with the card counting HUD."""
+        """Synchronizes Basic Strategy recommendation and Illustrious 18 deviations with the card counting HUD."""
         if not hasattr(self, "card_counting_hud") or not self.card_counting_hud:
             return
         if getattr(self, "play_mode", "betting") != "training" and not self.card_counting_hud.is_visible:
-            self.card_counting_hud.update_strategy_hint(hint=None)
+            self.card_counting_hud.update_strategy_hint(hint=None, deviation=None)
+            return
+        if getattr(self, "is_insurance_phase", False):
+            dev = self.get_current_deviation_hint()
+            self.card_counting_hud.update_strategy_hint(text="Insurance?", deviation=dev)
             return
         if getattr(self, "is_betting_phase", False):
             cards_rem = len(self.deck) if hasattr(self, "deck") else 0
             tc = self.card_counter.true_count(cards_rem)
             rec_bet = self.card_counter.get_recommended_bet(25, tc)
             rec_units = max(1, rec_bet // 25)
-            self.card_counting_hud.update_strategy_hint(text=f"Bet ${rec_bet} ({rec_units}u)")
+            self.card_counting_hud.update_strategy_hint(text=f"Bet ${rec_bet} ({rec_units}u)", deviation=None)
             return
         hint = self.get_current_strategy_hint()
-        self.card_counting_hud.update_strategy_hint(hint=hint)
+        dev = self.get_current_deviation_hint()
+        self.card_counting_hud.update_strategy_hint(hint=hint, deviation=dev)
 
     def _on_click_stage_hanger(self):
         """Callback when the wardrobe hanger button on the stage canvas is clicked."""
@@ -3225,6 +3283,7 @@ class BlackjackApp:
         )
         self.result_var.set("Dealer shows an Ace. Take insurance?")
         self.insurance_frame.grid()
+        self._refresh_strategy_hint()
 
     def _on_take_insurance(self):
         """Handles player taking insurance."""
