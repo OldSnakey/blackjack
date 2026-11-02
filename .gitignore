@@ -11,6 +11,11 @@ __pycache__/
 *.iml
 AGENTS.md
 
+# EGM
+docs/designs/
+concepts_brief.md
+design_draft.md
+
 # Development Roadmap
 development_roadmap/
 
