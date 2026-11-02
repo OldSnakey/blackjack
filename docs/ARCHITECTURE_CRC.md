@@ -229,12 +229,12 @@ graph TD
 #### `SaveManager` ([save_manager.py](../save_manager.py#L182))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Active save file path (`blackjack_save.json`), fallback paths, and in-memory `SaveData` payload.<br>**Does**: Safely serializes and deserializes player records, unlocked dealers, unlocked costumes, card counting test streaks and telemetry (`counting_quizzes_taken`, `counting_quizzes_correct`, `counting_accuracy_pct`), and all 10 achievement badges (including `shoe_whisperer` and `count_capitalist`). Gracefully recovers from corrupted JSON files. | Collaborates with [SaveData](../save_manager.py#L140), [Achievements](../save_manager.py#L65), [HighScores](../save_manager.py#L26), and [BlackjackApp](../blackjack.py). |
+| **Knows**: Active save file path (`blackjack_save.json`), fallback paths, and in-memory `SaveData` payload.<br>**Does**: Safely serializes and deserializes player records, unlocked dealers, unlocked costumes, card counting test streaks and telemetry (`counting_quizzes_taken`, `counting_quizzes_correct`, `counting_accuracy_pct`), and all 12 achievement badges (including `shoe_whisperer`, `count_capitalist`, `pair_perfectionist`, and `poker_face`). Gracefully recovers from corrupted JSON files. | Collaborates with [SaveData](../save_manager.py#L140), [Achievements](../save_manager.py#L65), [HighScores](../save_manager.py#L26), and [BlackjackApp](../blackjack.py). |
 
 #### `SaveData`, `Achievements`, `HighScores` ([save_manager.py](../save_manager.py#L26))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Persistent player stats: total hands played, hands won/lost/pushed, natural blackjacks, peak bankroll, Hell's Table clears, card counting quiz streaks and accuracy telemetry, and all 10 unlocked achievements.<br>**Does**: Provides validated dataclass structures for JSON serialization. | Collaborates with [SaveManager](../save_manager.py#L182). |
+| **Knows**: Persistent player stats: total hands played, hands won/lost/pushed, natural blackjacks, peak bankroll, Hell's Table clears, card counting quiz streaks and accuracy telemetry, side bet statistics (`side_bets_played`, `side_bets_won`, `biggest_side_bet_win`), and all 12 unlocked achievements.<br>**Does**: Provides validated dataclass structures for JSON serialization. | Collaborates with [SaveManager](../save_manager.py#L182). |
 
 ---
 
@@ -307,7 +307,7 @@ graph TD
 #### `WardrobeDialog` ([dealer_wardrobe_dialog.py](../dealer_wardrobe_dialog.py#L28))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: All 8 dealer character profiles, unlocked statuses, unlock achievement criteria, 8 Hall of Fame achievement plaques, and `initial_tab` selection.<br>**Does**: Displays two-tab modal (Tab 0: Wardrobe Closet; Tab 1: Hall of Fame & Trophy Shelf) with interactive character sprite/voice previews and instant costume equipping. | Collaborates with [CharacterProfile](../dealer_actor.py#L33), [DealerActor](../dealer_actor.py#L133), [SaveManager](../save_manager.py#L182), and [BlackjackApp](../blackjack.py). |
+| **Knows**: All 8 dealer character profiles, unlocked statuses, unlock achievement criteria, 12 Hall of Fame achievement plaques, and `initial_tab` selection.<br>**Does**: Displays two-tab modal (Tab 0: Wardrobe Closet; Tab 1: Hall of Fame & Trophy Shelf) with interactive character sprite/voice previews and instant costume equipping. | Collaborates with [CharacterProfile](../dealer_actor.py#L33), [DealerActor](../dealer_actor.py#L133), [SaveManager](../save_manager.py#L182), and [BlackjackApp](../blackjack.py). |
 
 #### `CardCountingQuizDialog` ([card_counting_hud.py](../card_counting_hud.py#L194))
 | Responsibility | Collaboration |
