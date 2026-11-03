@@ -326,6 +326,50 @@ class TestDealerWardrobeDialog(unittest.TestCase):
 
         dialog._on_close()
 
+    def test_hall_of_fame_financial_telemetry_and_geometry(self):
+        """Tab 2 renders Net P/L (color-coded), Bankruptcies, Bailouts, and Total Wagered with stable geometry."""
+        self.app.save_manager.data.current_bankroll = 1500
+        self.app.save_manager.data.highscores.bankruptcies = 2
+        self.app.save_manager.data.highscores.total_bailout_funds = 2000
+        self.app.save_manager.data.highscores.lifetime_wagered = 8500
+        self.app.save_manager.save()
+
+        self.app._on_click_stage_hanger()
+        dialog = self.app._wardrobe_dialog
+        dialog._switch_tab(1)
+        dialog.update()
+
+        # Check records plaque height expanded to accommodate financial telemetry
+        self.assertEqual(dialog._records_canvas.winfo_reqheight(), 106)
+        self.assertEqual(dialog.records_panel.height, 106)
+
+        # Negative Net P/L should be red (#ff8a80): 1500 - (1000 + 2000) = -1500
+        net_pl_text = dialog._records_canvas.itemcget(dialog.lbl_net_pl_record, "text")
+        net_pl_fill = dialog._records_canvas.itemcget(dialog.lbl_net_pl_record, "fill")
+        self.assertIn("Net P/L: -$1,500", net_pl_text)
+        self.assertEqual(net_pl_fill, "#ff8a80")
+
+        # Telemetry metrics
+        bankruptcies_text = dialog._records_canvas.itemcget(dialog.lbl_bankruptcies_record, "text")
+        bailouts_text = dialog._records_canvas.itemcget(dialog.lbl_bailouts_record, "text")
+        wagered_text = dialog._records_canvas.itemcget(dialog.lbl_wagered_record, "text")
+
+        self.assertIn("Bankruptcies: 2", bankruptcies_text)
+        self.assertIn("Bailouts: $2,000", bailouts_text)
+        self.assertIn("Total Wagered: $8,500", wagered_text)
+
+        # Positive Net P/L test: 3500 bankroll with 0 bailouts -> +$2,500 (emerald #5ce6b5)
+        self.app.save_manager.data.current_bankroll = 3500
+        self.app.save_manager.data.highscores.total_bailout_funds = 0
+        dialog.refresh_hof_records()
+
+        pos_pl_text = dialog._records_canvas.itemcget(dialog.lbl_net_pl_record, "text")
+        pos_pl_fill = dialog._records_canvas.itemcget(dialog.lbl_net_pl_record, "fill")
+        self.assertIn("Net P/L: +$2,500", pos_pl_text)
+        self.assertEqual(pos_pl_fill, "#5ce6b5")
+
+        dialog._on_close()
+
 
 if __name__ == "__main__":
     unittest.main()

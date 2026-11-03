@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_SAVE_FILE = BASE_DIR / "blackjack_save.json"
+DEFAULT_STARTING_BANKROLL = 1000
 
 
 @dataclass
@@ -39,6 +40,9 @@ class HighScores:
     side_bets_played: int = 0
     side_bets_won: int = 0
     biggest_side_bet_win: int = 0
+    bankruptcies: int = 0
+    total_bailout_funds: int = 0
+    lifetime_wagered: int = 0
 
 
 @dataclass
@@ -59,7 +63,8 @@ class Achievements:
 
 @dataclass
 class SaveData:
-    version: str = "1.0"
+    version: str = "1.1"
+    current_bankroll: int = DEFAULT_STARTING_BANKROLL
     equipped_costume: str = "classic"
     unlocked_costumes: List[str] = field(default_factory=lambda: ["classic", "tiffany"])
     highscores: HighScores = field(default_factory=HighScores)
@@ -71,6 +76,7 @@ class SaveData:
     def to_dict(self) -> Dict[str, Any]:
         return {
             "version": self.version,
+            "current_bankroll": self.current_bankroll,
             "equipped_costume": self.equipped_costume,
             "unlocked_costumes": list(self.unlocked_costumes),
             "highscores": asdict(self.highscores),
@@ -90,7 +96,8 @@ class SaveData:
         if "tiffany" not in unlocked:
             unlocked.append("tiffany")
         return cls(
-            version=data.get("version", "1.0"),
+            version="1.1",
+            current_bankroll=int(data.get("current_bankroll", DEFAULT_STARTING_BANKROLL)),
             equipped_costume=data.get("equipped_costume", "classic"),
             unlocked_costumes=unlocked,
             highscores=HighScores(
@@ -108,6 +115,9 @@ class SaveData:
                 side_bets_played=hs_data.get("side_bets_played", 0),
                 side_bets_won=hs_data.get("side_bets_won", 0),
                 biggest_side_bet_win=hs_data.get("biggest_side_bet_win", 0),
+                bankruptcies=int(hs_data.get("bankruptcies", 0)),
+                total_bailout_funds=int(hs_data.get("total_bailout_funds", 0)),
+                lifetime_wagered=int(hs_data.get("lifetime_wagered", 0)),
             ),
             achievements=Achievements(
                 exorcist=ach_data.get("exorcist", False),
@@ -195,6 +205,7 @@ class SaveManager:
 
     def record_bankroll(self, current_bankroll: int):
         """Updates peak bankroll if current exceeds it and checks bankroll unlock milestones."""
+        self.data.current_bankroll = current_bankroll
         if current_bankroll >= 5000:
             self.unlock_costume("grim")
         if current_bankroll > self.data.highscores.peak_bankroll:
@@ -204,6 +215,46 @@ class SaveManager:
             self.save()
         elif current_bankroll >= 5000:
             self.save()
+
+    def record_round_financials(self, current_bankroll: int, total_wagered: int, save_now: bool = False):
+        """
+        Records round completion financial state:
+        - Updates persistent current_bankroll.
+        - Updates peak bankroll and evaluates bankroll milestones.
+        - Adds total_wagered to lifetime_wagered.
+        - Writes atomically to disk if save_now is True.
+        """
+        self.data.current_bankroll = current_bankroll
+        if current_bankroll > self.data.highscores.peak_bankroll:
+            self.data.highscores.peak_bankroll = current_bankroll
+        if current_bankroll >= 5000:
+            self.unlock_costume("grim")
+        if current_bankroll >= 10000:
+            self.unlock_achievement("high_roller")
+        self.data.highscores.lifetime_wagered += max(0, total_wagered)
+        if save_now:
+            self.save()
+
+    def record_rebuy(self, amount: int = DEFAULT_STARTING_BANKROLL):
+        """
+        Records a player bankruptcy rebuy event:
+        - Sets persistent current_bankroll to amount.
+        - Increments bankruptcies counter.
+        - Adds amount to cumulative total_bailout_funds.
+        - Saves immediately to disk.
+        """
+        self.data.current_bankroll = amount
+        self.data.highscores.bankruptcies += 1
+        self.data.highscores.total_bailout_funds += amount
+        self.save()
+
+    def get_net_profit_loss(self) -> int:
+        """
+        Computes lifetime net profit or loss using the closed-form balance sheet formula:
+        Net P/L = current_bankroll - (DEFAULT_STARTING_BANKROLL + total_bailout_funds)
+        """
+        total_injected = DEFAULT_STARTING_BANKROLL + self.data.highscores.total_bailout_funds
+        return self.data.current_bankroll - total_injected
 
     def record_hand_played(self, won: bool, is_blackjack: bool = False):
         """Updates hand counters and win streak."""

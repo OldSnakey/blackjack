@@ -410,7 +410,7 @@ class TestBettingGuiAndState(unittest.TestCase):
         self.assertIn("-$100", self.app.result_var.get())
 
     def test_rebuy_replenishes_bankroll(self):
-        """When bankroll falls below MINIMUM_BET, Rebuy button restores $1,000."""
+        """When bankroll falls below MINIMUM_BET, Rebuy button restores $1,000 and records telemetry."""
         self.app.chips_mode_var.set(True)
         self.app.bankroll_var.set(0)
         self.app.current_bet_var.set(0)
@@ -422,8 +422,30 @@ class TestBettingGuiAndState(unittest.TestCase):
         self.app._rebuy()
 
         self.assertEqual(self.app.bankroll_var.get(), STARTING_BANKROLL)
+        self.assertEqual(self.app.engine.bankroll, STARTING_BANKROLL)
         self.assertEqual(self.app.current_bet_var.get(), 0)
         self.assertEqual(self.app.rebuy_button["state"], "disabled")
+        self.assertEqual(self.app.save_manager.data.current_bankroll, STARTING_BANKROLL)
+        self.assertEqual(self.app.save_manager.data.highscores.bankruptcies, 1)
+        self.assertEqual(self.app.save_manager.data.highscores.total_bailout_funds, STARTING_BANKROLL)
+        self.assertIn("House credit extended", self.app.dealer_speech_var.get())
+
+    def test_rebuy_multi_seat_staged_bet_guard(self):
+        """Rebuy button is disabled when total staged bets across seats equal or exceed MINIMUM_BET."""
+        self.app.chips_mode_var.set(True)
+        self.app._set_table_seats(3)
+        self.app._set_bankroll(0)
+        self.app.engine.staged_bet = 25  # Staged bet on another seat
+        self.app.current_bet_var.set(0)  # Active seat has 0 staged
+        self.app._update_betting_controls()
+
+        # Rebuy should be disabled because staged wager exists on the table
+        self.assertEqual(self.app.rebuy_button["state"], "disabled")
+
+        # Once table is completely cleared of bets, rebuy becomes available
+        self.app.engine.staged_bet = 0
+        self.app._update_betting_controls()
+        self.assertEqual(self.app.rebuy_button["state"], "normal")
 
     def test_insurance_prompt_when_dealer_upcard_is_ace_in_chips_mode(self):
         """Dealer upcard Ace triggers insurance prompt in Chips Mode and pauses player actions."""
@@ -684,22 +706,25 @@ class TestBettingGuiAndState(unittest.TestCase):
         self.assertEqual(self.app.bankroll_var.get(), 1500)
 
     def test_chips_mode_toggle_warning_accepted_resets_bankroll(self):
-        """Accepting the exit warning resets bankroll to $1,000 and deactivates Chips Mode."""
+        """Accepting the exit warning deactivates Chips Mode while safely preserving bankroll across sessions."""
         self.app.chips_mode_var.set(True)
         self.app._on_toggle_chips_mode(confirm=True)
-        self.app.bankroll_var.set(2500)
+        self.app._set_bankroll(2500)
+        self.app.save_manager.data.current_bankroll = 2500
+        self.app.save_manager.save()
 
         # Uncheck and accept confirmation
         self.app.chips_mode_var.set(False)
         self.app._on_toggle_chips_mode(confirm=True)
 
         self.assertFalse(self.app.chips_mode_var.get())
-        self.assertEqual(self.app.bankroll_var.get(), STARTING_BANKROLL)
+        # Saved bankroll remains preserved at $2,500
+        self.assertEqual(self.app.save_manager.data.current_bankroll, 2500)
 
-        # Re-enabling Chips Mode starts fresh with STARTING_BANKROLL
+        # Re-enabling Chips Mode restores the saved persistent bankroll
         self.app.chips_mode_var.set(True)
         self.app._on_toggle_chips_mode(confirm=True)
-        self.assertEqual(self.app.bankroll_var.get(), STARTING_BANKROLL)
+        self.assertEqual(self.app.bankroll_var.get(), 2500)
 
     def test_platinum_1000_chip_and_interactive_bankroll_piles(self):
         """Verifies $1,000 Platinum chip button and interactive bottom-right bankroll chip piles."""

@@ -66,7 +66,7 @@ from config import (
 )
 
 # Application Version (Single Source of Truth)
-__version__ = "1.5.0"
+__version__ = "1.6.0"
 APP_VERSION = __version__
 
 # Re-exported domain rules & card models (pure Python, zero GUI dependencies)
@@ -614,7 +614,10 @@ class BlackjackApp:
         initial_chips_mode = (self.play_mode in ("betting", "training"))
         self.chips_mode_var = tkinter.BooleanVar(value=initial_chips_mode)
         self.play_mode_var = tkinter.StringVar(value=self.play_mode)
-        self.bankroll_var = tkinter.IntVar(value=STARTING_BANKROLL)
+        saved_bankroll = STARTING_BANKROLL
+        if hasattr(self, "save_manager") and getattr(self.save_manager, "data", None):
+            saved_bankroll = max(0, getattr(self.save_manager.data, "current_bankroll", STARTING_BANKROLL))
+        self.bankroll_var = tkinter.IntVar(value=saved_bankroll)
         self.engine.bankroll = self.bankroll_var.get()
         self.bankroll_var.trace_add(
             "write",
@@ -3331,8 +3334,9 @@ class BlackjackApp:
         """Handles switching between Casual Mode (Chips OFF) and Casino Mode (Chips ON)."""
         if self.chips_mode_var.get():
             self.save_manager.set_chips_mode(True)
-            # Chips Mode activated: reset bankroll to starting $1,000 as per policy
-            self.bankroll_var.set(STARTING_BANKROLL)
+            # Restore saved persistent bankroll
+            saved_bankroll = getattr(self.save_manager.data, "current_bankroll", STARTING_BANKROLL)
+            self._set_bankroll(saved_bankroll)
             self.current_bet_var.set(0)
             self.hand_bets = [0]
             self.bankroll_label.grid()
@@ -3345,7 +3349,7 @@ class BlackjackApp:
             self._update_bankroll_display()
             self.new_game()
         else:
-            # Chips Mode deactivated: confirm forfeit of bankroll
+            # Chips Mode deactivated: confirm pause/suspension of bankroll
             if confirm is None:
                 # In headless test environments or withdrawn root, auto-confirm without modal popup
                 is_headless = getattr(self, "suppress_mode_dialog", False)
@@ -3361,8 +3365,8 @@ class BlackjackApp:
                         import tkinter.messagebox as messagebox
                         confirm = messagebox.askyesno(
                             "Exit Chips Mode?",
-                            "Leaving Chips Mode will forfeit your current bankroll progress and any active wagers.\n\n"
-                            f"Returning to Chips Mode later will reset your bankroll to the starting ${STARTING_BANKROLL:,}.\n\n"
+                            "Leaving Chips Mode will switch to casual play where chip wagering is hidden.\n\n"
+                            "Your current bankroll progress is safely saved and will be restored when returning to Chips Mode.\n\n"
                             "Do you want to switch to Casual Mode?"
                         )
                     except Exception:
@@ -3374,8 +3378,7 @@ class BlackjackApp:
                 return
 
             self.save_manager.set_chips_mode(False)
-            # User confirmed: reset bankroll to starting $1,000 and clear chips state
-            self.bankroll_var.set(STARTING_BANKROLL)
+            # Suspend bankroll display and clear active bets
             self.current_bet_var.set(0)
             self.hand_bets = [0]
             self.bankroll_label.grid_remove()
@@ -3716,12 +3719,26 @@ class BlackjackApp:
             self.result_var.set(f"Side Bet Won! {announcement}")
             self.set_dealer_speech(f"Side bet payout: {announcement}!", stream=True)
 
+    def _set_bankroll(self, amount: int, sync_engine: bool = True):
+        """Authoritative bankroll updater synchronizing Tkinter UI, engine, and controls."""
+        self.bankroll_var.set(amount)
+        if sync_engine and hasattr(self, "engine"):
+            self.engine.bankroll = amount
+        self._update_bankroll_display()
+        self._update_betting_controls()
+
     def _rebuy(self):
         """Replenishes player bankroll if it drops below the minimum bet."""
-        if self.bankroll_var.get() < MINIMUM_BET and self.current_bet_var.get() < MINIMUM_BET:
-            self.bankroll_var.set(STARTING_BANKROLL)
+        staged = self.engine.staged_bet if hasattr(self, "engine") else self.current_bet_var.get()
+        if self.bankroll_var.get() < MINIMUM_BET and staged < MINIMUM_BET:
+            self._set_bankroll(STARTING_BANKROLL)
             self.current_bet_var.set(0)
             self.result_var.set("Bankroll replenished to $1,000! Place your bet.")
+            if hasattr(self, "save_manager"):
+                self.save_manager.record_rebuy(STARTING_BANKROLL)
+            if hasattr(self, "audio"):
+                self.audio.play_chip_stack()
+            self.set_dealer_speech("House credit extended. Let's turn your luck around!", stream=True)
             self._update_bankroll_display()
             self._update_betting_controls()
 
@@ -3766,7 +3783,8 @@ class BlackjackApp:
                     self.all_in_button.configure(state="normal" if bankroll >= MINIMUM_BET and staged_bet < bankroll else "disabled")
             self.clear_bet_button.configure(state="normal" if (staged_bet > 0 or total_side > 0) else "disabled")
             self.deal_bet_button.configure(state="normal" if staged_bet >= MINIMUM_BET else "disabled")
-            if bankroll < MINIMUM_BET and staged_bet < MINIMUM_BET:
+            total_staged = self.engine.staged_bet if hasattr(self, "engine") else staged_bet
+            if bankroll < MINIMUM_BET and total_staged < MINIMUM_BET:
                 self.rebuy_button.configure(state="normal")
             else:
                 self.rebuy_button.configure(state="disabled")
@@ -5219,6 +5237,12 @@ class BlackjackApp:
             if hasattr(self, "save_manager"):
                 all_hands = [h for s in active_seats for h in s.hands]
                 all_bets = [h.bet for h in all_hands]
+                if self.chips_mode_var.get():
+                    self.save_manager.record_round_financials(
+                        current_bankroll=self.bankroll_var.get(),
+                        total_wagered=sum(all_bets),
+                        save_now=False,
+                    )
                 cur_tc = (
                     self.card_counter.true_count(len(self.deck))
                     if getattr(self, "card_counter", None) and hasattr(self, "deck")
@@ -5417,6 +5441,12 @@ class BlackjackApp:
 
         # 4. SaveManager Statistics & Gameplay Achievements Hookup
         if hasattr(self, "save_manager"):
+            if self.chips_mode_var.get():
+                self.save_manager.record_round_financials(
+                    current_bankroll=self.bankroll_var.get(),
+                    total_wagered=sum(self.hand_bets),
+                    save_now=False,
+                )
             is_all_in = getattr(self, "_is_all_in_round", False) or (
                 self.chips_mode_var.get() and len(payouts) > 0 and self.bankroll_var.get() == sum(payouts)
             )
@@ -5785,6 +5815,10 @@ class BlackjackApp:
 
     def _on_close(self):
         """Safely cleans up any pending timer callback before window destruction."""
+        if hasattr(self, "save_manager") and getattr(self, "chips_mode_var", None) and self.chips_mode_var.get():
+            # If a round is actively in flight, wagers were deducted; persist current bankroll to disk
+            self.save_manager.data.current_bankroll = self.bankroll_var.get()
+            self.save_manager.save()
         self._close_shortcuts_overlay()
         self._close_settings_dialog()
         self._close_wardrobe_dialog()

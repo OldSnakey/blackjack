@@ -1206,7 +1206,7 @@ class WardrobeDialog(tkinter.Toplevel):
     def _build_hof_tab(self):
         # 1. Statistics Summary Card in CanvasPixelPanel
         records_canvas = tkinter.Canvas(
-            self.tab_hof_frame, width=908, height=84, background="#0d1f14", highlightthickness=0, borderwidth=0
+            self.tab_hof_frame, width=908, height=106, background="#0d1f14", highlightthickness=0, borderwidth=0
         )
         records_canvas.pack(fill="x", pady=(0, 6))
 
@@ -1215,7 +1215,7 @@ class WardrobeDialog(tkinter.Toplevel):
             x=0,
             y=0,
             width=908,
-            height=84,
+            height=106,
             bg="#0c2917",
             border="#06140b",
             inner_hi="#1f4d30",
@@ -1230,7 +1230,7 @@ class WardrobeDialog(tkinter.Toplevel):
         records_canvas.create_text(
             16,
             12,
-            text="📊 ALL-TIME CASINO RECORDS",
+            text="📊 ALL-TIME CASINO RECORDS & FINANCIAL TELEMETRY",
             font=get_role_font("header", size_override=-16),
             fill="#ffd700",
             anchor="nw",
@@ -1260,6 +1260,19 @@ class WardrobeDialog(tkinter.Toplevel):
         )
         self.lbl_bjs_record = records_canvas.create_text(
             660, 60, text="• Total Blackjacks: 0", font=get_role_font("body", size_override=-16), fill="#80d8ff", anchor="nw"
+        )
+
+        self.lbl_net_pl_record = records_canvas.create_text(
+            24, 82, text="• Net P/L: $0", font=get_role_font("body", size_override=-16), fill="#5ce6b5", anchor="nw"
+        )
+        self.lbl_bankruptcies_record = records_canvas.create_text(
+            260, 82, text="• Bankruptcies: 0", font=get_role_font("body", size_override=-16), fill="#e0e0e0", anchor="nw"
+        )
+        self.lbl_bailouts_record = records_canvas.create_text(
+            460, 82, text="• Bailouts: $0", font=get_role_font("body", size_override=-16), fill="#e0e0e0", anchor="nw"
+        )
+        self.lbl_wagered_record = records_canvas.create_text(
+            660, 82, text="• Total Wagered: $0", font=get_role_font("body", size_override=-16), fill="#ffd54f", anchor="nw"
         )
         self._records_canvas = records_canvas
 
@@ -1384,6 +1397,21 @@ class WardrobeDialog(tkinter.Toplevel):
         )
         self._records_canvas.itemconfigure(self.lbl_bjs_record, text=f"• Total Blackjacks: {hs.total_blackjacks:,}")
 
+        # Financial Telemetry
+        net_pl = getattr(getattr(self.app, "save_manager", None), "get_net_profit_loss", lambda: 0)()
+        pl_str = f"+${net_pl:,}" if net_pl >= 0 else f"-${abs(net_pl):,}"
+        pl_color = "#5ce6b5" if net_pl >= 0 else "#ff8a80"
+        self._records_canvas.itemconfigure(self.lbl_net_pl_record, text=f"• Net P/L: {pl_str}", fill=pl_color)
+        self._records_canvas.itemconfigure(
+            self.lbl_bankruptcies_record, text=f"• Bankruptcies: {getattr(hs, 'bankruptcies', 0):,}"
+        )
+        self._records_canvas.itemconfigure(
+            self.lbl_bailouts_record, text=f"• Bailouts: ${getattr(hs, 'total_bailout_funds', 0):,}"
+        )
+        self._records_canvas.itemconfigure(
+            self.lbl_wagered_record, text=f"• Total Wagered: ${getattr(hs, 'lifetime_wagered', 0):,}"
+        )
+
         achs = save_data.achievements
         for ach_id, p_info in self.plaque_widgets.items():
             unlocked = getattr(achs, ach_id, False)
@@ -1399,6 +1427,8 @@ class WardrobeDialog(tkinter.Toplevel):
                 if panel:
                     panel.update_palette(border="#06140b", inner_hi="#1f4d30")
                 lbl.configure(text=f"🔒 LOCKED: {spec['criteria']}", fg="#ff8a80")
+
+    refresh_hof_records = _refresh_hof_display
 
     def _stop_all_voices(self, except_panel: Optional[Any] = None):
         """Dismisses any active speech bubbles and stops streaming timers across all cards."""

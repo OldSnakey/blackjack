@@ -158,6 +158,112 @@ class TestSaveManager(unittest.TestCase):
         self.assertFalse(fresh_mgr.data.onboarding_completed)
         self.assertEqual(fresh_mgr.data.play_mode, "betting")
 
+    def test_default_bankroll_and_financial_telemetry(self):
+        """Default SaveData provides persistent current_bankroll and zeroed financial telemetry."""
+        from save_manager import DEFAULT_STARTING_BANKROLL
+        self.assertEqual(DEFAULT_STARTING_BANKROLL, 1000)
+        self.assertEqual(self.manager.data.current_bankroll, 1000)
+        self.assertEqual(self.manager.data.highscores.bankruptcies, 0)
+        self.assertEqual(self.manager.data.highscores.total_bailout_funds, 0)
+        self.assertEqual(self.manager.data.highscores.lifetime_wagered, 0)
+        self.assertEqual(self.manager.get_net_profit_loss(), 0)
+
+    def test_record_round_financials(self):
+        """record_round_financials updates current bankroll, peak bankroll, and lifetime wagered."""
+        # Initial bankroll 1000. Player bets $100 and ends round with $1200.
+        self.manager.record_round_financials(current_bankroll=1200, total_wagered=100, save_now=True)
+        self.assertEqual(self.manager.data.current_bankroll, 1200)
+        self.assertEqual(self.manager.data.highscores.peak_bankroll, 1200)
+        self.assertEqual(self.manager.data.highscores.lifetime_wagered, 100)
+        self.assertEqual(self.manager.get_net_profit_loss(), 200)
+
+        # Player places another $200 bet and drops to $800. Peak bankroll remains 1200. save_now=False
+        self.manager.record_round_financials(current_bankroll=800, total_wagered=200, save_now=False)
+        self.assertEqual(self.manager.data.current_bankroll, 800)
+        self.assertEqual(self.manager.data.highscores.peak_bankroll, 1200)
+        self.assertEqual(self.manager.data.highscores.lifetime_wagered, 300)
+        self.assertEqual(self.manager.get_net_profit_loss(), -200)
+
+        # Confirm reload from disk reflects the save
+        self.manager.save()
+        reloaded = SaveManager(save_path=self.save_file)
+        self.assertEqual(reloaded.data.current_bankroll, 800)
+        self.assertEqual(reloaded.data.highscores.lifetime_wagered, 300)
+
+    def test_record_rebuy(self):
+        """record_rebuy reloads bankroll, increments bankruptcies, and tracks cumulative bailout dollars."""
+        self.manager.record_round_financials(current_bankroll=0, total_wagered=1000, save_now=True)
+        self.assertEqual(self.manager.get_net_profit_loss(), -1000)
+
+        # Execute rebuy
+        self.manager.record_rebuy(amount=1000)
+        self.assertEqual(self.manager.data.current_bankroll, 1000)
+        self.assertEqual(self.manager.data.highscores.bankruptcies, 1)
+        self.assertEqual(self.manager.data.highscores.total_bailout_funds, 1000)
+        # Net P/L should now be: 1000 - (1000 + 1000) = -1000
+        self.assertEqual(self.manager.get_net_profit_loss(), -1000)
+
+        # Reload from disk
+        reloaded = SaveManager(save_path=self.save_file)
+        self.assertEqual(reloaded.data.current_bankroll, 1000)
+        self.assertEqual(reloaded.data.highscores.bankruptcies, 1)
+        self.assertEqual(reloaded.data.highscores.total_bailout_funds, 1000)
+
+        # Second rebuy
+        reloaded.record_rebuy(amount=1000)
+        self.assertEqual(reloaded.data.highscores.bankruptcies, 2)
+        self.assertEqual(reloaded.data.highscores.total_bailout_funds, 2000)
+        # Net P/L: 1000 - (1000 + 2000) = -2000
+        self.assertEqual(reloaded.get_net_profit_loss(), -2000)
+
+    def test_get_net_profit_loss_scenarios(self):
+        """get_net_profit_loss computes exact closed-form lifetime profit or loss."""
+        # 1. Winning without bailouts: bankroll $3500 -> profit +$2500
+        self.manager.data.current_bankroll = 3500
+        self.manager.data.highscores.total_bailout_funds = 0
+        self.assertEqual(self.manager.get_net_profit_loss(), 2500)
+
+        # 2. Rebuilt to profit after 1 rebuy: bankroll $2500, bailout $1000 -> profit +$500
+        self.manager.data.current_bankroll = 2500
+        self.manager.data.highscores.total_bailout_funds = 1000
+        self.assertEqual(self.manager.get_net_profit_loss(), 500)
+
+        # 3. In the hole after multiple bailouts: bankroll $500, bailout $3000 -> -$3500
+        self.manager.data.current_bankroll = 500
+        self.manager.data.highscores.total_bailout_funds = 3000
+        self.assertEqual(self.manager.get_net_profit_loss(), -3500)
+
+    def test_legacy_version_1_0_migration(self):
+        """Loading a legacy JSON save file without bankroll or telemetry initializes defaults safely."""
+        legacy_data = {
+            "version": "1.0",
+            "equipped_costume": "classic",
+            "unlocked_costumes": ["classic", "tiffany"],
+            "highscores": {
+                "peak_bankroll": 4500,
+                "longest_win_streak": 3,
+                "total_hands_played": 15,
+                "total_hands_won": 9,
+            },
+            "achievements": {
+                "high_roller": False,
+            },
+            "chips_mode": True,
+            "play_mode": "betting",
+            "onboarding_completed": True,
+        }
+        with open(self.save_file, "w", encoding="utf-8") as f:
+            json.dump(legacy_data, f)
+
+        loaded_mgr = SaveManager(save_path=self.save_file)
+        self.assertEqual(loaded_mgr.data.version, "1.1")
+        self.assertEqual(loaded_mgr.data.current_bankroll, 1000)
+        self.assertEqual(loaded_mgr.data.highscores.peak_bankroll, 4500)
+        self.assertEqual(loaded_mgr.data.highscores.bankruptcies, 0)
+        self.assertEqual(loaded_mgr.data.highscores.total_bailout_funds, 0)
+        self.assertEqual(loaded_mgr.data.highscores.lifetime_wagered, 0)
+        self.assertEqual(loaded_mgr.get_net_profit_loss(), 0)
+
 
 if __name__ == "__main__":
     unittest.main()
