@@ -19,6 +19,9 @@ class GameEventType(Enum):
     CARD_DEALT = "card_dealt"
     HOLE_CARD_REVEALED = "hole_card_revealed"
     HAND_SPLIT = "hand_split"
+    HAND_DOUBLED = "hand_doubled"
+    HAND_STOOD = "hand_stood"
+    HAND_SURRENDERED = "hand_surrendered"
     PLAYER_BUSTED = "player_busted"
     DEALER_BUSTED = "dealer_busted"
     ROUND_RESOLVED = "round_resolved"
@@ -29,6 +32,7 @@ class GameEventType(Enum):
     SHOE_RESHUFFLED = "shoe_reshuffled"
     SIDE_BET_STAGED = "side_bet_staged"
     SIDE_BET_RESOLVED = "side_bet_resolved"
+    HAND_RESOLVED = "hand_resolved"
 
 
 @dataclass(frozen=True)

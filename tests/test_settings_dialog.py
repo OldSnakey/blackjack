@@ -116,18 +116,46 @@ class TestSettingsDialog(unittest.TestCase):
         dialog = self.app._settings_dialog
         self.assertIsNotNone(dialog)
 
-        # Check all 5 preference buttons exist
+        # Check preference buttons exist (scale_btn removed)
         self.assertTrue(hasattr(dialog, "sound_btn"))
-        self.assertTrue(hasattr(dialog, "scale_btn"))
+        self.assertFalse(hasattr(dialog, "scale_btn"))
         self.assertTrue(hasattr(dialog, "dealer_btn"))
         self.assertTrue(hasattr(dialog, "wardrobe_btn"))
         self.assertTrue(hasattr(dialog, "voice_btn"))
 
         # Verify buttons are mapped and rendered width is not squished (all buttons >= 100px actual width)
         dialog.update()
-        for btn in (dialog.sound_btn, dialog.voice_btn, dialog.scale_btn, dialog.dealer_btn, dialog.wardrobe_btn):
+        for btn in (dialog.sound_btn, dialog.voice_btn, dialog.dealer_btn, dialog.wardrobe_btn):
             w = btn.winfo_width()
             self.assertGreaterEqual(w, 100, f"Button {btn} actual width {w} is too narrow and will truncate text")
+
+        self.app._close_settings_dialog()
+
+    def test_dealer_view_button_toggles_dealer_stage(self):
+        """Clicking the Dealer button toggles upper stage visibility and updates status variable."""
+        self.app._open_settings_dialog()
+        dialog = self.app._settings_dialog
+        self.assertIsNotNone(dialog)
+
+        # Initial state: Dealer ON, frames mapped
+        self.assertTrue(self.app.dealer_view_var.get())
+        self.assertEqual(self.app.dealer_view_status_var.get(), "👤 Dealer: ON")
+        self.assertTrue(bool(self.app.dealer_stage_frame.grid_info()))
+        self.assertTrue(bool(self.app.horizon_rail.grid_info()))
+
+        # Click dealer toggle button
+        dialog.dealer_btn.invoke()
+        self.assertFalse(self.app.dealer_view_var.get())
+        self.assertEqual(self.app.dealer_view_status_var.get(), "👤 Dealer: OFF")
+        self.assertFalse(bool(self.app.dealer_stage_frame.grid_info()))
+        self.assertFalse(bool(self.app.horizon_rail.grid_info()))
+
+        # Click again to restore
+        dialog.dealer_btn.invoke()
+        self.assertTrue(self.app.dealer_view_var.get())
+        self.assertEqual(self.app.dealer_view_status_var.get(), "👤 Dealer: ON")
+        self.assertTrue(bool(self.app.dealer_stage_frame.grid_info()))
+        self.assertTrue(bool(self.app.horizon_rail.grid_info()))
 
         self.app._close_settings_dialog()
 
@@ -162,6 +190,56 @@ class TestSettingsDialog(unittest.TestCase):
             int(config.DEFAULT_WINDOW_HEIGHT * getattr(self.app, "scale_factor", 1.0)),
         )
         self.assertLessEqual(req_h, max_allowed_h, f"Settings dialog requested height {req_h} exceeds live display allowance {max_allowed_h}")
+
+        self.app._close_settings_dialog()
+
+
+    def test_settings_dialog_dimensions_and_font_sizes(self):
+        """Settings dialog window width and height are expanded and font sizes are increased by 2pts."""
+        self.app._open_settings_dialog()
+        dialog = self.app._settings_dialog
+        self.assertIsNotNone(dialog)
+        dialog.update_idletasks()
+
+        # Geometry checks (expanded width and height)
+        geom = dialog.geometry()
+        size_part = geom.split("+")[0]
+        w, h = map(int, size_part.split("x"))
+        self.assertGreaterEqual(w, 600)
+        self.assertGreaterEqual(h, 600)
+
+        # Font checks (increased by additional 2pts: button 13 -> 15, header 14 -> 16, body 13 -> 15)
+        btn_font = dialog.sound_btn.cget("font")
+        # font can be tuple like ('Helvetica', -15, 'bold') or string
+        font_size = btn_font[1] if isinstance(btn_font, (tuple, list)) else int(str(btn_font).split()[1])
+        self.assertEqual(abs(font_size), 15)
+
+        self.app._close_settings_dialog()
+
+    def test_bottom_action_buttons_done_and_reset_data(self):
+        """Bottom action area presents a green 'Done' button and a red 'Reset Data' button beside it."""
+        self.app._open_settings_dialog()
+        dialog = self.app._settings_dialog
+        self.assertIsNotNone(dialog)
+
+        # Both buttons must exist
+        self.assertTrue(hasattr(dialog, "done_btn"))
+        self.assertTrue(hasattr(dialog, "clear_save_btn"))
+
+        # Verify Done button is green and has "Done" in text
+        self.assertIn("Done", dialog.done_btn.cget("text"))
+        self.assertEqual(dialog.done_btn.cget("background"), "#2e7d32")
+
+        # Verify Reset Data button is red and has "Reset Data" in text
+        self.assertIn("Reset Data", dialog.clear_save_btn.cget("text"))
+        self.assertEqual(dialog.clear_save_btn.cget("background"), "#b71c1c")
+
+        # Both buttons must share the same parent row frame and be side-by-side
+        self.assertEqual(dialog.done_btn.master, dialog.clear_save_btn.master)
+        done_info = dialog.done_btn.grid_info()
+        reset_info = dialog.clear_save_btn.grid_info()
+        self.assertEqual(done_info["row"], reset_info["row"])
+        self.assertNotEqual(done_info["column"], reset_info["column"])
 
         self.app._close_settings_dialog()
 

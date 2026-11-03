@@ -15,7 +15,7 @@ class TestMultiDeckShoe(unittest.TestCase):
     def setUp(self):
         self.root = tkinter.Tk()
         self.root.withdraw()
-        self.app = BlackjackApp(self.root, chips_mode=False)
+        self.app = BlackjackApp(self.root, chips_mode=False, sound_enabled=False)
 
     def tearDown(self):
         try:
@@ -39,6 +39,12 @@ class TestMultiDeckShoe(unittest.TestCase):
 
     def test_shoe_persists_across_rounds(self):
         """Cards dealt from the shoe persist across consecutive rounds without premature reshuffling."""
+        # Deterministically populate shoe to ensure non-blackjack hands on round 1
+        c5 = Card(5, None)
+        self.app.deck = [c5] * 208
+        self.app.shoe_needs_reshuffle = False
+        self.app.new_game()
+
         initial_cards = len(self.app.deck)
         self.assertEqual(initial_cards, 208 - 4)  # 208 initial minus 4 cards dealt on game 1
 

@@ -135,6 +135,11 @@ graph TD
 | :--- | :--- |
 | **Knows**: Ordered list of `Card` instances, active `bet`, `is_doubled`, `is_split_hand`, `is_surrendered`, `is_stood`, and settled `outcome`.<br>**Does**: Computes dynamic `score`, `is_blackjack`, `is_bust`, `is_soft`, and implements full `list[Card]` sequence protocol compatibility (`len`, indexing, iteration, `append`, `pop`). | Collaborates with [Card](../rules.py#L44) and [BlackjackEngine](../game_engine.py). |
 
+#### `Player` & `Seat` ([rules.py](../rules.py))
+| Responsibility | Collaboration |
+| :--- | :--- |
+| **Knows**: `Player` participant identity (`player_id`, `name`, `bankroll`, `is_bot`).<br>**Knows**: `Seat` physical felt position (`seat_index` 1..3), participant assignment, `main_bet`, `side_bets` (Perfect Pairs, 21+3), active `hands`, `insurance_bet`, `is_active`, `is_resolved`, and total wager exposure (`total_staked`).<br>**Does**: Encapsulates participant allocation and multi-seat table wagering data with zero GUI coupling. | Collaborates with [Hand](../rules.py) and [BlackjackEngine](../game_engine.py). |
+
 #### `RoundPhase` ([rules.py](../rules.py#L84)) & `GameStateMachine` ([state_machine.py](../state_machine.py))
 | Responsibility | Collaboration |
 | :--- | :--- |
@@ -143,12 +148,12 @@ graph TD
 #### `EventHub` & `GameEvent` ([event_bus.py](../event_bus.py))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Subscribed listener callbacks mapped by `GameEventType` (`CARD_DEALT`, `HOLE_CARD_REVEALED`, `SHOE_SHUFFLED`, `BET_PLACED`, `PHASE_CHANGED`, `PLAYER_ACTION`, `ROUND_CONCLUDED`, `ACHIEVEMENT_UNLOCKED`, `DEALER_SPEECH`).<br>**Does**: Synchronously publishes typed `GameEvent` payloads to registered observers without coupling domain logic to UI widgets. | Collaborates with [BlackjackEngine](../game_engine.py) and [BlackjackApp](../blackjack.py). |
+| **Knows**: Subscribed listener callbacks mapped by `GameEventType` (`CARD_DEALT`, `HOLE_CARD_REVEALED`, `SHOE_SHUFFLED`, `BET_PLACED`, `PHASE_CHANGED`, `PLAYER_ACTION`, `ROUND_CONCLUDED`, `ACHIEVEMENT_UNLOCKED`, `DEALER_SPEECH`, `HAND_RESOLVED`).<br>**Does**: Synchronously publishes typed `GameEvent` payloads to registered observers without coupling domain logic to UI widgets. | Collaborates with [BlackjackEngine](../game_engine.py) and [BlackjackApp](../blackjack.py). |
 
 #### `BlackjackEngine` & `RoundResult` ([game_engine.py](../game_engine.py))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Active shoe, `player_hands`, `dealer_hand`, `bankroll`, `staged_bet`, `insurance_bet`, `state_machine`, and `event_bus`.<br>**Does**: Executes headless Blackjack domain actions (`stage_bet`, `deal_initial_cards`, `hit`, `stand`, `double_down`, `split`, `surrender`, `play_dealer_turn`, `settle_round`) and emits domain events with zero Tkinter dependencies. | Collaborates with [Hand](../rules.py#L100), [GameStateMachine](../state_machine.py), and [EventHub](../event_bus.py). |
+| **Knows**: `player`, `seats` (Seats 1..3), active shoe, `dealer_hand`, `bankroll` (canonical delegation), active turn indices (`active_seat_index`, `active_hand_index`), `state_machine`, and `event_bus`.<br>**Does**: Coordinates multi-seat progression: clockwise dealing (First Base $\to$ Center $\to$ Third Base), inactive seat skipping, split hand traversal, independent surrender without premature round termination, dealer turn skipping on all-seat bust/surrender, and per-hand resolution (`RoundResult` carrying `seat_index`). | Collaborates with [Seat](../rules.py), [Hand](../rules.py), [GameStateMachine](../state_machine.py), and [EventHub](../event_bus.py). |
 
 #### `BasicStrategyDecision` ([rules.py](../rules.py#L226))
 | Responsibility | Collaboration |
@@ -248,7 +253,12 @@ graph TD
 #### `TableFeltCanvas` ([ui_canvases.py](../ui_canvases.py#L1675))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Casino table boundaries, gold rule arcs, vignette shading, and child widget background slice coordinates.<br>**Does**: Draws high-resolution baize felt texture, casino markings, and synchronizes seamless child frame background slices. | Collaborates with [BlackjackApp](../blackjack.py). |
+| **Knows**: Casino table boundaries, gold rule arcs, vignette shading, child widget background slice coordinates, and multi-seat table felt spots (Seats 1..3) from centralized configuration.<br>**Does**: Draws baize felt texture, authentic table markings, 3 crescent betting spots (Option B: Seat 3 at $X=180$, Seat 2 at $X=490$, Seat 1 at $X=800$) with horizontal flanking side bets ($X \pm 42\,\text{px}$) and 3D chip stacks (via `ui_chip_renderer.py`), active turn glowing halos, and executes canvas-level geometric click dispatching (left-click stage, right-click clear) without event bubbling. In 1-seat mode, cleanly suppresses felt spots so the baize remains pristine. | Collaborates with [BlackjackApp](../blackjack.py), [ui_chip_renderer](../ui_chip_renderer.py), and [ui_layout](../ui_layout.py). |
+
+#### `ChipRenderer` ([ui_chip_renderer.py](../ui_chip_renderer.py))
+| Responsibility | Collaboration |
+| :--- | :--- |
+| **Knows**: Stateless 2.5D casino chip cylinder geometry, edge stripes, face insets, denomination styles, and drop shadow coordinates.<br>**Does**: Renders individual 2.5D casino chips and vertical 3D chip stacks across both `ChipVisualizer` (1-seat bankroll) and `TableFeltCanvas` (3-seat betting spots). | Collaborates with [TableFeltCanvas](../ui_canvases.py) and [ChipVisualizer](../ui_canvases.py). |
 
 #### `ChipVisualizer` ([ui_canvases.py](../ui_canvases.py#L59))
 | Responsibility | Collaboration |

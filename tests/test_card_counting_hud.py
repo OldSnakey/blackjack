@@ -103,7 +103,7 @@ class TestCardCountingHud(unittest.TestCase):
         self.assertTrue(hasattr(self.hud, "bar_frame"), "bar_frame missing on CardCountingHud")
         # Title label is child of tab_frame
         self.assertEqual(self.hud.title_lbl.master, self.hud.tab_frame)
-        self.assertIn("Hi-Lo Trainer", self.hud.title_lbl.cget("text"))
+        self.assertEqual("Hi-Lo", self.hud.title_lbl.cget("text"))
         # Stat frames are children of bar_frame
         self.assertEqual(self.hud.rc_frame.master, self.hud.bar_frame)
         self.assertEqual(self.hud.decks_frame.master, self.hud.bar_frame)
@@ -368,6 +368,77 @@ class TestCardCountingIntegration(unittest.TestCase):
         self.assertTrue(ins_dev.is_deviation_active)
         self.assertEqual(ins_dev.recommended_action, "INSURANCE")
         self.app.is_insurance_phase = False
+
+    def test_hud_warm_mahogany_rail_styling_and_horizon_mount(self):
+        """CardCountingHud mounts on horizon rail of dealer_stage_canvas in Warm Mahogany style."""
+        self.app.card_counting_hud.set_visible(True)
+        self.app.root.update_idletasks()
+
+        # Shelf is mounted on horizon (pinned at bottom of dealer_stage_canvas)
+        self.assertTrue(self.app.card_counting_hud.is_visible)
+        self.assertEqual(self.app.card_counting_hud.winfo_manager(), "place")
+        # In Warm Mahogany Rail style
+        bg_col = self.app.card_counting_hud.cget("background")
+        self.assertEqual(bg_col.lower(), "#26110d")
+
+    def test_dealer_dialogue_highest_z_order_over_hud_shelf(self):
+        """Dealer dialogue bubble maintains highest z-order above the horizon shelf."""
+        self.app.card_counting_hud.set_visible(True)
+        self.app.set_dealer_speech("Welcome to the high rollers table!")
+        self.app.root.update_idletasks()
+
+        # Verify speech is visible and dialogue_frame has highest z-order
+        self.assertEqual(self.app.dealer_speech_var.get(), "Welcome to the high rollers table!")
+        # Both dialogue_win and speech_tail are raised
+        canvas = self.app.dealer_stage_canvas
+        tags_order = canvas.find_all()
+        dialogue_items = canvas.find_withtag("dialogue_win")
+        if dialogue_items:
+            # dialogue_win is among the topmost items
+            self.assertIn(dialogue_items[0], tags_order[-3:])
+
+    def test_multi_seat_chip_tray_unobstructed_by_hud(self):
+        """In multi-seat play with HUD enabled, chip piles on felt remain 100% visible and interactive."""
+        self.app.chips_mode_var.set(True)
+        self.app.set_table_seats(3)
+        self.app.new_game()
+        self.app.card_counting_hud.set_visible(True)
+        self.app.root.update_idletasks()
+
+        # The felt baize has NO card_counting_hud in row 2 covering the chip tray
+        felt = self.app.card_table_frame
+        chip_tray_items = felt.find_withtag("felt_chip_tray")
+        self.assertTrue(len(chip_tray_items) > 0, "felt_chip_tray items must be drawn on felt")
+
+        # Simulate clicking on the $100 chip pile at (440, 360)
+        # Should set selected_denomination and stage bet without being blocked by HUD
+        prev_staged = self.app.current_bet_var.get()
+        felt.trigger_chip_tray_click(100)
+        self.assertEqual(self.app.selected_denomination, 100)
+        self.assertEqual(self.app.current_bet_var.get(), prev_staged + 100)
+
+    def test_hud_preserves_visibility_when_dealer_view_toggled(self):
+        """Toggling dealer view OFF and ON preserves HUD on horizon without collisions."""
+        self.app.card_counting_hud.set_visible(True)
+        self.assertTrue(self.app.card_counting_hud.is_visible)
+
+        # Toggle dealer view OFF
+        self.app._on_toggle_dealer_view()
+        self.app.root.update_idletasks()
+        self.assertTrue(self.app.card_counting_hud.is_visible)
+        # Consistent horizon placement: must NEVER jump to bottom of window over buttons/chips
+        place_info_off = self.app.card_counting_hud.place_info()
+        self.assertNotEqual(place_info_off.get("rely"), "1")
+        self.assertEqual(place_info_off.get("y"), "176")
+
+        # Toggle dealer view back ON
+        self.app._on_toggle_dealer_view()
+        self.app.root.update_idletasks()
+        self.assertTrue(self.app.card_counting_hud.is_visible)
+        place_info_on = self.app.card_counting_hud.place_info()
+        self.assertEqual(place_info_on.get("in"), self.app.dealer_stage_canvas)
+        self.assertEqual(place_info_on.get("y"), "-44")
+
 
 
 if __name__ == "__main__":

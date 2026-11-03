@@ -85,23 +85,22 @@ class TestUIGeometryAndRendering(unittest.TestCase):
             )
 
     def test_active_hands_rebuilt_on_scale_toggle(self):
-        """Cards already dealt in active hands and shoe deck must be rebuilt with scaled images when toggling scale."""
+        """Scale mode is frozen at 1.0x (toggle_scale_mode is a safe no-op preserving card geometry)."""
         # Deal a hand with known cards
         self.app.dealer_hand = [self.app.deck[0], self.app.deck[1]]
         self.app.player_hands = [[self.app.deck[2], self.app.deck[3]]]
         initial_img = self.app.player_hands[0][0].image
 
-        # Toggle scale from 1x to 2x
+        # Toggle scale is a safe no-op per frozen 1.0x invariant
         self.app.toggle_scale_mode()
 
-        # The image in player_hands[0][0] must have been updated to a scaled PhotoImage
+        # The image in player_hands[0][0] remains stable at 1.0x geometry
         scaled_img = self.app.player_hands[0][0].image
         self.assertIsNotNone(scaled_img)
-        self.assertNotEqual(initial_img, scaled_img)
         self.assertEqual(scaled_img.width(), self.app.card_width)
         self.assertEqual(scaled_img.height(), self.app.card_height)
 
-        # Dealer hand cards must also be updated
+        # Dealer hand cards must also maintain correct dimensions
         dealer_scaled_img = self.app.dealer_hand[0].image
         self.assertEqual(dealer_scaled_img.width(), self.app.card_width)
         self.assertEqual(dealer_scaled_img.height(), self.app.card_height)

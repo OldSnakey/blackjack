@@ -658,7 +658,7 @@
     "compression_factor_split": 0.70,
     "min_overlap": 12,
     "dealer_y_offset": 6,
-    "player_y_offset": 124,
+    "player_y_offset": 199,
     "split_badge_height": 18,
     "slide_duration_ms": 144,
     "slide_interval_ms": 16,
@@ -692,7 +692,14 @@
         "cut_text_color": "#ff5252",
         "font_element": "shoe_counter"
       }
-    }
+    },
+    "seat_origins": {
+      "3": {"x": 235, "y": 285, "card_y": 140, "side_bet_offset_x": 82, "side_bet_y": 285},
+      "2": {"x": 490, "y": 298, "card_y": 150, "side_bet_offset_x": 82, "side_bet_y": 298},
+      "1": {"x": 745, "y": 285, "card_y": 140, "side_bet_offset_x": 82, "side_bet_y": 285}
+    },
+    "split_fan_offset_x": 35,
+    "split_vertical_cascade_y": 16
   },
   "image_scaling": {
     "cards": {

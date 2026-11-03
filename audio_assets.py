@@ -333,6 +333,14 @@ class SoundManager:
         """Plays dealer scooping chips sound on player loss/bust."""
         self.play("chips_handle")
 
+    def play_bust(self):
+        """Plays dealer scooping chips sound on player hand bust."""
+        self.play_loss()
+
+    def play_chip_deduct(self):
+        """Plays chip handling / clear sound when reducing bets or refunding surrender."""
+        self.play_chip_clear()
+
     def play_push(self):
         """Plays soft chip tap on push."""
         self.play("chip_lay")

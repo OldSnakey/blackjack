@@ -81,9 +81,17 @@ class FloatingCountBadge(tkinter.Label):
 
 class CardCountingHud(tkinter.Frame):
     """
-    Sleek casino table HUD pill displaying live Hi-Lo card counting statistics.
-    Positioned on the felt below the dealer horizon rail.
+    Sleek casino table HUD shelf displaying live Hi-Lo card counting statistics.
+    Sits directly on the horizon rail as a low wall / partition shelf with the
+    dealer standing behind it in Warm Mahogany Rail styling.
     """
+
+    MAHOGANY_BG = "#26110d"
+    GOLD_TRIM = "#d4af37"
+    GOLD_TEXT = "#ffd700"
+    BTN_BG = "#3e1a14"
+    BTN_ACTIVE_BG = "#5d2a1f"
+    DIVIDER_COLOR = "#5d2a1f"
 
     def __init__(
         self,
@@ -93,22 +101,23 @@ class CardCountingHud(tkinter.Frame):
         on_stage_bet_request: Optional[Callable[[int], None]] = None,
         use_grid: bool = False,
         grid_row: int = 2,
+        stage_canvas: Optional[tkinter.Canvas] = None,
+        table_canvas: Optional[tkinter.Canvas] = None,
+        dialogue_frame: Optional[tkinter.Misc] = None,
+        placement_mode: Optional[str] = None,
         **kwargs,
     ):
-        # Determine background matching master if available
-        bg_col = kwargs.pop("background", None) or kwargs.pop("bg", None)
-        if not bg_col:
-            try:
-                bg_col = master.cget("background")
-            except Exception:
-                bg_col = "#082210"
+        # Determine background matching Warm Mahogany Rail styling
+        bg_col = kwargs.pop("background", None) or kwargs.pop("bg", None) or self.MAHOGANY_BG
 
         super().__init__(
             master,
             background=bg_col,
             relief="flat",
             borderwidth=0,
-            highlightthickness=0,
+            highlightbackground=self.GOLD_TRIM,
+            highlightcolor=self.GOLD_TRIM,
+            highlightthickness=1,
             padx=0,
             pady=0,
             **kwargs,
@@ -118,6 +127,18 @@ class CardCountingHud(tkinter.Frame):
         self.on_stage_bet_request = on_stage_bet_request
         self.use_grid = use_grid
         self.grid_row = grid_row
+        self.stage_canvas = stage_canvas
+        self.table_canvas = table_canvas
+        self.dialogue_frame = dialogue_frame
+        if placement_mode is not None:
+            self.placement_mode = placement_mode
+        elif stage_canvas is not None:
+            self.placement_mode = "shelf"
+        elif use_grid:
+            self.placement_mode = "grid"
+        else:
+            self.placement_mode = "pack"
+
         self.is_visible = False
         self.drill_mode = False
         self._last_rec_bet = 25
@@ -125,41 +146,56 @@ class CardCountingHud(tkinter.Frame):
 
         self._build_ui()
 
+    def mount_on_stage(
+        self,
+        stage_canvas: tkinter.Canvas,
+        table_canvas: Optional[tkinter.Canvas] = None,
+        dialogue_frame: Optional[tkinter.Misc] = None,
+    ):
+        """Mounts the HUD as a horizon shelf on dealer_stage_canvas."""
+        self.stage_canvas = stage_canvas
+        self.table_canvas = table_canvas
+        self.dialogue_frame = dialogue_frame
+        self.placement_mode = "shelf"
+        self.use_grid = False
+
     def _build_ui(self):
-        # 1. Top Tab Header Frame (sits on top of the HUD bar on the far left)
+        # Top brass molding accent line (single 1px gold trim)
+        self.brass_trim = tkinter.Frame(self, height=1, background=self.GOLD_TRIM)
+        self.brass_trim.pack(side="top", fill="x")
+
+        # 1. Title Tab Header Frame (left side of the shelf)
         self.tab_frame = tkinter.Frame(
             self,
-            background="#141a1d",
-            relief="ridge",
-            borderwidth=1,
-            highlightbackground="#2c3940",
-            highlightthickness=1,
+            background=self.MAHOGANY_BG,
+            relief="flat",
+            borderwidth=0,
+            highlightthickness=0,
             padx=6,
-            pady=1,
+            pady=2,
         )
-        self.tab_frame.pack(side="top", anchor="w", padx=(6, 0), pady=(0, 0))
+        self.tab_frame.pack(side="left", fill="y", padx=(2, 6))
 
         self.title_lbl = tkinter.Label(
             self.tab_frame,
-            text="🧮 Hi-Lo Trainer",
+            text="Hi-Lo",
             font=get_element_font("hilo_trainer_title"),
-            fg="#5ce6b5",
-            background="#141a1d",
+            fg=self.GOLD_TEXT,
+            background=self.MAHOGANY_BG,
         )
         self.title_lbl.pack(side="left")
 
-        # 2. Main HUD Statistics Bar Frame (Dark slate calculator gadget aesthetic)
+        # 2. Main HUD Statistics Bar Frame (Warm Mahogany woodwork aesthetic)
         self.bar_frame = tkinter.Frame(
             self,
-            background="#141a1d",
-            relief="ridge",
-            borderwidth=2,
-            highlightbackground="#2c3940",
-            highlightthickness=1,
-            padx=6,
-            pady=3,
+            background=self.MAHOGANY_BG,
+            relief="flat",
+            borderwidth=0,
+            highlightthickness=0,
+            padx=4,
+            pady=2,
         )
-        self.bar_frame.pack(side="top", fill="x", expand=True, padx=0, pady=(0, 0))
+        self.bar_frame.pack(side="left", fill="both", expand=True, padx=0, pady=0)
 
         # Action Buttons (Packed side="right" first to guarantee they are never clipped)
         btn_font = get_element_font("hilo_trainer_button")
@@ -167,26 +203,27 @@ class CardCountingHud(tkinter.Frame):
             self.bar_frame,
             text="✖",
             font=btn_font,
-            background="#141a1d",
-            foreground="#80cbc4",
-            activebackground="#263238",
+            background=self.MAHOGANY_BG,
+            foreground=self.GOLD_TRIM,
+            activebackground=self.BTN_BG,
             activeforeground="#ffffff",
             relief="flat",
             cursor="hand2",
             takefocus=False,
             command=self.toggle_visibility,
         )
-        self.close_btn.pack(side="right", padx=(2, 4))
+        self.close_btn.pack(side="right", padx=(4, 2))
 
         self.quiz_btn = tkinter.Button(
             self.bar_frame,
             text="🎯 Quiz",
             font=btn_font,
-            background="#1b2e2b",
-            foreground="#ffd54f",
-            activebackground="#263238",
+            background=self.BTN_BG,
+            foreground=self.GOLD_TEXT,
+            activebackground=self.BTN_ACTIVE_BG,
             activeforeground="#ffffff",
-            relief="flat",
+            relief="raised",
+            borderwidth=1,
             padx=5,
             pady=1,
             cursor="hand2",
@@ -199,11 +236,12 @@ class CardCountingHud(tkinter.Frame):
             self.bar_frame,
             text="👁️ Assisted",
             font=btn_font,
-            background="#1b2e2b",
-            foreground="#5ce6b5",
-            activebackground="#263238",
+            background=self.BTN_BG,
+            foreground="#80cbc4",
+            activebackground=self.BTN_ACTIVE_BG,
             activeforeground="#ffffff",
-            relief="flat",
+            relief="raised",
+            borderwidth=1,
             padx=5,
             pady=1,
             cursor="hand2",
@@ -217,71 +255,81 @@ class CardCountingHud(tkinter.Frame):
         f_val = get_element_font("hilo_trainer_value")
 
         # Running Count (RC)
-        self.rc_frame = tkinter.Frame(self.bar_frame, background="#141a1d")
+        self.rc_frame = tkinter.Frame(self.bar_frame, background=self.MAHOGANY_BG)
         self.rc_frame.pack(side="left", padx=3)
         tkinter.Label(
-            self.rc_frame, text="RC:", font=f_lbl, fg="#80cbc4", background="#141a1d"
+            self.rc_frame, text="RC:", font=f_lbl, fg=self.GOLD_TRIM, background=self.MAHOGANY_BG
         ).pack(side="left")
         self.rc_label = tkinter.Label(
-            self.rc_frame, text="+0", font=f_val, fg="#ffffff", background="#141a1d"
+            self.rc_frame, text="+0", font=f_val, fg="#ffffff", background=self.MAHOGANY_BG
         )
         self.rc_label.pack(side="left", padx=(2, 0))
 
         # Decks Remaining
-        self.decks_frame = tkinter.Frame(self.bar_frame, background="#141a1d")
+        self.decks_frame = tkinter.Frame(self.bar_frame, background=self.MAHOGANY_BG)
         self.decks_frame.pack(side="left", padx=3)
         tkinter.Label(
-            self.decks_frame, text="Decks:", font=f_lbl, fg="#80cbc4", background="#141a1d"
+            self.decks_frame, text="Decks:", font=f_lbl, fg=self.GOLD_TRIM, background=self.MAHOGANY_BG
         ).pack(side="left")
         default_decks_text = f"{float(getattr(self.counter, 'deck_count', 4)):.1f}"
         self.decks_label = tkinter.Label(
-            self.decks_frame, text=default_decks_text, font=f_val, fg="#ffffff", background="#141a1d"
+            self.decks_frame, text=default_decks_text, font=f_val, fg="#ffffff", background=self.MAHOGANY_BG
         )
         self.decks_label.pack(side="left", padx=(2, 0))
 
         # True Count (TC)
-        self.tc_frame = tkinter.Frame(self.bar_frame, background="#141a1d")
+        self.tc_frame = tkinter.Frame(self.bar_frame, background=self.MAHOGANY_BG)
         self.tc_frame.pack(side="left", padx=3)
         tkinter.Label(
-            self.tc_frame, text="TC:", font=f_lbl, fg="#80cbc4", background="#141a1d"
+            self.tc_frame, text="TC:", font=f_lbl, fg=self.GOLD_TRIM, background=self.MAHOGANY_BG
         ).pack(side="left")
         self.tc_label = tkinter.Label(
-            self.tc_frame, text="+0.0", font=f_val, fg="#ffffff", background="#141a1d"
+            self.tc_frame, text="+0.0", font=f_val, fg="#ffffff", background=self.MAHOGANY_BG
         )
         self.tc_label.pack(side="left", padx=(2, 0))
 
         # Player Advantage (Edge %)
-        self.edge_frame = tkinter.Frame(self.bar_frame, background="#141a1d")
+        self.edge_frame = tkinter.Frame(self.bar_frame, background=self.MAHOGANY_BG)
         self.edge_frame.pack(side="left", padx=3)
         tkinter.Label(
-            self.edge_frame, text="Edge:", font=f_lbl, fg="#80cbc4", background="#141a1d"
+            self.edge_frame, text="Edge:", font=f_lbl, fg=self.GOLD_TRIM, background=self.MAHOGANY_BG
         ).pack(side="left")
         self.edge_label = tkinter.Label(
-            self.edge_frame, text="-0.5%", font=f_val, fg="#38bdf8", background="#141a1d"
+            self.edge_frame, text="-0.5%", font=f_val, fg="#80cbc4", background=self.MAHOGANY_BG
         )
         self.edge_label.pack(side="left", padx=(2, 0))
 
+        # Separator divider bar
+        self.divider = tkinter.Frame(self.bar_frame, width=1, background=self.DIVIDER_COLOR)
+        self.divider.pack(side="left", fill="y", padx=6, pady=2)
+
         # Bet Sizing Guide
-        self.bet_guide_frame = tkinter.Frame(self.bar_frame, background="#141a1d")
+        self.bet_guide_frame = tkinter.Frame(self.bar_frame, background=self.MAHOGANY_BG)
         self.bet_guide_frame.pack(side="left", padx=3)
         tkinter.Label(
-            self.bet_guide_frame, text="Bet Guide:", font=f_lbl, fg="#ffd54f", background="#141a1d"
+            self.bet_guide_frame, text="Bet:", font=f_lbl, fg="#ffd54f", background=self.MAHOGANY_BG
         ).pack(side="left")
         self.bet_guide_label = tkinter.Label(
-            self.bet_guide_frame, text="1u ($25)", font=f_val, fg="#fff59d", background="#141a1d",
+            self.bet_guide_frame, text="1u ($25)", font=f_val, fg="#fff59d", background=self.MAHOGANY_BG,
             cursor="hand2"
         )
         self.bet_guide_label.pack(side="left", padx=(2, 0))
         self.bet_guide_label.bind("<Button-1>", lambda e: self._on_stage_bet_click())
 
         # Basic Strategy Advisor Hint & Illustrious 18 Deviation Badge
-        self.strategy_frame = tkinter.Frame(self.bar_frame, background="#141a1d")
+        self.strategy_frame = tkinter.Frame(self.bar_frame, background=self.MAHOGANY_BG)
         self.strategy_frame.pack(side="left", padx=3)
         tkinter.Label(
-            self.strategy_frame, text="Strategy:", font=f_lbl, fg="#80cbc4", background="#141a1d"
+            self.strategy_frame, text="Strategy:", font=f_lbl, fg=self.GOLD_TRIM, background=self.MAHOGANY_BG
         ).pack(side="left")
         self.strategy_label = tkinter.Label(
-            self.strategy_frame, text="-", font=f_val, fg="#b0bec5", background="#141a1d"
+            self.strategy_frame,
+            text="-",
+            font=get_element_font("hilo_trainer_button"),
+            fg="#ffffff",
+            background=self.MAHOGANY_BG,
+            justify="left",
+            anchor="w",
         )
         self.strategy_label.pack(side="left", padx=(2, 0))
 
@@ -289,14 +337,14 @@ class CardCountingHud(tkinter.Frame):
         self.deviation_badge = tkinter.Label(
             self.strategy_frame,
             text="",
-            font=f_val,
-            fg="#ffd700",
-            background="#261c0a",
+            font=get_element_font("hilo_trainer_button"),
+            fg=self.GOLD_TEXT,
+            background=self.BTN_BG,
             padx=5,
             pady=0,
             relief="solid",
             borderwidth=1,
-            highlightbackground="#ffb300",
+            highlightbackground=self.GOLD_TRIM,
             highlightthickness=1,
         )
 
@@ -316,20 +364,184 @@ class CardCountingHud(tkinter.Frame):
         return self.is_visible
 
     def toggle_visibility(self) -> bool:
-        """Toggles visibility of the counting HUD pill."""
+        """Toggles visibility of the counting HUD shelf."""
         if self.is_visible:
-            if self.use_grid:
+            if self.placement_mode == "shelf":
+                self.place_forget()
+            elif self.use_grid:
                 self.grid_remove()
             else:
                 self.pack_forget()
             self.is_visible = False
         else:
-            if self.use_grid:
+            if self.placement_mode == "shelf" and self.stage_canvas is not None:
+                self._place_shelf()
+            elif self.use_grid:
                 self.grid(row=self.grid_row, column=0, columnspan=3, sticky="ew", padx=12, pady=(4, 4))
             else:
                 self.pack(side="top", fill="x", padx=12, pady=(4, 4))
             self.is_visible = True
         return self.is_visible
+
+    def _is_container_active(self, container: Optional[tkinter.Misc]) -> bool:
+        """Determines if container is actively mapped or scheduled in grid (supports headless tests)."""
+        if container is None:
+            return False
+        if container.winfo_ismapped():
+            return True
+        m = container
+        while m and m != getattr(self, "master", None):
+            if hasattr(m, "grid_info") and m.grid_info():
+                return True
+            m = getattr(m, "master", None)
+        return False
+
+    def _place_shelf(self):
+        """
+        Places the shelf on the horizon.
+        - When dealer stage is active (Dealer ON): mounted directly on horizon at the bottom of dealer_stage_canvas.
+        - When dealer stage is hidden (Dealer OFF): mounted on the horizon line at the exact same vertical coordinate,
+          ensuring complete consistency and never blocking chip trays or mahogany rail buttons.
+        """
+        target_container = self.stage_canvas
+        if self._is_container_active(target_container):
+            # Mounted directly on horizon at the bottom of dealer_stage_canvas (y = 262 in root)
+            self.place(
+                in_=target_container,
+                x=6,
+                relx=0.0,
+                rely=1.0,
+                y=-44,
+                relwidth=1.0,
+                width=-12,
+                height=44,
+            )
+            self.lift()
+            # Ensure dealer dialogue and speech tail have the highest z-order
+            if hasattr(target_container, "tag_raise"):
+                target_container.tag_raise("speech_tail")
+                target_container.tag_raise("dialogue_win")
+            if self.dialogue_frame is not None and hasattr(self.dialogue_frame, "lift"):
+                self.dialogue_frame.lift()
+        elif self._is_container_active(self.table_canvas):
+            # Consistent Horizon Placement: stays on the horizon line (y = 176 in table felt == y = 262 in root)
+            self.place(
+                in_=self.table_canvas,
+                x=6,
+                relx=0.0,
+                rely=0.0,
+                y=176,
+                relwidth=1.0,
+                width=-12,
+                height=44,
+            )
+            self.lift()
+        else:
+            self.place(
+                in_=self.master,
+                x=6,
+                relx=0.0,
+                rely=0.0,
+                y=262,
+                relwidth=1.0,
+                width=-12,
+                height=44,
+            )
+            self.lift()
+
+    def on_dealer_view_toggled(self):
+        """Updates shelf placement if visible when dealer stage is shown/hidden."""
+        if self.is_visible and self.placement_mode == "shelf":
+            self._place_shelf()
+
+    def _format_strategy_display(
+        self,
+        hint: Optional[Any],
+        text: Optional[str],
+    ) -> tuple[str, str, tuple]:
+        """
+        Formats strategy text into up to 2 stacked lines with dynamic font scaling
+        and strict character limits to prevent clipping.
+
+        Returns:
+            (display_text, fg_color, font_spec)
+        """
+        color_palette = {
+            "HIT": "#4fc3f7",        # Sky Blue
+            "STAND": "#ffb74d",      # Amber Orange
+            "DOUBLE": "#69f0ae",     # Neon Emerald
+            "SPLIT": "#ea80fc",      # Neon Violet
+            "SURRENDER": "#ff5252",  # Vivid Coral
+            "TAKE": "#69f0ae",       # Neon Emerald (Take Insurance when TC >= +3)
+            "DECLINE": "#ff8a80",    # Soft Coral (Decline Insurance when TC < +3)
+            "INSURANCE": "#ffd54f",  # Gold
+        }
+
+        # 1. Neither hint nor text: default dash
+        if hint is None and not text:
+            return "-", "#78909c", ("m6x11plus", -16, "bold")
+
+        # 2. Hint object provided (BasicStrategyDecision or similar)
+        if hint is not None:
+            raw_action = getattr(hint, "action", "")
+            if hasattr(raw_action, "value"):
+                action_name = str(raw_action.value).upper()
+            elif raw_action:
+                action_name = str(raw_action).upper()
+            else:
+                raw_act_name = getattr(hint, "action_name", "")
+                action_name = str(raw_act_name).upper() if raw_act_name else "HIT"
+
+            fg_col = color_palette.get(action_name, "#ffffff")
+            reason = getattr(hint, "reason", "").strip()
+
+            if reason:
+                # Abbreviate lengthy phrases if needed to enforce max char limits
+                if len(reason) > 14:
+                    reason = reason.replace("Hard ", "H").replace("Soft ", "S").replace("Pair ", "")
+                if len(reason) > 14:
+                    reason = reason[:13] + "…"
+
+                # 2-line layout: Action on top, (Reason) below
+                display_text = f"{action_name}\n({reason})"
+
+                # Dynamic font sizing based on max line length
+                max_line = max(len(action_name), len(reason) + 2)
+                if max_line > 14:
+                    font_spec = ("m6x11plus", -13, "bold")
+                elif max_line > 10:
+                    font_spec = ("m6x11plus", -14, "bold")
+                else:
+                    font_spec = ("m6x11plus", -15, "bold")
+            else:
+                display_text = action_name
+                font_spec = ("m6x11plus", -16, "bold")
+
+            return display_text, fg_col, font_spec
+
+        # 3. Raw text string provided
+        clean_text = str(text).strip()
+        fg_col = "#ffffff"
+
+        # Check if text has a natural 2-line split point like 'Bet $25 (1u)' or 'DECLINE (TC < +3)'
+        if " (" in clean_text and clean_text.endswith(")"):
+            part1, part2 = clean_text.split(" (", 1)
+            display_text = f"{part1}\n({part2}"
+            fg_col = color_palette.get(part1.strip().upper(), "#ffffff")
+            max_line = max(len(part1), len(part2) + 1)
+            font_spec = ("m6x11plus", -14, "bold") if max_line > 10 else ("m6x11plus", -15, "bold")
+        elif len(clean_text) > 14:
+            if len(clean_text) > 22:
+                clean_text = clean_text[:20] + "…"
+            display_text = clean_text
+            fg_col = color_palette.get(clean_text.strip().upper(), "#ffffff")
+            font_spec = ("m6x11plus", -13, "bold")
+        else:
+            display_text = clean_text
+            fg_col = color_palette.get(clean_text.strip().upper(), "#ffffff")
+            font_spec = ("m6x11plus", -15, "bold") if len(clean_text) > 8 else ("m6x11plus", -16, "bold")
+
+        return display_text, fg_col, font_spec
 
     def update_strategy_hint(
         self,
@@ -340,6 +552,7 @@ class CardCountingHud(tkinter.Frame):
         """
         Updates the Basic Strategy recommendation label and Illustrious 18 deviation badge.
         Supports BasicStrategyDecision dataclass or raw string text.
+        Dynamically adjusts font size, splits into 2 stacked lines, and limits character length.
         """
         if not hasattr(self, "strategy_label") or not self.strategy_label.winfo_exists():
             return
@@ -348,37 +561,20 @@ class CardCountingHud(tkinter.Frame):
         self._last_hint_text = text
         self._last_deviation = deviation
 
-        # 1. Update Basic Strategy label text
-        if text:
-            display_text = text if len(text) <= 28 else text[:26] + "…"
-            self.strategy_label.configure(text=display_text, fg="#ffffff")
-        elif hint is None:
-            self.strategy_label.configure(text="-", fg="#78909c")
-        else:
-            action_name = getattr(hint, "action_name", None)
-            if action_name is None:
-                action_name = str(hint.action.value if hasattr(hint.action, "value") else hint.action)
-
-            color_palette = {
-                "HIT": "#4fc3f7",        # Sky Blue
-                "STAND": "#ffb74d",      # Amber Orange
-                "DOUBLE": "#69f0ae",     # Neon Emerald
-                "SPLIT": "#ea80fc",      # Neon Violet
-                "SURRENDER": "#ff5252",  # Vivid Coral
-            }
-            fg_col = color_palette.get(action_name, "#ffffff")
-            reason = getattr(hint, "reason", "")
-            display_text = f"{action_name} ({reason})" if reason else action_name
-            if len(display_text) > 28:
-                display_text = display_text[:26] + "…"
-            self.strategy_label.configure(text=display_text, fg=fg_col)
+        # 1. Update Basic Strategy label text, color, and dynamic font
+        display_text, fg_col, font_spec = self._format_strategy_display(hint, text)
+        self.strategy_label.configure(text=display_text, fg=fg_col, font=font_spec)
 
         # 2. Update Illustrious 18 deviation badge
         if hasattr(self, "deviation_badge"):
             is_active_dev = bool(deviation and getattr(deviation, "is_deviation_active", False))
             badge_txt = getattr(deviation, "badge_text", "") if is_active_dev else ""
             if is_active_dev and badge_txt and not self.drill_mode:
-                self.deviation_badge.configure(text=badge_txt)
+                # If badge text is long, strip redundant parenthesized condition so it fits cleanly
+                display_badge = badge_txt
+                if len(display_badge) > 22 and " (" in display_badge:
+                    display_badge = display_badge.split(" (")[0]
+                self.deviation_badge.configure(text=display_badge, font=("m5x7", -14, "bold"))
                 if not bool(self.deviation_badge.winfo_manager()):
                     self.deviation_badge.pack(side="left", padx=(4, 0))
             else:

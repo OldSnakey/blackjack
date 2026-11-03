@@ -22,7 +22,7 @@ Provides:
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, NamedTuple, Optional
 
@@ -175,6 +175,18 @@ class Hand:
     def is_bust(self) -> bool:
         return self.score > BLACKJACK_TARGET
 
+    @is_bust.setter
+    def is_bust(self, val: bool) -> None:
+        pass
+
+    @property
+    def is_busted(self) -> bool:
+        return self.is_bust
+
+    @is_busted.setter
+    def is_busted(self, val: bool) -> None:
+        pass
+
     @property
     def can_split(self) -> bool:
         return can_split(self.cards) and not self.is_doubled
@@ -182,6 +194,37 @@ class Hand:
     @property
     def can_double(self) -> bool:
         return len(self.cards) == 2 and not self.is_doubled and not self.is_stood
+
+
+@dataclass
+class Player:
+    """Represents a table participant. Preserves extensibility for future hot-seat & bot companions."""
+    player_id: str = "player_1"
+    name: str = "Player 1"
+    bankroll: int = 1000
+    is_bot: bool = False
+
+
+@dataclass
+class Seat:
+    """Represents a physical wagering position on the felt (index 1..3)."""
+    seat_index: int                       # 1: First Base (Right), 2: Center, 3: Third Base (Left)
+    player_id: str = "player_1"           # Associated participant
+    is_active: bool = False               # Has an active wager in current round
+    main_bet: int = 0                     # Initial staged round bet
+    side_bets: dict[str, int] = field(    # Side bets (perfect_pairs, 21_plus_3)
+        default_factory=lambda: {"perfect_pairs": 0, "21_plus_3": 0}
+    )
+    hands: list[Hand] = field(            # Active hands (1 normally, 2 if split). Hand.bet is authoritative during play.
+        default_factory=list
+    )
+    insurance_bet: int = 0                # Insurance wager if taken
+    is_resolved: bool = False             # Settlement status
+
+    @property
+    def total_staked(self) -> int:
+        """Returns total current wager exposure across all sub-hands for this seat."""
+        return sum(h.bet for h in self.hands) if self.hands else self.main_bet
 
 
 def score_hand(hand) -> int:

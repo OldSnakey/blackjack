@@ -238,8 +238,10 @@ class TestHauntedGui(unittest.TestCase):
         self.assertEqual(info_stakes["column"], 8)
 
     def test_dealer_view_toggle(self):
-        """Dealer view is always enabled and cannot be disabled."""
+        """Dealer view toggle switches state between True and False."""
         self.assertTrue(self.app.dealer_view_var.get())
+        self.app._on_toggle_dealer_view()
+        self.assertFalse(self.app.dealer_view_var.get())
         self.app._on_toggle_dealer_view()
         self.assertTrue(self.app.dealer_view_var.get())
 

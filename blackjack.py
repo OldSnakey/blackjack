@@ -153,6 +153,7 @@ from ui_layout import (
     get_table_layout,
     get_rail_button_layout,
     get_card_layout,
+    get_seat_origin,
 )
 
 # Re-exported Toplevel modal dialogs
@@ -162,6 +163,7 @@ from ui_dialogs import (
     SettingsDialog,
     ShortcutsDialog,
     WelcomeSplashDialog,
+    MultiSeatInsuranceDialog,
 )
 
 # Re-exported subsystems
@@ -202,6 +204,14 @@ class HandBetsProxy(list):
                 super().extend(engine_bets)
 
     def sync_to_engine(self):
+        if hasattr(self._engine, "seats") and len(self._engine.seats) >= 3:
+            if self._engine.active_seat_index is not None:
+                active = self._engine.get_seat(self._engine.active_seat_index)
+                if active and len(self) == len(active.hands):
+                    for i, val in enumerate(self):
+                        active.hands[i].bet = val
+            return
+
         if getattr(self._engine, "player_hands", None):
             for i, val in enumerate(self):
                 if i < len(self._engine.player_hands):
@@ -211,6 +221,12 @@ class HandBetsProxy(list):
 
     def __setitem__(self, index, value):
         super().__setitem__(index, value)
+        if hasattr(self._engine, "seats") and len(self._engine.seats) >= 3:
+            if self._engine.active_seat_index is not None:
+                active = self._engine.get_seat(self._engine.active_seat_index)
+                if active and index < len(active.hands):
+                    active.hands[index].bet = value
+            return
         if getattr(self._engine, "player_hands", None) and index < len(self._engine.player_hands):
             self._engine.player_hands[index].bet = value
         if index == 0:
@@ -218,6 +234,8 @@ class HandBetsProxy(list):
 
     def append(self, value):
         super().append(value)
+        if hasattr(self._engine, "seats") and len(self._engine.seats) >= 3:
+            return
         idx = len(self) - 1
         if getattr(self._engine, "player_hands", None) and idx < len(self._engine.player_hands):
             self._engine.player_hands[idx].bet = value
@@ -228,6 +246,13 @@ class HandBetsProxy(list):
 
     def clear(self):
         super().clear()
+        if hasattr(self._engine, "seats") and len(self._engine.seats) >= 3:
+            if self._engine.active_seat_index is not None:
+                active = self._engine.get_seat(self._engine.active_seat_index)
+                if active:
+                    for h in active.hands:
+                        h.bet = 0
+            return
         if getattr(self._engine, "player_hands", None):
             for h in self._engine.player_hands:
                 h.bet = 0
@@ -480,7 +505,8 @@ class BlackjackApp:
         self.root._active_blackjack_app = self
         self.root.title(f"Blackjack v{__version__}")
         self.root.geometry(f"{DEFAULT_WINDOW_WIDTH}x{DEFAULT_WINDOW_HEIGHT}")
-        self.root.minsize(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)
+        self.root.resizable(False, False)
+        self.root.minsize(DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT)
         root_layout_cfg = get_ui_layout("root_layout")
         root_pad = root_layout_cfg.get("padding", {"padx": 10, "pady": 10})
         self.root.configure(
@@ -622,6 +648,9 @@ class BlackjackApp:
         self.card_13: Card | None = None
         self._last_gravestones_risen = 0
         self._candles_manifested = False
+        self.table_seats: int = 1
+        self.selected_denomination: int = 5
+        self.focused_betting_seat: int = 2
 
         # Scale and Fullscreen Display Mode State
         self.scale_factor: float = 1.0
@@ -834,19 +863,19 @@ class BlackjackApp:
             )
         self.help_button.grid(**get_grid_options("top_bar", "help_button"), ipady=top_btn_ipady)
 
-        # Dealer View Toggle Button (retained as instance for compatibility, unmapped since dealer is permanent)
+        # Dealer View Toggle Button (retained as unmapped instance in header; accessed via SettingsDialog or 'v')
         self.dealer_view_button = PixelButtonWidget(
             scoreboard_frame, textvariable=self.dealer_view_status_var, font=f_top_btn,
             theme="neutral", scale=btn_scale, command=self._on_toggle_dealer_view
         )
-        # Omitted from header grid since dealer is always enabled
+        # Omitted from header grid per test_table_felt invariant (accessed via SettingsDialog or 'v')
 
-        # Scale Mode Toggle Button (1x <-> 2x High-DPI in-memory scaling)
+        # Scale Mode Toggle Button (retained as unmapped instance for compatibility; 2x scaling removed)
         self.scale_button = PixelButtonWidget(
             scoreboard_frame, textvariable=self.scale_status_var, font=f_top_btn,
             theme="neutral", scale=btn_scale, command=self.toggle_scale_mode
         )
-        self.scale_button.grid(**get_grid_options("top_bar", "scale_button"), ipady=top_btn_ipady)
+        # Omitted from header grid since 2x scaling is removed
 
         # Fullscreen Toggle Button (F11)
         self.fullscreen_button = PixelButtonWidget(
@@ -974,6 +1003,11 @@ class BlackjackApp:
             card_table_frame.rowconfigure(row_cfg["row"], weight=row_cfg["weight"], minsize=int(row_cfg.get("minsize", 0) * self.scale_factor))
         self.scoreboard_frame = scoreboard_frame
         self.card_table_frame = card_table_frame
+        self.card_table_frame.on_spot_click_callback = self._on_table_spot_click
+        self.card_table_frame.on_spot_clear_callback = self._on_table_spot_clear
+        self.card_table_frame.on_chip_click_callback = self._on_felt_chip_click
+        self.card_table_frame.on_chip_deduct_callback = self._on_felt_chip_deduct
+        self.card_table_frame.set_table_seats(self.table_seats)
 
         # Table Accessories Frame (Haunted Altar: 5 Candles & 5 Rising Gravestones on Table Felt)
         self.accessories_frame = tkinter.Frame(card_table_frame, background=PANEL_BACKGROUND_COLOR, borderwidth=0, highlightthickness=0)
@@ -1025,7 +1059,7 @@ class BlackjackApp:
         self.chip_visualizer = ChipVisualizer(
             card_table_frame,
             background=PANEL_BACKGROUND_COLOR,
-            on_chip_click=self._add_chip_bet,
+            on_chip_click=lambda amt: (self._on_rack_chip_click(amt), self._add_chip_bet(amt) if self.table_seats == 1 else None),
             on_chip_deduct=self._deduct_chip_bet,
             on_spot_click=lambda amt=5: self._add_chip_bet(amt),
             on_spot_clear=self._clear_main_bet,
@@ -1044,14 +1078,16 @@ class BlackjackApp:
         self.soul_meter_canvas.grid(**get_grid_options("soul_meter"))
         self.soul_meter_canvas.grid_remove()  # Hidden until Hell's Table Mode
 
-        # Hi-Lo Card Counting Trainer HUD pill (table felt overlay)
+        # Hi-Lo Card Counting Trainer HUD Shelf (Warm Mahogany Rail sitting on horizon)
         self.card_counting_hud = CardCountingHud(
-            master=card_table_frame,
+            master=self.root,
             counter=self.card_counter,
             on_quiz_request=self._open_card_counting_quiz,
             on_stage_bet_request=self._stage_recommended_bet,
-            use_grid=True,
-            grid_row=2,
+            stage_canvas=self.dealer_stage_canvas,
+            table_canvas=card_table_frame,
+            dialogue_frame=self.dealer_dialogue_frame,
+            placement_mode="shelf",
         )
         if self.play_mode == "training":
             self.card_counting_hud.set_visible(True)
@@ -1095,6 +1131,9 @@ class BlackjackApp:
             self.mahogany_rail, x=615, y=36, width=124, height=36,
             text="Rebuy $1K", theme="amber", font=f_bet_btn, scale=btn_scale, group_tag="bet_dock", command=self._rebuy
         )
+
+        # Denomination selection in 3-Seat Mode is handled by 2.5D chips directly on the felt
+        self.rail_denom_buttons: list[CanvasPixelButton] = []
 
         # 2. In-Play Phase Center Dock ("play_dock")
         self.hit_button = CanvasPixelButton(
@@ -1220,9 +1259,7 @@ class BlackjackApp:
         for key in ("<question>", "?", "/", "<F1>"):
             self.root.bind(key, lambda e: self._toggle_shortcuts_overlay())
 
-        # Scale and Fullscreen display mode shortcuts
-        for key in ("<F10>", "<Shift-S>", "<Shift-s>"):
-            self.root.bind(key, lambda e: self.toggle_scale_mode())
+        # Fullscreen display mode shortcut
         self.root.bind("<F11>", lambda e: self.toggle_fullscreen())
 
         # Wardrobe & Hall of Fame shortcuts (Shift+W / Shift+H)
@@ -1282,10 +1319,22 @@ class BlackjackApp:
         action_fn()
         return "break"
 
+    def _select_rail_denomination(self, denom: int):
+        """Selects active chip denomination in 3-seat mode and highlights the rail button."""
+        self.selected_denomination = denom
+        self.result_var.set(f"Selected ${denom} chip — click any Seat (1, 2, or 3) on the felt to place bet!")
+        if hasattr(self, "sound_manager"):
+            self.sound_manager.play_chip_add()
+
     def _on_key_chip(self, amount: int):
-        """Adds chip bet if currently in the betting phase."""
+        """Adds chip bet in 1-seat mode, or selects denomination & stages on focused seat in 3-seat mode."""
         if getattr(self, "is_betting_phase", False) and self.chips_mode_var.get():
-            self._add_chip_bet(amount)
+            if getattr(self, "table_seats", 1) == 3:
+                self.selected_denomination = amount
+                target_seat = getattr(self, "focused_betting_seat", None) or getattr(self.engine, "active_seat_index", None) or 2
+                self._on_table_spot_click(target_seat, None)
+            else:
+                self._add_chip_bet(amount)
         return "break"
 
     def _on_key_deal_or_hit(self, event=None):
@@ -1507,11 +1556,23 @@ class BlackjackApp:
         """Computes pure Basic Strategy advice for the active player hand against dealer upcard."""
         if getattr(self, "round_phase", RoundPhase.PLAYER_TURN) != RoundPhase.PLAYER_TURN:
             return None
-        if not self.player_hands or not self.dealer_hand:
+        if not self.dealer_hand:
             return None
-        if self.active_hand_index >= len(self.player_hands):
-            return None
-        player_hand = self.player_hands[self.active_hand_index]
+
+        if getattr(self, "table_seats", 1) == 3 and hasattr(self, "engine"):
+            s_idx = self.engine.active_seat_index
+            if s_idx is None:
+                return None
+            seat = self.engine.get_seat(s_idx)
+            h_idx = self.engine.active_hand_index
+            if h_idx >= len(seat.hands):
+                return None
+            player_hand = seat.hands[h_idx]
+        else:
+            if not self.player_hands or self.active_hand_index >= len(self.player_hands):
+                return None
+            player_hand = self.player_hands[self.active_hand_index]
+
         if not player_hand or not self.dealer_hand:
             return None
         if self._score_player_hand(player_hand) >= BLACKJACK_TARGET:
@@ -1605,7 +1666,11 @@ class BlackjackApp:
             return
         if getattr(self, "is_insurance_phase", False):
             dev = self.get_current_deviation_hint()
-            self.card_counting_hud.update_strategy_hint(text="Insurance?", deviation=dev)
+            if dev and getattr(dev, "is_deviation_active", False):
+                ins_text = "TAKE (TC >= +3)"
+            else:
+                ins_text = "DECLINE (TC < +3)"
+            self.card_counting_hud.update_strategy_hint(text=ins_text, deviation=None)
             return
         if getattr(self, "is_betting_phase", False):
             cards_rem = len(self.deck) if hasattr(self, "deck") else 0
@@ -1665,10 +1730,26 @@ class BlackjackApp:
         return raw
 
     def _on_toggle_dealer_view(self):
-        """Dealer view is permanently enabled."""
-        self.dealer_view_var.set(True)
-        self.dealer_view_status_var.set("👤 Dealer: ON")
+        """Toggles upper dealer portrait / stage view visibility."""
+        if hasattr(self, "haunted") and self.haunted.phase == Phase.HELL_TABLE:
+            return "break"
+        new_val = not self.dealer_view_var.get()
+        self.dealer_view_var.set(new_val)
+        if new_val:
+            self.dealer_view_status_var.set("👤 Dealer: ON")
+            if hasattr(self, "dealer_stage_frame"):
+                self.dealer_stage_frame.grid(**get_grid_options("root_layout", "dealer_stage"))
+            if hasattr(self, "horizon_rail"):
+                self.horizon_rail.grid(**get_grid_options("root_layout", "horizon_rail"))
+        else:
+            self.dealer_view_status_var.set("👤 Dealer: OFF")
+            if hasattr(self, "dealer_stage_frame"):
+                self.dealer_stage_frame.grid_remove()
+            if hasattr(self, "horizon_rail"):
+                self.horizon_rail.grid_remove()
         self._update_dealer_avatar()
+        if hasattr(self, "card_counting_hud") and hasattr(self.card_counting_hud, "on_dealer_view_toggled"):
+            self.card_counting_hud.on_dealer_view_toggled()
         return "break"
 
 
@@ -1732,6 +1813,11 @@ class BlackjackApp:
         # Render vector speech balloon tail on DealerStageCanvas
         if hasattr(self, "dealer_stage_canvas") and hasattr(self.dealer_stage_canvas, "draw_speech_tail"):
             self.dealer_stage_canvas.draw_speech_tail(fill_col=speech_bg, border_col=nameplate_fg)
+        if hasattr(self, "dealer_stage_canvas"):
+            self.dealer_stage_canvas.tag_raise("speech_tail")
+            self.dealer_stage_canvas.tag_raise("dialogue_win")
+        if hasattr(self, "dealer_dialogue_frame"):
+            self.dealer_dialogue_frame.lift()
 
         # Trigger character signature audio accent (chuckle, rumble, chime, bone clatter)
         self.play_dealer_accent()
@@ -2207,6 +2293,11 @@ class BlackjackApp:
             return
 
         if self.haunted.phase == Phase.HELL_TABLE:
+            if hasattr(self, "dealer_stage_frame") and not self.dealer_stage_frame.winfo_ismapped():
+                self.dealer_stage_frame.grid(**get_grid_options("root_layout", "dealer_stage"))
+            if hasattr(self, "horizon_rail") and not self.horizon_rail.winfo_ismapped():
+                self.horizon_rail.grid(**get_grid_options("root_layout", "horizon_rail"))
+            self.dealer_view_var.set(True)
             if hasattr(self, "dealer_actor"):
                 self.dealer_actor.equip_costume("malphas")
                 demon_img = self._get_scaled_dealer_photo() or self.dealer_actor.get_photo_image()
@@ -2226,7 +2317,10 @@ class BlackjackApp:
             return
 
         self.dealer_view_button.configure(state="normal")
-        self.dealer_view_status_var.set("👤 Dealer: ON")
+        if self.dealer_view_var.get():
+            self.dealer_view_status_var.set("👤 Dealer: ON")
+        else:
+            self.dealer_view_status_var.set("👤 Dealer: OFF")
 
         if hasattr(self, "dealer_actor"):
             if self.haunted.phase == Phase.VICTORY:
@@ -2308,6 +2402,12 @@ class BlackjackApp:
 
     def _update_candles_display(self):
         """Synchronizes 5-candle indicator bar and 2.5D Altar with remaining candles."""
+        if getattr(self, "table_seats", 1) == 3:
+            if hasattr(self, "haunted_altar"):
+                self.haunted_altar.pack_forget()
+            if hasattr(self, "accessories_frame"):
+                self.accessories_frame.grid_remove()
+            return
         if hasattr(self, "haunted_altar"):
             if self.haunted.phase in (Phase.OMEN, Phase.SNUFFING) or (self.haunted.phase == Phase.HELL_TABLE and self.haunted.candles_remaining > 0):
                 if hasattr(self, "accessories_frame"):
@@ -2347,6 +2447,12 @@ class BlackjackApp:
 
     def _update_gravestones_display(self):
         """Displays gravestones rising through the felt on deaths / busts with kinetic eruption."""
+        if getattr(self, "table_seats", 1) == 3:
+            if hasattr(self, "haunted_altar"):
+                self.haunted_altar.pack_forget()
+            if hasattr(self, "accessories_frame"):
+                self.accessories_frame.grid_remove()
+            return
         if hasattr(self, "haunted_altar"):
             if self.haunted.gravestones_risen <= 0 or self.haunted.phase == Phase.NORMAL:
                 self.haunted_altar.set_gravestone_state(0, visible=False)
@@ -2589,6 +2695,8 @@ class BlackjackApp:
 
     def _trigger_hell_table(self):
         """Transitions into Hell's Table mode with bell audio, dialogs, and draft."""
+        if getattr(self, "table_seats", 1) == 3:
+            return
         self.haunted.start_hell_table()
         self.sound_manager.play_haunted_sound("hell_bell")
         self._apply_phase_theme(Phase.HELL_TABLE)
@@ -2826,6 +2934,8 @@ class BlackjackApp:
 
     def _on_toggle_cursed_stakes(self):
         """Manually launches Hell's Table mode for replayability."""
+        if getattr(self, "table_seats", 1) == 3:
+            return
         self._trigger_hell_table()
         self.new_game()
 
@@ -2845,6 +2955,40 @@ class BlackjackApp:
 
     def _update_action_buttons(self):
         """Evaluates and applies eligibility for Hit, Stand, Double, Split, and Surrender."""
+        if getattr(self, "table_seats", 1) == 3 and hasattr(self, "engine"):
+            s_idx = self.engine.active_seat_index
+            if s_idx is None:
+                self._set_action_buttons_state("disabled")
+                return
+            seat = self.engine.get_seat(s_idx)
+            h_idx = self.engine.active_hand_index
+            if h_idx >= len(seat.hands):
+                self._set_action_buttons_state("disabled")
+                return
+            hand = seat.hands[h_idx]
+            score = self._score_player_hand(hand)
+            if score >= BLACKJACK_TARGET or hand.is_bust or hand.is_stood or hand.is_surrendered:
+                self._set_action_buttons_state("disabled")
+                return
+            can_double = (len(hand) == 2 and not hand.is_stood)
+            if can_double and self.chips_mode_var.get():
+                can_double = (self.bankroll_var.get() >= hand.bet and hand.bet > 0)
+            can_sp = (len(seat.hands) == 1 and can_split(seat.hands[0]))
+            if can_sp and self.chips_mode_var.get():
+                can_sp = (self.bankroll_var.get() >= seat.hands[0].bet)
+            can_surr = (len(seat.hands) == 1 and len(seat.hands[0]) == 2 and not seat.hands[0].is_stood)
+
+            states = self.fsm.expected_action_button_states(
+                can_double=can_double, can_split=can_sp, can_surrender=can_surr
+            )
+            self.hit_button.configure(state=states["hit"])
+            self.stand_button.configure(state=states["stand"])
+            self.double_button.configure(state=states["double"])
+            self.split_button.configure(state=states["split"])
+            self.surrender_button.configure(state=states["surrender"])
+            self._refresh_strategy_hint()
+            return
+
         if not self.player_hands or self.active_hand_index >= len(self.player_hands):
             self._set_action_buttons_state("disabled")
             return
@@ -2922,6 +3066,15 @@ class BlackjackApp:
         if hasattr(self, "engine"):
             self.engine.player_hands = self.player_hands
             self.engine.dealer_hand = self.dealer_hand
+            if getattr(self, "table_seats", 1) == 3:
+                for seat in self.engine.seats:
+                    seat.hands = [Hand()]
+                self.engine.active_seat_index = None
+                self.engine.active_hand_index = 0
+        if hasattr(self, "player_title_label"):
+            self.player_title_label.configure(text="Player")
+        if hasattr(self, "card_table_frame") and hasattr(self.card_table_frame, "draw_active_turn_halo"):
+            self.card_table_frame.draw_active_turn_halo(None)
         self.dealer_hole_card = None
         self.dealer_hole_widget = None
         self.is_hole_card_hidden = False
@@ -2934,7 +3087,6 @@ class BlackjackApp:
             self.card_table_frame.delete("player_card_decor")
             self.card_table_frame.delete("dealer_card_decor")
 
-
         # 3. Reset scores and status
         self.dealer_score_var.set("0")
         self.player_score_var.set("0")
@@ -2946,16 +3098,37 @@ class BlackjackApp:
             self.insurance_frame.grid_remove()
 
         # Haunted progression & table synchronization
-        phase = self.haunted.on_new_hand()
-        self._apply_phase_theme(phase)
-        self._update_dealer_avatar()
-        if hasattr(self, "dealer_actor"):
-            self._restore_dealer_arms()
-            self._restore_dealer_mouth()
-        self.clear_dealer_speech()
-        self._update_candles_display()
-        self._update_gravestones_display()
-        self._update_blessings_tray()
+        if getattr(self, "table_seats", 1) == 3:
+            if hasattr(self, "haunted"):
+                self.haunted.phase = Phase.NORMAL
+            phase = Phase.NORMAL
+            self._apply_phase_theme(Phase.NORMAL)
+            self._update_dealer_avatar()
+            if hasattr(self, "dealer_actor"):
+                self._restore_dealer_arms()
+                self._restore_dealer_mouth()
+            self.clear_dealer_speech()
+            if hasattr(self, "haunted_altar"):
+                self.haunted_altar.pack_forget()
+            if hasattr(self, "accessories_frame"):
+                self.accessories_frame.grid_remove()
+            if hasattr(self, "soul_meter_canvas"):
+                self.soul_meter_canvas.grid_remove()
+            if hasattr(self, "cursed_stakes_button"):
+                self.cursed_stakes_button.grid_remove()
+            if hasattr(self, "blessings_tray"):
+                self.blessings_tray.grid_remove()
+        else:
+            phase = self.haunted.on_new_hand()
+            self._apply_phase_theme(phase)
+            self._update_dealer_avatar()
+            if hasattr(self, "dealer_actor"):
+                self._restore_dealer_arms()
+                self._restore_dealer_mouth()
+            self.clear_dealer_speech()
+            self._update_candles_display()
+            self._update_gravestones_display()
+            self._update_blessings_tray()
 
         if self.haunted.phase == Phase.HELL_TABLE:
             if hasattr(self, "chip_visualizer"):
@@ -2968,8 +3141,12 @@ class BlackjackApp:
         elif self.chips_mode_var.get():
             if hasattr(self, "soul_meter_canvas"):
                 self.soul_meter_canvas.grid_remove()
-            if hasattr(self, "chip_visualizer"):
-                self.chip_visualizer.grid()
+            if getattr(self, "table_seats", 1) == 3:
+                if hasattr(self, "chip_visualizer"):
+                    self.chip_visualizer.grid_remove()
+            else:
+                if hasattr(self, "chip_visualizer"):
+                    self.chip_visualizer.grid()
             self._enter_betting_phase()
         else:
             if hasattr(self, "soul_meter_canvas"):
@@ -2984,30 +3161,38 @@ class BlackjackApp:
         self._set_action_buttons_state("disabled")
         self.new_game_button.configure(state="disabled")
 
-        bankroll = self.bankroll_var.get()
-        if bankroll < MINIMUM_BET and self.current_bet_var.get() < MINIMUM_BET:
-            self.current_bet_var.set(0)
-            self.result_var.set("Bankroll empty! Click Rebuy $1K to keep playing.")
+        if getattr(self, "table_seats", 1) == 3 and hasattr(self, "engine"):
+            self.focused_betting_seat = 2
+            self.selected_denomination = 5
+            self.result_var.set("Click chips to bet on Seat 2 (Center), or click Seat 1/3 to switch seats")
+            self._sync_betting_spots_from_engine()
         else:
-            # Default staged bet: preserve previous bet if affordable, or MINIMUM_BET
-            if self.current_bet_var.get() == 0 or self.current_bet_var.get() > bankroll:
-                if self.hand_bets and 0 < self.hand_bets[0] <= bankroll:
-                    self.current_bet_var.set(self.hand_bets[0])
-                elif bankroll >= MINIMUM_BET:
-                    self.current_bet_var.set(MINIMUM_BET)
-                else:
-                    self.current_bet_var.set(0)
-            self.result_var.set("Place your bet and click 'Deal Hand'")
+            bankroll = self.bankroll_var.get()
+            if bankroll < MINIMUM_BET and self.current_bet_var.get() < MINIMUM_BET:
+                self.current_bet_var.set(0)
+                self.result_var.set("Bankroll empty! Click Rebuy $1K to keep playing.")
+            else:
+                # Default staged bet: preserve previous bet if affordable, or MINIMUM_BET
+                if self.current_bet_var.get() == 0 or self.current_bet_var.get() > bankroll:
+                    if self.hand_bets and 0 < self.hand_bets[0] <= bankroll:
+                        self.current_bet_var.set(self.hand_bets[0])
+                    elif bankroll >= MINIMUM_BET:
+                        self.current_bet_var.set(MINIMUM_BET)
+                    else:
+                        self.current_bet_var.set(0)
+                self.result_var.set("Place your bet and click 'Deal Hand'")
 
-        if hasattr(self, "chip_visualizer"):
-            self.chip_visualizer.set_bet(self.current_bet_var.get(), animate=False)
+            if hasattr(self, "chip_visualizer"):
+                self.chip_visualizer.set_bet(self.current_bet_var.get(), animate=False)
 
         self._update_bankroll_display()
         self._update_betting_controls()
         self._refresh_strategy_hint()
 
     def _start_round_deal(self):
-        """Authentic initial deal: 2 cards to player, 2 to dealer (1 face-down hole card)."""
+        """Authentic initial deal: 2 cards to player(s), 2 to dealer (1 face-down hole card)."""
+        if hasattr(self, "card_table_frame"):
+            self.card_table_frame.delete("felt_chip_tray")
         self.round_phase = RoundPhase.PLAYER_TURN
         self.result_var.set("")
         self._set_action_buttons_state("disabled")
@@ -3020,7 +3205,44 @@ class BlackjackApp:
         if self.chips_mode_var.get():
             self._update_betting_controls()
 
-        # Player gets 2 cards face-up
+        if getattr(self, "table_seats", 1) == 3 and hasattr(self, "engine"):
+            active_seats = [s.seat_index for s in self.engine.get_active_seats()]
+            if not active_seats:
+                active_seats = [2]  # Fallback to center seat if no bet staged
+
+            # Pass 1: Deal 1 card to each active seat clockwise (1 -> 2 -> 3)
+            for s_idx in active_seats:
+                self._deal_card_to_seat(s_idx, hand_index=0)
+            # Dealer gets 1 card face-up
+            self._deal_card_to_dealer(is_hole_card=False)
+
+            # Pass 2: Deal 2nd card to each active seat clockwise (1 -> 2 -> 3)
+            for s_idx in active_seats:
+                self._deal_card_to_seat(s_idx, hand_index=0)
+            # Dealer gets 1 card face-down (hole card)
+            self._deal_card_to_dealer(is_hole_card=True)
+
+            # Settle side bets immediately across active seats
+            if self.chips_mode_var.get():
+                self._resolve_multi_seat_side_bets(active_seats)
+
+            # Check if all seats busted immediately on deal (e.g. Card 13)
+            if self.engine.all_seats_busted():
+                self._set_action_buttons_state("disabled")
+                self._reveal_dealer_hole_card()
+                self._conclude_round()
+                return
+
+            # Check for Dealer Ace (Insurance)
+            dealer_upcard = self.dealer_hand[0]
+            is_ace = getattr(dealer_upcard, "rank", "") == "ace" or (isinstance(dealer_upcard, (tuple, list)) and dealer_upcard[0] == 1)
+            if self.chips_mode_var.get() and is_ace:
+                self._prompt_insurance()
+            else:
+                self._check_initial_blackjack()
+            return
+
+        # Player gets 2 cards face-up (1-seat mode)
         self._deal_card_to_player(hand_index=0)
         self._deal_card_to_player(hand_index=0)
 
@@ -3048,6 +3270,62 @@ class BlackjackApp:
         else:
             # Check for Natural Blackjack and Action eligibility
             self._check_initial_blackjack()
+
+    def _deal_card_to_seat(self, seat_index: int, hand_index: int = 0):
+        """Deals one card to a specific seat and hand in 3-seat mode."""
+        card = self._draw_card()
+        seat = self.engine.get_seat(seat_index)
+        while len(seat.hands) <= hand_index:
+            seat.hands.append(Hand())
+        seat.hands[hand_index].append(card)
+        self._observe_card_face_up(card)
+
+        # Seraph's Grace: once per hand, redraw bust card if equipped
+        if (
+            len(seat.hands[hand_index]) >= 2
+            and self._score_player_hand(seat.hands[hand_index]) > BLACKJACK_TARGET
+            and getattr(self, "haunted", None)
+            and self.haunted.can_use_seraph_redraw()
+        ):
+            self.haunted.use_seraph_redraw()
+            seat.hands[hand_index].pop()
+            replacement = self._draw_card()
+            seat.hands[hand_index].append(replacement)
+            self._observe_card_face_up(replacement)
+            if hasattr(self, "sound_manager"):
+                self.sound_manager.play_haunted_sound("angel_chime")
+            self.result_var.set("✦ Seraph's Grace! Busting card banished and redrawn!")
+
+        self._render_player_cards(animate_new_card=True, target_seat_index=seat_index, target_hand_index=hand_index)
+        self._update_player_score_display()
+        if hasattr(self, "dealer_actor") and self.root.winfo_exists() and self.root.state() != "withdrawn":
+            self._trigger_dealer_deal_gesture()
+        if hasattr(self, "sound_manager"):
+            self.sound_manager.play_card_deal()
+
+    def _resolve_multi_seat_side_bets(self, active_seats: list[int]):
+        """Resolves side bets across all active seats immediately after the initial deal."""
+        if not hasattr(self, "engine") or not self.dealer_hand:
+            return
+        dealer_upcard = self.dealer_hand[0]
+        results_str = []
+        for s_idx in active_seats:
+            seat = self.engine.get_seat(s_idx)
+            if not seat.hands or len(seat.hands[0]) < 2:
+                continue
+            res = self.engine.resolve_side_bets(dealer_upcard, seat_idx=s_idx)
+            self.bankroll_var.set(self.engine.bankroll)
+            if res.get("pairs_payout", 0) > 0:
+                results_str.append(f"Seat {s_idx} Pairs: +${res['pairs_payout']}")
+            if res.get("twenty_one_plus_three_payout", 0) > 0:
+                results_str.append(f"Seat {s_idx} 21+3: +${res['twenty_one_plus_three_payout']}")
+
+        self._sync_betting_spots_from_engine()
+        self._update_bankroll_display()
+        if results_str:
+            self.result_var.set(" | ".join(results_str))
+            if hasattr(self, "sound_manager"):
+                self.sound_manager.play_payout()
 
     def _on_toggle_chips_mode(self, confirm: bool = None):
         """Handles switching between Casual Mode (Chips OFF) and Casino Mode (Chips ON)."""
@@ -3167,13 +3445,172 @@ class BlackjackApp:
         if hasattr(self, "sound_manager"):
             self.sound_manager.play_chip_clear()
 
+    def _on_rack_chip_click(self, denom: int):
+        """Sets the active staging chip denomination when a pile is clicked in the chip rack."""
+        self.selected_denomination = denom
+
+    def _on_felt_chip_click(self, denom: int):
+        """Adds chip denomination to currently focused betting seat when a 2.5D chip pile is clicked on the felt."""
+        self.selected_denomination = denom
+        if not self.is_betting_phase or not hasattr(self, "engine"):
+            return
+        target_seat = getattr(self, "focused_betting_seat", 2) or 2
+        self.engine.stage_bet(target_seat, denom, sound_hint="add")
+        self.bankroll_var.set(self.engine.bankroll)
+        self.current_bet_var.set(self.engine.staged_bet)
+        self._update_bankroll_display()
+        self._sync_betting_spots_from_engine()
+        self._update_betting_controls()
+        if hasattr(self, "sound_manager"):
+            self.sound_manager.play_chip_add()
+
+    def _on_felt_chip_deduct(self, denom: int):
+        """Deducts chip denomination from currently focused betting seat when a 2.5D chip pile is right-clicked on the felt."""
+        if not self.is_betting_phase or not hasattr(self, "engine"):
+            return
+        target_seat = getattr(self, "focused_betting_seat", 2) or 2
+        seat = self.engine.get_seat(target_seat)
+        if seat and seat.main_bet > 0:
+            new_bet = max(0, seat.main_bet - denom)
+            delta = seat.main_bet - new_bet
+            seat.main_bet = new_bet
+            self.engine.bankroll += delta
+            self.bankroll_var.set(self.engine.bankroll)
+            self.current_bet_var.set(self.engine.staged_bet)
+            self._update_bankroll_display()
+            self._sync_betting_spots_from_engine()
+            self._update_betting_controls()
+            if hasattr(self, "sound_manager"):
+                self.sound_manager.play_chip_deduct()
+
+    def _on_table_spot_click(self, seat_idx: int, bet_type: Optional[str]):
+        """Handles canvas geometric click on a table felt betting spot."""
+        if not self.is_betting_phase or not hasattr(self, "engine"):
+            return
+
+        # If clicking an inactive / unfocused seat, activate it without adding chips
+        if seat_idx != getattr(self, "focused_betting_seat", 2):
+            self.focused_betting_seat = seat_idx
+            self._sync_betting_spots_from_engine()
+            if hasattr(self, "sound_manager"):
+                self.sound_manager.play_chip_add()
+            return
+
+        if bet_type is None:
+            self.engine.stage_bet(seat_idx, self.selected_denomination, sound_hint="add")
+            self.bankroll_var.set(self.engine.bankroll)
+            self.current_bet_var.set(self.engine.staged_bet)
+            self._update_bankroll_display()
+            self._sync_betting_spots_from_engine()
+            self._update_betting_controls()
+            if hasattr(self, "sound_manager"):
+                self.sound_manager.play_chip_add()
+        else:
+            seat = self.engine.get_seat(seat_idx)
+            if seat.main_bet < MINIMUM_BET:
+                self.result_var.set(f"Seat {seat_idx}: Must place min $5 main bet before side bets!")
+                return
+            curr = seat.side_bets.get(bet_type, 0)
+            self.engine.stage_side_bet(bet_type, curr + self.selected_denomination, sound_hint="add", seat_idx=seat_idx)
+            self.bankroll_var.set(self.engine.bankroll)
+            self._update_bankroll_display()
+            self._sync_betting_spots_from_engine()
+            if hasattr(self, "sound_manager"):
+                self.sound_manager.play_chip_add()
+
+    def _on_table_spot_clear(self, seat_idx: int):
+        """Handles right-click on a table felt betting spot to clear that seat's wagers."""
+        if not self.is_betting_phase or not hasattr(self, "engine"):
+            return
+        self.focused_betting_seat = seat_idx
+        self.engine.clear_bet(seat_idx)
+        self.bankroll_var.set(self.engine.bankroll)
+        self.current_bet_var.set(self.engine.staged_bet)
+        self._update_bankroll_display()
+        self._sync_betting_spots_from_engine()
+        self._update_betting_controls()
+        if hasattr(self, "sound_manager"):
+            self.sound_manager.play_chip_clear()
+
+    def _sync_betting_spots_from_engine(self):
+        """Synchronizes felt canvas betting spots with engine seat states."""
+        if not hasattr(self, "card_table_frame") or not hasattr(self.card_table_frame, "update_seat_bet"):
+            return
+        for s in self.engine.seats:
+            self.card_table_frame.update_seat_bet(s.seat_index, s.main_bet)
+            for b_type, amt in s.side_bets.items():
+                self.card_table_frame.update_seat_side_bet(s.seat_index, b_type, amt)
+        self.card_table_frame.draw_betting_spots()
+        if getattr(self, "table_seats", 1) == 3 and getattr(self, "is_betting_phase", False):
+            self.card_table_frame.draw_chip_tray(self.bankroll_var.get())
+            target_seat = getattr(self, "focused_betting_seat", 2) or 2
+            self.card_table_frame.draw_active_turn_halo(target_seat)
+        else:
+            self.card_table_frame.delete("felt_chip_tray")
+
+    def set_table_seats(self, count: int):
+        """Switches table layout between 1-Seat and 3-Seat Wagering modes."""
+        new_count = 3 if count >= 3 else 1
+        if getattr(self, "table_seats", 1) != new_count and hasattr(self, "engine"):
+            self.engine.clear_all_bets()
+            self.bankroll_var.set(self.engine.bankroll)
+            self.current_bet_var.set(0)
+
+        self.table_seats = new_count
+        if hasattr(self, "card_table_frame") and hasattr(self.card_table_frame, "set_table_seats"):
+            self.card_table_frame.set_table_seats(self.table_seats)
+
+        if self.table_seats == 3:
+            self.selected_denomination = 5
+            if getattr(self, "_haunted_round_timer_id", None):
+                try:
+                    self.root.after_cancel(self._haunted_round_timer_id)
+                except Exception:
+                    pass
+                self._haunted_round_timer_id = None
+            if hasattr(self, "chip_visualizer"):
+                self.chip_visualizer.grid_remove()
+            if hasattr(self, "accessories_frame"):
+                self.accessories_frame.grid_remove()
+            if hasattr(self, "haunted_altar"):
+                self.haunted_altar.pack_forget()
+            if hasattr(self, "soul_meter_canvas"):
+                self.soul_meter_canvas.grid_remove()
+            if hasattr(self, "cursed_stakes_button"):
+                self.cursed_stakes_button.grid_remove()
+            if hasattr(self, "blessings_tray"):
+                self.blessings_tray.grid_remove()
+            if hasattr(self, "haunted"):
+                self.haunted.phase = Phase.NORMAL
+                self.haunted.hand_counter = 0
+                self.haunted.candles_remaining = 5
+                self.haunted.gravestones_risen = 0
+            self._apply_phase_theme(Phase.NORMAL)
+        else:
+            if self.chips_mode_var.get() and hasattr(self, "chip_visualizer"):
+                self.chip_visualizer.grid(**get_grid_options("chip_visualizer"))
+
+        self._sync_betting_spots_from_engine()
+        self.new_game()
+
     def _clear_bet(self):
         """Resets the staged bet and all staged side bets back to 0."""
         if not self.fsm.trigger("stage_bet"):
             return
+        if getattr(self, "table_seats", 1) == 3 and hasattr(self, "engine"):
+            self.engine.clear_all_bets()
+            self.bankroll_var.set(self.engine.bankroll)
+            self.current_bet_var.set(0)
+            self._update_bankroll_display()
+            self._sync_betting_spots_from_engine()
+            self._update_betting_controls()
+            if hasattr(self, "sound_manager"):
+                self.sound_manager.play_chip_clear()
+            return
         self.current_bet_var.set(0)
         self.engine.stage_bet(0, sound_hint="clear")
         self._clear_side_bets()
+        self._sync_betting_spots_from_engine()
 
     def _add_side_bet(self, bet_type: str, amount: int = 5):
         """Adds chip amount to specified staged side bet."""
@@ -3181,6 +3618,7 @@ class BlackjackApp:
             return
         curr = self.engine.staged_side_bets.get(bet_type, 0)
         self.engine.stage_side_bet(bet_type, curr + amount, sound_hint="add")
+        self._sync_betting_spots_from_engine()
 
     def _deduct_side_bet(self, bet_type: str, amount: int = 5):
         """Deducts chip amount from specified staged side bet."""
@@ -3188,6 +3626,7 @@ class BlackjackApp:
             return
         curr = self.engine.staged_side_bets.get(bet_type, 0)
         self.engine.stage_side_bet(bet_type, max(0, curr - amount), sound_hint="deduct")
+        self._sync_betting_spots_from_engine()
 
     def _clear_side_bets(self):
         """Clears all staged side bets."""
@@ -3195,19 +3634,45 @@ class BlackjackApp:
             self.engine.clear_side_bets()
         if hasattr(self, "chip_visualizer"):
             self.chip_visualizer.clear_side_bets_display()
+        self._sync_betting_spots_from_engine()
 
     def _all_in(self):
         """Sets the staged bet to the player's full remaining bankroll."""
         if not self.fsm.trigger("stage_bet"):
             return
         bankroll = self.bankroll_var.get()
-        if bankroll >= MINIMUM_BET:
-            self.current_bet_var.set(bankroll)
-            self.engine.stage_bet(bankroll, sound_hint="all_in")
+        if (getattr(self, "table_seats", 1) == 3 and bankroll > 0) or (bankroll >= MINIMUM_BET):
+            if getattr(self, "table_seats", 1) == 3 and hasattr(self, "engine"):
+                target_seat = getattr(self, "focused_betting_seat", None) or getattr(self.engine, "active_seat_index", None) or 2
+                self.engine.stage_bet(target_seat, bankroll, sound_hint="all_in")
+                self._is_all_in_round = True
+                self.bankroll_var.set(self.engine.bankroll)
+                self.current_bet_var.set(self.engine.staged_bet)
+                self._update_bankroll_display()
+                self._sync_betting_spots_from_engine()
+                self._update_betting_controls()
+            else:
+                self.current_bet_var.set(bankroll)
+                self.engine.stage_bet(bankroll, sound_hint="all_in")
+                self._is_all_in_round = True
 
     def _deal_hand_with_bet(self):
         """Commits the staged bet and side bets, deducts them from bankroll, and begins the deal."""
         if not self.fsm.trigger("deal"):
+            return
+        if getattr(self, "table_seats", 1) == 3 and hasattr(self, "engine"):
+            active_seats = [s for s in self.engine.seats if s.is_active and s.main_bet > 0]
+            if not active_seats:
+                self.result_var.set("Stage a bet on at least one seat before dealing!")
+                return
+            for s in active_seats:
+                if s.hands:
+                    s.hands[0].bet = s.main_bet
+                else:
+                    s.hands = [Hand(bet=s.main_bet)]
+            self.hand_bets = [s.main_bet for s in active_seats]
+            self.is_betting_phase = False
+            self._start_round_deal()
             return
         bet = self.current_bet_var.get()
         bankroll = self.bankroll_var.get()
@@ -3282,7 +3747,10 @@ class BlackjackApp:
         bankroll = self.bankroll_var.get()
         staged_bet = self.current_bet_var.get()
         total_side = sum(self.engine.staged_side_bets.values()) if hasattr(self, "engine") and self.is_betting_phase else 0
-        remaining = max(0, bankroll - staged_bet - total_side)
+        if getattr(self, "table_seats", 1) == 3:
+            remaining = bankroll
+        else:
+            remaining = max(0, bankroll - staged_bet - total_side)
         if hasattr(self, "chip_visualizer"):
             avail = remaining if self.is_betting_phase else max(0, bankroll)
             self.chip_visualizer.set_bankroll(avail, interactive=self.is_betting_phase)
@@ -3292,7 +3760,10 @@ class BlackjackApp:
             for btn, (denom, _, _) in zip(self.chip_buttons, CHIP_DENOMINATIONS):
                 btn.configure(state="normal" if remaining >= denom else "disabled")
             if hasattr(self, "all_in_button"):
-                self.all_in_button.configure(state="normal" if bankroll >= MINIMUM_BET and staged_bet < bankroll else "disabled")
+                if getattr(self, "table_seats", 1) == 3:
+                    self.all_in_button.configure(state="normal" if bankroll > 0 else "disabled")
+                else:
+                    self.all_in_button.configure(state="normal" if bankroll >= MINIMUM_BET and staged_bet < bankroll else "disabled")
             self.clear_bet_button.configure(state="normal" if (staged_bet > 0 or total_side > 0) else "disabled")
             self.deal_bet_button.configure(state="normal" if staged_bet >= MINIMUM_BET else "disabled")
             if bankroll < MINIMUM_BET and staged_bet < MINIMUM_BET:
@@ -3341,7 +3812,6 @@ class BlackjackApp:
 
         # 1. Betting Phase Dock ("Clear Bet", "All In", "Deal Hand", "Rebuy")
         btn_scale = max(3, int(3 * s))
-        # 1. Betting Phase Dock ("Clear Bet", "All In", "Deal Hand", "Rebuy")
         bet_cfgs = dock_cfg.get("bet_buttons", {})
         bet_btns = [
             (self.clear_bet_button, int(bet_cfgs.get("clear_bet", {}).get("width", 136) * s)),
@@ -3367,13 +3837,16 @@ class BlackjackApp:
         total_play_w = sum(bw for _, bw in play_btns) + gap * (len(play_btns) - 1)
         cur_x = cx - (total_play_w // 2)
 
-        # Cursed Stakes Button: Left anchor on mahogany rail
+        # Cursed Stakes Button: Left anchor on mahogany rail (1-seat mode only)
         if hasattr(self, "cursed_stakes_button") and isinstance(self.cursed_stakes_button, CanvasPixelButton):
-            cs_w = int(124 * s)
-            cs_x = side_margin + (cs_w // 2)
-            self.cursed_stakes_button.resize(cs_x, cy, cs_w, btn_h, scale=btn_scale)
-            if bool(self.cursed_stakes_button.grid_info()):
-                cur_x = max(cur_x, cs_x + (cs_w // 2) + int(24 * s))
+            if getattr(self, "table_seats", 1) == 3:
+                self.cursed_stakes_button.grid_remove()
+            else:
+                cs_w = int(124 * s)
+                cs_x = side_margin + (cs_w // 2)
+                self.cursed_stakes_button.resize(cs_x, cy, cs_w, btn_h, scale=btn_scale)
+                if bool(self.cursed_stakes_button.grid_info()):
+                    cur_x = max(cur_x, cs_x + (cs_w // 2) + int(24 * s))
 
         for btn, bw in play_btns:
             btn.resize(cur_x + bw // 2, cy, bw, btn_h, scale=btn_scale)
@@ -3397,6 +3870,17 @@ class BlackjackApp:
         self._set_action_buttons_state("disabled")
         self.new_game_button.configure(state="disabled")
 
+        if getattr(self, "table_seats", 1) == 3 and hasattr(self, "engine"):
+            active_seats = [s for s in self.engine.seats if s.is_active and s.main_bet > 0]
+            MultiSeatInsuranceDialog(
+                self.root,
+                seats=active_seats,
+                bankroll=self.bankroll_var.get(),
+                on_confirm=self._on_multi_seat_insurance_confirm,
+                on_decline=self._on_multi_seat_insurance_decline,
+            )
+            return
+
         main_bet = self.hand_bets[0] if self.hand_bets else 0
         insurance_cost = main_bet // 2
         bankroll = self.bankroll_var.get()
@@ -3409,6 +3893,24 @@ class BlackjackApp:
         self.result_var.set("Dealer shows an Ace. Take insurance?")
         self.insurance_frame.grid()
         self._refresh_strategy_hint()
+
+    def _on_multi_seat_insurance_confirm(self, chosen: dict[int, int]):
+        """Handles confirmation of multi-seat insurance wagers."""
+        total_ins = sum(chosen.values())
+        if total_ins > 0:
+            self.bankroll_var.set(self.bankroll_var.get() - total_ins)
+            for s_idx, ins_amt in chosen.items():
+                seat = self.engine.get_seat(s_idx)
+                seat.insurance_bet = ins_amt
+            self._update_bankroll_display()
+        self._resolve_insurance_decision()
+
+    def _on_multi_seat_insurance_decline(self):
+        """Handles declining of multi-seat insurance wagers."""
+        if hasattr(self, "engine"):
+            for s in self.engine.seats:
+                s.insurance_bet = 0
+        self._resolve_insurance_decision()
 
     def _on_take_insurance(self):
         """Handles player taking insurance."""
@@ -3435,10 +3937,45 @@ class BlackjackApp:
         """Concludes insurance phase, peeks at dealer hole card, and resolves or resumes play."""
         self.is_insurance_phase = False
         self.round_phase = RoundPhase.PLAYER_TURN
-        self.insurance_frame.grid_remove()
+        if hasattr(self, "insurance_frame"):
+            self.insurance_frame.grid_remove()
 
         dealer_score = score_hand(self.dealer_hand)
         dealer_has_bj = (len(self.dealer_hand) == 2 and dealer_score == BLACKJACK_TARGET)
+
+        if getattr(self, "table_seats", 1) == 3 and hasattr(self, "engine"):
+            if dealer_has_bj:
+                for s in self.engine.seats:
+                    if s.is_active and s.insurance_bet > 0:
+                        payout = calculate_insurance_payout(True, s.insurance_bet, main_bet=s.main_bet)
+                        self.bankroll_var.set(self.bankroll_var.get() + payout)
+                        self._update_bankroll_display()
+                self._reveal_dealer_hole_card()
+                self._conclude_round()
+                return
+            else:
+                total_lost = sum(s.insurance_bet for s in self.engine.seats if s.is_active)
+                for s in self.engine.seats:
+                    s.insurance_bet = 0
+                first_seat = self.engine.start_play()
+                if first_seat is None:
+                    self._reveal_dealer_hole_card()
+                    self._conclude_round()
+                    return
+
+                seat = self.engine.get_seat(first_seat)
+                hand = seat.hands[0]
+                if self._score_player_hand(hand) >= BLACKJACK_TARGET:
+                    hand.is_stood = True
+                    self._advance_multi_seat_turn()
+                else:
+                    self._update_turn_focus()
+
+                if total_lost > 0:
+                    self.result_var.set(f"Dealer has no Blackjack. Insurance lost (-${total_lost:,}). Seat {first_seat}'s turn!")
+                else:
+                    self.result_var.set(f"Dealer has no Blackjack. Seat {first_seat}'s turn!")
+                return
 
         if dealer_has_bj:
             # Dealer has Natural Blackjack
@@ -3506,8 +4043,8 @@ class BlackjackApp:
         if hand_index is None:
             hand_index = self.active_hand_index
 
-        # Hand 13 Omen injection check
-        if getattr(self, "haunted", None) and self.haunted.phase == Phase.OMEN and len(self.player_hands[hand_index]) == 1 and self.card_13:
+        # Hand 13 Omen injection check (1-seat mode only)
+        if getattr(self, "table_seats", 1) == 1 and getattr(self, "haunted", None) and self.haunted.phase == Phase.OMEN and len(self.player_hands[hand_index]) == 1 and self.card_13:
             card = self.card_13
             if hasattr(self, "sound_manager"):
                 self.sound_manager.play_haunted_sound("clock_chime_13")
@@ -3694,22 +4231,159 @@ class BlackjackApp:
         min_overlap = int(card_cfg.get("min_overlap", 12) * self.scale_factor)
         return max(min_overlap, compressed)
 
-    def _render_player_cards(self, animate_new_card: bool = False, target_hand_index: Optional[int] = None):
+    def _render_player_cards(
+        self,
+        animate_new_card: bool = False,
+        target_hand_index: Optional[int] = None,
+        target_seat_index: Optional[int] = None,
+    ):
         """Renders visual canvas card sprites and hand badges for player hand(s) on TableFeltCanvas."""
         if not hasattr(self, "card_table_frame"):
             return
 
         canvas = self.card_table_frame
-        for idx in range(len(self.player_hands)):
-            if not isinstance(self.player_hands[idx], Hand):
-                canvas.clear_card_sprites("player_card")
-                self.player_hands[idx] = Hand(self.player_hands[idx])
         s = self.scale_factor
         card_cfg = get_card_layout()
         split_gap = int(card_cfg.get("split_hand_gap", 10) * s)
         card_w = getattr(self, "card_width", CARD_WIDTH)
         card_h = getattr(self, "card_height", CARD_HEIGHT)
-        player_base_y = int(card_cfg.get("player_y_offset", 124) * s)
+        player_base_y = int(card_cfg.get("player_y_offset", 199) * s)
+
+        # --------------------------------------------------------------------
+        # 3-Seat Mode Card Rendering
+        # --------------------------------------------------------------------
+        if getattr(self, "table_seats", 1) == 3 and hasattr(self, "engine"):
+            canvas.delete("player_card_decor")
+            has_any = any(len(h) > 0 for seat in self.engine.seats for h in seat.hands)
+            if not has_any:
+                canvas.clear_card_sprites("player_card")
+                for seat in self.engine.seats:
+                    for h in seat.hands:
+                        if hasattr(h, "sprite_ids") and h.sprite_ids is not None:
+                            h.sprite_ids.clear()
+                return
+
+            for seat in self.engine.seats:
+                s_idx = seat.seat_index
+                origin = get_seat_origin(s_idx)
+                base_x = int(origin["x"] * s)
+                base_y = int(origin.get("card_y", 65) * s)
+                is_seat_turn = (getattr(self.engine, "active_seat_index", None) == s_idx)
+                is_split = len(seat.hands) > 1
+
+                # Precompute widths and offsets for side-by-side split hands centered over base_x
+                if is_split:
+                    split_gap = int(12 * s)
+                    hand_widths = []
+                    hand_overlaps = []
+                    for h in seat.hands:
+                        n = len(h)
+                        ov = self._calculate_hand_overlap(n, is_split=True)
+                        hand_overlaps.append(ov)
+                        w = card_w + max(0, n - 1) * ov
+                        hand_widths.append(w)
+                    total_split_w = sum(hand_widths) + split_gap * (len(seat.hands) - 1)
+                    start_left_x = base_x - (total_split_w // 2)
+
+                for h_idx, hand in enumerate(seat.hands):
+                    if not isinstance(hand, Hand):
+                        hand = Hand(hand)
+                        seat.hands[h_idx] = hand
+                    num = len(hand)
+                    is_active_hand = is_seat_turn and (getattr(self.engine, "active_hand_index", 0) == h_idx)
+
+                    if is_split:
+                        overlap = hand_overlaps[h_idx]
+                        h_width = hand_widths[h_idx]
+                        start_x = start_left_x + sum(hand_widths[:h_idx]) + h_idx * split_gap
+                        hand_y = base_y  # Side by side at identical vertical level
+
+                        badge_h = int(card_cfg.get("split_badge_height", 18) * s)
+                        is_bust = (
+                            getattr(hand, "is_busted", False)
+                            or getattr(hand, "is_bust", False)
+                            or (self._score_player_hand(hand) > BLACKJACK_TARGET)
+                        )
+                        is_stood = getattr(hand, "is_stood", False)
+
+                        if is_active_hand:
+                            status_suffix = " (Active)"
+                            fg_color = "#ffeb3b"
+                            outline_color = "#ffd700"
+                        elif is_bust:
+                            status_suffix = " (Bust)"
+                            fg_color = "#ef5350"
+                            outline_color = "#c62828"
+                        elif is_stood:
+                            status_suffix = " (Stand)"
+                            fg_color = "#90a4ae"
+                            outline_color = "#37474f"
+                        else:
+                            status_suffix = ""
+                            fg_color = "#cfd8dc"
+                            outline_color = "#37474f"
+
+                        title = f"S{s_idx} H{h_idx + 1}{status_suffix}"
+                        canvas.create_rectangle(
+                            start_x - 4, hand_y - badge_h - 4,
+                            start_x + h_width + 4, hand_y + card_h + 4,
+                            outline=outline_color, width=max(1, int(2 * s)), tags="player_card_decor"
+                        )
+                        canvas.create_text(
+                            start_x + 2, hand_y - (badge_h // 2) - 2,
+                            text=title, fill=fg_color, font=get_badge_font(max(9, int(11 * s))),
+                            anchor="w", tags="player_card_decor"
+                        )
+                    else:
+                        overlap = self._calculate_hand_overlap(num, is_split=False)
+                        h_width = card_w + max(0, num - 1) * overlap
+                        start_x = base_x - (h_width // 2)
+                        hand_y = base_y
+
+                    old_sprites = list(getattr(hand, "sprite_ids", []))
+                    new_sprites: list[int] = []
+
+                    for i, card in enumerate(hand):
+                        card_x = start_x + i * overlap
+                        card_y = hand_y
+
+                        if i < len(old_sprites) and canvas.type(old_sprites[i]) == "image":
+                            item_id = old_sprites[i]
+                            canvas.itemconfigure(item_id, image=card[1])
+                            canvas.move_card_sprite(item_id, card_x, card_y)
+                        else:
+                            item_id = canvas.draw_card_sprite(card[1], card_x, card_y, tags=("card_sprite", "player_card"))
+                            should_anim = (
+                                animate_new_card
+                                and (target_seat_index is None or target_seat_index == s_idx)
+                                and (target_hand_index is None or target_hand_index == h_idx)
+                                and (i == len(hand) - 1)
+                            )
+                            if should_anim:
+                                shoe_x, shoe_y = canvas.get_shoe_mouth_coords()
+                                self._dealing = True
+                                canvas.animate_card_slide(
+                                    item_id, shoe_x, shoe_y, card_x, card_y,
+                                    on_complete=self._on_card_animation_complete,
+                                )
+
+                        new_sprites.append(item_id)
+
+                    if len(old_sprites) > len(new_sprites):
+                        for leftover in old_sprites[len(new_sprites):]:
+                            canvas.delete(leftover)
+
+                    if hasattr(hand, "sprite_ids"):
+                        hand.sprite_ids = new_sprites
+            return
+
+        # --------------------------------------------------------------------
+        # 1-Seat Mode Card Rendering (Existing Single-Seat Flow)
+        # --------------------------------------------------------------------
+        for idx in range(len(self.player_hands)):
+            if not isinstance(self.player_hands[idx], Hand):
+                canvas.clear_card_sprites("player_card")
+                self.player_hands[idx] = Hand(self.player_hands[idx])
 
         has_any_cards = any(len(h) > 0 for h in self.player_hands)
         if not has_any_cards:
@@ -3730,7 +4404,6 @@ class BlackjackApp:
 
         is_split = len(self.player_hands) > 1
 
-        # Calculate width of each hand
         hand_widths: list[int] = []
         hand_overlaps: list[int] = []
         for hand in self.player_hands:
@@ -3752,20 +4425,17 @@ class BlackjackApp:
 
             hand_y = player_base_y
             if is_split:
-                # Draw split badge and box
                 badge_h = int(card_cfg.get("split_badge_height", 18) * s)
                 status_suffix = " (Active)" if is_active else ""
                 title = f"Hand {idx + 1}{status_suffix}"
                 fg_color = "#ffeb3b" if is_active else "#cfd8dc"
                 outline_color = "#ffd700" if is_active else "#37474f"
 
-                # Outer container groove/border
                 canvas.create_rectangle(
                     current_x - 4, hand_y - badge_h - 4,
                     current_x + h_width + 4, hand_y + card_h + 4,
                     outline=outline_color, width=max(1, int(2 * s)), tags="player_card_decor"
                 )
-                # Badge title
                 canvas.create_text(
                     current_x + 2, hand_y - (badge_h // 2) - 2,
                     text=title, fill=fg_color, font=get_badge_font(max(9, int(11 * s))),
@@ -3815,8 +4485,37 @@ class BlackjackApp:
         if hasattr(self, "fsm") and self.fsm.phase == RoundPhase.PLAYER_TURN:
             self._update_action_buttons()
 
+    def _update_turn_focus(self):
+        """Synchronizes UI indicators (halo, score plaque, action buttons) to the active multi-seat turn."""
+        if getattr(self, "table_seats", 1) == 3 and hasattr(self, "engine"):
+            s_idx = self.engine.active_seat_index
+            h_idx = self.engine.active_hand_index
+            if hasattr(self, "card_table_frame") and hasattr(self.card_table_frame, "draw_active_turn_halo"):
+                self.card_table_frame.draw_active_turn_halo(s_idx)
+            if s_idx is not None:
+                seat = self.engine.get_seat(s_idx)
+                hand = seat.hands[h_idx] if h_idx < len(seat.hands) else None
+                if hand:
+                    sc = self._score_player_hand(hand)
+                    split_suffix = f" (H{h_idx + 1})" if len(seat.hands) > 1 else ""
+                    if hasattr(self, "player_title_label"):
+                        self.player_title_label.configure(text=f"Seat {s_idx}{split_suffix}")
+                    self.player_score_var.set(str(sc))
+                    self.result_var.set(f"Seat {s_idx}{split_suffix}'s turn — choose an action")
+            self._render_player_cards()
+            self._update_action_buttons()
+            self._refresh_strategy_hint()
+
     def _update_player_score_display(self):
         """Updates the reactive player score variable."""
+        if getattr(self, "table_seats", 1) == 3 and hasattr(self, "engine"):
+            s_idx = self.engine.active_seat_index
+            if s_idx is not None:
+                seat = self.engine.get_seat(s_idx)
+                h_idx = self.engine.active_hand_index
+                if h_idx < len(seat.hands):
+                    self.player_score_var.set(str(self._score_player_hand(seat.hands[h_idx])))
+                    return
         if len(self.player_hands) == 1:
             self.player_score_var.set(str(self._score_player_hand(self.player_hands[0])))
         else:
@@ -3827,14 +4526,42 @@ class BlackjackApp:
         """
         Inspects hands immediately after initial deal for Natural Blackjacks (21 on 2 cards)
         or immediate busts (e.g., cursed 13 card).
-        Resolves immediately if either player or dealer has 21, or if player has busted.
-        Otherwise, configures action buttons (Hit, Stand, Double, Split, Surrender).
+        In 3-seat mode, starts turn at first active seat and advances across seats.
         """
-        player_score = self._score_player_hand(self.player_hands[0])
         dealer_score = score_hand(self.dealer_hand)
         if self.dealer_hand and self.dealer_hand[0][0] in (1, 10):
             if hasattr(self, "dealer_actor") and self.root.winfo_exists():
                 self._trigger_dealer_peek_gesture()
+
+        # 3-Seat Mode Flow
+        if getattr(self, "table_seats", 1) == 3 and hasattr(self, "engine"):
+            first_seat = self.engine.start_play()
+            if first_seat is None:
+                # All active seats had natural blackjacks or busts
+                self._reveal_dealer_hole_card()
+                self._conclude_round()
+                return
+
+            # Check if dealer has natural blackjack
+            if dealer_score == BLACKJACK_TARGET and len(self.dealer_hand) == 2:
+                self._set_action_buttons_state("disabled")
+                self._reveal_dealer_hole_card()
+                self._conclude_round()
+                return
+
+            # Dealer doesn't have blackjack; start at first active turn seat
+            seat = self.engine.get_seat(first_seat)
+            hand = seat.hands[0]
+            if self._score_player_hand(hand) >= BLACKJACK_TARGET:
+                # First hand already has 21; auto-advance
+                hand.is_stood = True
+                self._advance_multi_seat_turn()
+            else:
+                self._update_turn_focus()
+            return
+
+        # 1-Seat Mode Flow
+        player_score = self._score_player_hand(self.player_hands[0])
         if player_score >= BLACKJACK_TARGET or dealer_score >= BLACKJACK_TARGET:
             self._set_action_buttons_state("disabled")
             self._reveal_dealer_hole_card()
@@ -3912,6 +4639,39 @@ class BlackjackApp:
             if hasattr(self, "sound_manager"):
                 self.sound_manager.play_card_place()
 
+    def _advance_multi_seat_turn(self):
+        """
+        Advances to the next split sub-hand or next clockwise active seat in 3-seat mode.
+        Automatically skips any hand that already has 21/Blackjack.
+        Transitions to Dealer Turn (or directly to resolution if all busted/surrendered) when done.
+        """
+        while True:
+            next_seat, next_hand = self.engine.advance_turn()
+            if next_seat is None:
+                # All active seats have completed their turns
+                if hasattr(self, "card_table_frame") and hasattr(self.card_table_frame, "draw_active_turn_halo"):
+                    self.card_table_frame.draw_active_turn_halo(None)
+                if self.engine.all_seats_busted():
+                    self._reveal_dealer_hole_card()
+                    self._conclude_round()
+                else:
+                    self.round_phase = RoundPhase.DEALER_TURN
+                    self._set_action_buttons_state("disabled")
+                    self.new_game_button.configure(state="disabled")
+                    self._refresh_strategy_hint()
+                    self._reveal_dealer_hole_card()
+                    self._dealer_timer_id = self.root.after(DEALER_DRAW_DELAY_MS, self._dealer_step)
+                return
+
+            seat = self.engine.get_seat(next_seat)
+            hand = seat.hands[next_hand]
+            if self._score_player_hand(hand) >= BLACKJACK_TARGET:
+                hand.is_stood = True
+                continue
+
+            self._update_turn_focus()
+            return
+
     def on_split(self):
         """
         Handles the 'Split' action. Separates the initial two matching cards
@@ -3920,6 +4680,46 @@ class BlackjackApp:
         """
         if not self.fsm.trigger("split"):
             return
+
+        # --------------------------------------------------------------------
+        # 3-Seat Mode Split
+        # --------------------------------------------------------------------
+        if getattr(self, "table_seats", 1) == 3 and hasattr(self, "engine"):
+            s_idx = self.engine.active_seat_index
+            seat = self.engine.get_seat(s_idx)
+            if len(seat.hands) != 1 or not can_split(seat.hands[0]):
+                return
+            hand1_bet = seat.hands[0].bet
+            if self.chips_mode_var.get():
+                if self.bankroll_var.get() < hand1_bet:
+                    return
+                self.bankroll_var.set(self.bankroll_var.get() - hand1_bet)
+                self.engine.bankroll = self.bankroll_var.get()
+                self._update_bankroll_display()
+                if hasattr(self, "sound_manager"):
+                    self.sound_manager.play_chip_add()
+
+            card1 = seat.hands[0][0]
+            card2 = seat.hands[0][1]
+            h1 = Hand([card1], bet=hand1_bet, is_split=True)
+            h2 = Hand([card2], bet=hand1_bet, is_split=True)
+            seat.hands = [h1, h2]
+            self.engine.active_hand_index = 0
+            if hasattr(self, "event_bus") and self.event_bus:
+                self.event_bus.emit(GameEventType.HAND_SPLIT, {"seat": s_idx, "hands": 2})
+
+            self._deal_card_to_seat(s_idx, hand_index=0)
+            self._deal_card_to_seat(s_idx, hand_index=1)
+            self._update_dealer_speech_for_tactical_action("SPLIT_PAIR")
+            self._update_turn_focus()
+
+            if self._score_player_hand(seat.hands[0]) >= BLACKJACK_TARGET:
+                self.on_stand(auto=True)
+            return
+
+        # --------------------------------------------------------------------
+        # 1-Seat Mode Split
+        # --------------------------------------------------------------------
         if not can_split(self.player_hands[0]):
             return
 
@@ -3967,6 +4767,54 @@ class BlackjackApp:
         """
         if not self.fsm.trigger("double"):
             return
+
+        # --------------------------------------------------------------------
+        # 3-Seat Mode Double Down
+        # --------------------------------------------------------------------
+        if getattr(self, "table_seats", 1) == 3 and hasattr(self, "engine"):
+            s_idx = self.engine.active_seat_index
+            seat = self.engine.get_seat(s_idx)
+            h_idx = self.engine.active_hand_index
+            hand = seat.hands[h_idx]
+            if len(hand) != 2:
+                return
+
+            if self.chips_mode_var.get():
+                current_bet = hand.bet
+                if self.bankroll_var.get() < current_bet:
+                    return
+                self.bankroll_var.set(self.bankroll_var.get() - current_bet)
+                self.engine.bankroll = self.bankroll_var.get()
+                hand.bet += current_bet
+                seat.main_bet += current_bet
+                self._sync_betting_spots_from_engine()
+                self._update_bankroll_display()
+                if hasattr(self, "sound_manager"):
+                    self.sound_manager.play_chip_add()
+
+            self._deal_card_to_seat(s_idx, hand_index=h_idx)
+            self._last_was_double = True
+            hand.is_double = True
+            self._update_dealer_speech_for_tactical_action("DOUBLE_DOWN")
+            if hasattr(self, "event_bus") and self.event_bus:
+                self.event_bus.emit(GameEventType.HAND_DOUBLED, {"seat": s_idx, "hand": h_idx, "new_bet": hand.bet})
+
+            hand_score = self._score_player_hand(hand)
+            if hand_score > BLACKJACK_TARGET:
+                hand.is_busted = True
+                if hasattr(self, "sound_manager"):
+                    self.sound_manager.play_bust()
+                if hasattr(self, "_trigger_dealer_smirk"):
+                    self._trigger_dealer_smirk()
+            else:
+                hand.is_stood = True
+
+            self._advance_multi_seat_turn()
+            return
+
+        # --------------------------------------------------------------------
+        # 1-Seat Mode Double Down
+        # --------------------------------------------------------------------
         hand = self.player_hands[self.active_hand_index]
         if len(hand) != 2:
             return
@@ -4037,6 +4885,37 @@ class BlackjackApp:
         """
         if not self.fsm.trigger("surrender"):
             return
+
+        # --------------------------------------------------------------------
+        # 3-Seat Mode Surrender
+        # --------------------------------------------------------------------
+        if getattr(self, "table_seats", 1) == 3 and hasattr(self, "engine"):
+            s_idx = self.engine.active_seat_index
+            seat = self.engine.get_seat(s_idx)
+            h_idx = self.engine.active_hand_index
+            hand = seat.hands[h_idx]
+            if len(seat.hands) != 1 or len(hand) != 2:
+                return
+
+            hand.is_surrendered = True
+            hand.is_settled = True
+            if self.chips_mode_var.get():
+                refund = hand.bet // 2
+                self.bankroll_var.set(self.bankroll_var.get() + refund)
+                self.engine.bankroll = self.bankroll_var.get()
+                self._update_bankroll_display()
+                if hasattr(self, "sound_manager"):
+                    self.sound_manager.play_chip_deduct()
+
+            if hasattr(self, "event_bus") and self.event_bus:
+                self.event_bus.emit(GameEventType.HAND_SURRENDERED, {"seat": s_idx})
+
+            self._advance_multi_seat_turn()
+            return
+
+        # --------------------------------------------------------------------
+        # 1-Seat Mode Surrender
+        # --------------------------------------------------------------------
         if len(self.player_hands) != 1 or len(self.player_hands[0]) != 2:
             return
 
@@ -4075,6 +4954,34 @@ class BlackjackApp:
         self.double_button.configure(state="disabled")
         self.split_button.configure(state="disabled")
         self.surrender_button.configure(state="disabled")
+
+        # --------------------------------------------------------------------
+        # 3-Seat Mode Hit
+        # --------------------------------------------------------------------
+        if getattr(self, "table_seats", 1) == 3 and hasattr(self, "engine"):
+            s_idx = self.engine.active_seat_index
+            seat = self.engine.get_seat(s_idx)
+            h_idx = self.engine.active_hand_index
+            self._deal_card_to_seat(s_idx, hand_index=h_idx)
+            hand = seat.hands[h_idx]
+            hand_score = self._score_player_hand(hand)
+
+            if hand_score > BLACKJACK_TARGET:
+                hand.is_busted = True
+                if hasattr(self, "sound_manager"):
+                    self.sound_manager.play_bust()
+                if hasattr(self, "_trigger_dealer_smirk"):
+                    self._trigger_dealer_smirk()
+                self._advance_multi_seat_turn()
+            elif hand_score == BLACKJACK_TARGET:
+                self.on_stand(auto=True)
+            else:
+                self._update_turn_focus()
+            return
+
+        # --------------------------------------------------------------------
+        # 1-Seat Mode Hit
+        # --------------------------------------------------------------------
         hand_before = self.player_hands[self.active_hand_index]
         score_before = self._score_player_hand(hand_before)
         is_risky_stiff = score_before in (15, 16) and not is_soft_hand(hand_before)
@@ -4127,6 +5034,22 @@ class BlackjackApp:
         self.split_button.configure(state="disabled")
         self.surrender_button.configure(state="disabled")
 
+        # --------------------------------------------------------------------
+        # 3-Seat Mode Stand
+        # --------------------------------------------------------------------
+        if getattr(self, "table_seats", 1) == 3 and hasattr(self, "engine"):
+            s_idx = self.engine.active_seat_index
+            seat = self.engine.get_seat(s_idx)
+            h_idx = self.engine.active_hand_index
+            seat.hands[h_idx].is_stood = True
+            if hasattr(self, "event_bus") and self.event_bus:
+                self.event_bus.emit(GameEventType.HAND_STOOD, {"seat": s_idx, "hand": h_idx})
+            self._advance_multi_seat_turn()
+            return
+
+        # --------------------------------------------------------------------
+        # 1-Seat Mode Stand
+        # --------------------------------------------------------------------
         if self.active_hand_index < len(self.player_hands) - 1:
             # Advance to Hand 2
             self.active_hand_index += 1
@@ -4180,6 +5103,149 @@ class BlackjackApp:
     def _conclude_round(self):
         """Determines the winner for all player hands, updates win counters, resolves payouts, and enables 'New Game'."""
         self.round_phase = RoundPhase.ROUND_OVER
+
+        # --------------------------------------------------------------------
+        # 3-Seat Mode Conclusion
+        # --------------------------------------------------------------------
+        if getattr(self, "table_seats", 1) == 3 and hasattr(self, "engine"):
+            if hasattr(self, "player_title_label"):
+                self.player_title_label.configure(text="Player")
+            if hasattr(self, "card_table_frame") and hasattr(self.card_table_frame, "draw_active_turn_halo"):
+                self.card_table_frame.draw_active_turn_halo(None)
+
+            outcomes_list = []
+            payouts_list = []
+            seat_banners = []
+            total_profit = 0
+
+            active_seats = [s for s in self.engine.seats if s.is_active and s.hands]
+            if not active_seats and len(self.engine.seats) >= 2 and self.engine.seats[1].hands:
+                active_seats = [self.engine.seats[1]]
+
+            dealer_has_bj = (len(self.dealer_hand) == 2 and score_hand(self.dealer_hand) == BLACKJACK_TARGET)
+            dealer_busted = (score_hand(self.dealer_hand) > BLACKJACK_TARGET)
+
+            for seat in active_seats:
+                s_idx = seat.seat_index
+                is_split = len(seat.hands) > 1
+                for h_idx, hand in enumerate(seat.hands):
+                    h_score = self._score_player_hand(hand)
+                    if hand.is_surrendered:
+                        outcome = "SURRENDER"
+                        msg = "Surrendered."
+                        payout = hand.bet // 2
+                    else:
+                        outcome, msg = determine_outcome(
+                            hand, self.dealer_hand, is_split=is_split or hand.is_split, player_score_override=h_score
+                        )
+                        payout = calculate_payout(outcome, hand.bet)
+
+                    self._record_outcome(outcome)
+                    outcomes_list.append(outcome)
+                    payouts_list.append(payout)
+                    profit = payout - hand.bet
+                    total_profit += profit
+
+                    h_tag = f"Seat {s_idx}" if not is_split else f"Seat {s_idx} (H{h_idx + 1})"
+                    p_str = f"+${profit}" if profit > 0 else (f"-${abs(profit)}" if profit < 0 else "$0")
+                    if hand.is_surrendered:
+                        outcome_label = "Surrendered"
+                    elif dealer_has_bj:
+                        if outcome == "PUSH":
+                            outcome_label = "Push"
+                        else:
+                            outcome_label = "Loss"
+                    elif outcome in ("NATURAL_BLACKJACK", "BLACKJACK"):
+                        outcome_label = "Blackjack!"
+                    elif outcome == "PLAYER_BUST":
+                        outcome_label = "Bust"
+                    elif outcome == "DEALER_BUST":
+                        outcome_label = "Win (Dealer Bust)"
+                    elif outcome in ("PLAYER_WINS", "PLAYER_WIN"):
+                        outcome_label = "Win"
+                    elif outcome in ("DEALER_WINS", "DEALER_WIN"):
+                        outcome_label = "Loss"
+                    elif outcome == "PUSH":
+                        outcome_label = "Push"
+                    else:
+                        outcome_label = msg
+                    seat_banners.append(f"{h_tag}: {outcome_label} [{p_str}]")
+
+                    if self.chips_mode_var.get() and not hand.is_surrendered:
+                        self.bankroll_var.set(self.bankroll_var.get() + payout)
+
+            if self.chips_mode_var.get():
+                self.engine.bankroll = self.bankroll_var.get()
+                self._update_bankroll_display()
+                self._sync_betting_spots_from_engine()
+
+            if total_profit > 0:
+                total_summary = f"Total Won: +${total_profit:,}"
+            elif total_profit < 0:
+                total_summary = f"Total Loss: -${abs(total_profit):,}"
+            else:
+                total_summary = "Total Push: $0"
+
+            if dealer_has_bj:
+                tier1 = f"Dealer has Blackjack! {total_summary}"
+            elif dealer_busted:
+                tier1 = f"Dealer Busts! {total_summary}"
+            else:
+                tier1 = total_summary
+
+            seat_details = " | ".join(seat_banners) if seat_banners else "Round Over"
+            self.result_var.set(f"{tier1}\n{seat_details}")
+
+            if hasattr(self, "event_bus") and self.event_bus:
+                self.event_bus.emit(
+                    GameEventType.ROUND_RESOLVED,
+                    {"outcomes": outcomes_list, "payouts": payouts_list, "bankroll": self.bankroll_var.get()},
+                )
+
+            if hasattr(self, "sound_manager"):
+                if total_profit > 0:
+                    self.sound_manager.play_payout()
+                elif total_profit < 0:
+                    self.sound_manager.play_loss()
+                else:
+                    self.sound_manager.play_push()
+
+            # Dealer outcome speech
+            self._last_was_double = False
+            primary_outcome = outcomes_list[0] if outcomes_list else "PUSH"
+            self._update_dealer_speech_for_outcome(primary_outcome)
+
+            # SaveManager Achievements Hookup
+            if hasattr(self, "save_manager"):
+                all_hands = [h for s in active_seats for h in s.hands]
+                all_bets = [h.bet for h in all_hands]
+                cur_tc = (
+                    self.card_counter.true_count(len(self.deck))
+                    if getattr(self, "card_counter", None) and hasattr(self, "deck")
+                    else 0.0
+                )
+                self._current_win_streak, self._session_blackjacks = self.save_manager.evaluate_round_achievements(
+                    outcomes=outcomes_list,
+                    player_hands=all_hands,
+                    dealer_hand=self.dealer_hand,
+                    hand_bets=all_bets,
+                    current_bankroll=self.bankroll_var.get(),
+                    chips_mode=bool(self.chips_mode_var.get()),
+                    is_all_in=False,
+                    haunted_phase=self.haunted.phase,
+                    current_streak=getattr(self, "_current_win_streak", 0),
+                    session_blackjacks=getattr(self, "_session_blackjacks", 0),
+                    true_count=cur_tc,
+                )
+
+            self._set_action_buttons_state("disabled")
+            self.new_game_button.configure(state="normal")
+            self._refresh_strategy_hint()
+            return
+
+        # --------------------------------------------------------------------
+        # 1-Seat Mode Conclusion (Existing Flow)
+        # --------------------------------------------------------------------
         is_split = len(self.player_hands) > 1
 
         outcomes = []
@@ -4473,7 +5539,9 @@ class BlackjackApp:
             self.cursed_stakes_button.configure(font=f_cursed_btn)
             if hasattr(self.cursed_stakes_button, "rebuild"):
                 self.cursed_stakes_button.rebuild(scale=btn_scale)
-            if bool(self.cursed_stakes_button.grid_info()) and getattr(self.haunted, "unlocked_cursed_stakes", False):
+            if getattr(self, "table_seats", 1) == 3:
+                self.cursed_stakes_button.grid_remove()
+            elif bool(self.cursed_stakes_button.grid_info()) and getattr(self.haunted, "unlocked_cursed_stakes", False):
                 cursed_opts = get_grid_options("mahogany_rail", "cursed_stakes")
                 px = cursed_opts.get("padx", (6, 8))
                 if isinstance(px, (list, tuple)):
@@ -4532,72 +5600,11 @@ class BlackjackApp:
             self.card_table_frame.set_scale(self.scale_factor)
 
     def toggle_scale_mode(self, event=None):
-        """Toggles between 1.0x and 2.0x in-memory interface scaling."""
-        new_scale = 2.0 if self.scale_factor == 1.0 else 1.0
-        self.scale_factor = new_scale
-        self.card_width = int(CARD_WIDTH * self.scale_factor)
-        self.card_height = int(CARD_HEIGHT * self.scale_factor)
-        self.card_overlap_offset = int(PLAYER_CARD_OVERLAP_OFFSET * self.scale_factor)
-        target_scale = 1 if self.scale_factor == 2.0 else 2
-        self.scale_status_var.set(f"🔍 {target_scale}x")
-
-        # Re-scale card images in memory
-        self._rebuild_scaled_assets(self.scale_factor)
-
-        # Update table frames and widgets
-        if hasattr(self, "card_table_frame"):
-            if isinstance(self.card_table_frame, TableFeltCanvas):
-                self.card_table_frame.set_scale(self.scale_factor)
-            tbl_layout = get_table_layout()
-            for r_cfg in tbl_layout.get("row_configs", []):
-                self.card_table_frame.rowconfigure(
-                    r_cfg["row"],
-                    weight=r_cfg.get("weight", 1),
-                    minsize=int(r_cfg.get("minsize", 0) * self.scale_factor),
-                )
-
-        if hasattr(self, "announcement_hud"):
-            self.announcement_hud.set_scale(self.scale_factor)
-        if hasattr(self, "haunted_altar"):
-            self.haunted_altar.set_scale(self.scale_factor, self.haunted_assets)
-        if hasattr(self, "chip_visualizer"):
-            self.chip_visualizer.set_scale(self.scale_factor)
-        if hasattr(self, "soul_meter_canvas"):
-            self.soul_meter_canvas.set_scale(self.scale_factor)
-        if hasattr(self, "dealer_actor"):
-            self.dealer_actor.set_scale(self.scale_factor)
-
-        # Update UI typography, button dimensions, and padding
-        self._update_ui_scaling()
-
-        # Redraw hands
-        self._render_dealer_cards()
-        self._render_player_cards()
-
-        # Update ambient accessory images
-        self._update_dealer_avatar()
-        if hasattr(self, "pumpkin_label") and hasattr(self, "_anim_frame_toggle"):
-            p_img = self.haunted_assets.get(f"pumpkin_glow_{1 if self._anim_frame_toggle else 0}")
-            if p_img:
-                self.pumpkin_label.configure(image=p_img)
-                self.pumpkin_label.image = p_img
-
-        # Resize window or exit fullscreen mode
-        if self.is_fullscreen and self.scale_factor == 1.0:
-            self.toggle_fullscreen()
-        elif not self.is_fullscreen:
-            try:
-                screen_w = self.root.winfo_screenwidth()
-                screen_h = self.root.winfo_screenheight()
-                target_w = min(int(DEFAULT_WINDOW_WIDTH * self.scale_factor), max(DEFAULT_WINDOW_WIDTH, screen_w - 40))
-                target_h = min(int(DEFAULT_WINDOW_HEIGHT * self.scale_factor), max(DEFAULT_WINDOW_HEIGHT, screen_h - 80))
-                self.root.minsize(
-                    int(MIN_WINDOW_WIDTH * (1.0 if self.scale_factor == 1.0 else 1.5)),
-                    int(MIN_WINDOW_HEIGHT * (1.0 if self.scale_factor == 1.0 else 1.5))
-                )
-                self.root.geometry(f"{target_w}x{target_h}")
-            except Exception:
-                pass
+        """Deprecated: 2x scale mode has been removed. Scale factor remains fixed at 1.0."""
+        self.scale_factor = 1.0
+        self.card_width = CARD_WIDTH
+        self.card_height = CARD_HEIGHT
+        self.card_overlap_offset = PLAYER_CARD_OVERLAP_OFFSET
         return "break"
 
     def _rebuild_scaled_assets(self, scale: float):
@@ -4676,32 +5683,24 @@ class BlackjackApp:
             self.fsm.transition_to(prev_phase, force=True)
 
     def toggle_fullscreen(self, event=None):
-        """Toggles native Tkinter fullscreen mode and automatically upscales interface to 2x for full screens."""
+        """Toggles native Tkinter fullscreen mode."""
         self.is_fullscreen = not self.is_fullscreen
         if self.is_fullscreen:
             try:
                 self._prev_geometry = self.root.geometry()
-                self._prev_scale_factor = self.scale_factor
             except Exception:
                 self._prev_geometry = None
-                self._prev_scale_factor = 1.0
             try:
                 self.root.attributes("-fullscreen", True)
             except Exception:
                 pass
             self.fullscreen_status_var.set("🗗 Window")
-            # Automatically upscale to 2x if currently at 1x so cards and components fill the screen
-            if self.scale_factor == 1.0:
-                self.toggle_scale_mode()
         else:
             try:
                 self.root.attributes("-fullscreen", False)
             except Exception:
                 pass
             self.fullscreen_status_var.set("⛶ Full")
-            # Restore previous scale factor if auto-upscaled upon entering fullscreen
-            if getattr(self, "_prev_scale_factor", 1.0) == 1.0 and self.scale_factor == 2.0:
-                self.toggle_scale_mode()
             if hasattr(self, "_prev_geometry") and self._prev_geometry:
                 try:
                     self.root.geometry(self._prev_geometry)

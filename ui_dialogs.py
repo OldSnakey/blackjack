@@ -276,6 +276,192 @@ class AngelicDraftDialog(tkinter.Toplevel):
 
 
 # ============================================================================
+# 2.5 MultiSeatInsuranceDialog
+# ============================================================================
+
+class MultiSeatInsuranceDialog(tkinter.Toplevel):
+    """
+    Unified multi-seat insurance modal dialog presented when the dealer shows an Ace.
+    Allows independent insurance decisions per active seat with 'Insure All' and 'Decline All' shortcuts.
+    Clamps options by available bankroll.
+    Safely intercepts WM_DELETE_WINDOW and <Escape> to decline all and prevent FSM deadlocks.
+    """
+
+    def __init__(
+        self,
+        parent: tkinter.Tk | tkinter.Misc,
+        seats: List[Any],
+        bankroll: int,
+        on_confirm: Callable[[dict[int, int]], None],
+        on_decline: Callable[[], None],
+    ):
+        super().__init__(parent)
+        self.seats = [s for s in seats if getattr(s, "is_active", True) and getattr(s, "main_bet", 0) > 0]
+        self.bankroll = bankroll
+        self.on_confirm_cb = on_confirm
+        self.on_decline_cb = on_decline
+        self._closed = False
+
+        self.title("🛡 Dealer Shows Ace - Insurance")
+        self.transient(parent)
+        self.resizable(False, False)
+        self.configure(background=PANEL_BACKGROUND_COLOR)
+
+        dialog_w, dialog_h = 500, 420
+        try:
+            root_x = parent.winfo_rootx()
+            root_y = parent.winfo_rooty()
+            root_w = parent.winfo_width()
+            root_h = parent.winfo_height()
+            x = max(0, root_x + (root_w - dialog_w) // 2)
+            y = max(0, root_y + (root_h - dialog_h) // 2)
+            self.geometry(f"{dialog_w}x{dialog_h}+{x}+{y}")
+        except Exception:
+            self.geometry(f"{dialog_w}x{dialog_h}")
+
+        self.seat_vars: dict[int, tkinter.BooleanVar] = {}
+        self.seat_costs: dict[int, int] = {}
+        for s in self.seats:
+            cost = max(1, s.main_bet // 2)
+            self.seat_costs[s.seat_index] = cost
+            self.seat_vars[s.seat_index] = tkinter.BooleanVar(value=False)
+
+        self._build_ui()
+        self.protocol("WM_DELETE_WINDOW", self._on_decline)
+        self.bind("<Escape>", lambda e: self._on_decline())
+        self.focus_set()
+
+    def _build_ui(self):
+        content = tkinter.Frame(self, background=PANEL_BACKGROUND_COLOR, padx=16, pady=14)
+        content.pack(fill="both", expand=True)
+
+        header = tkinter.Label(
+            content, text="🛡 DEALER SHOWS AN ACE",
+            font=get_element_font("dialog_title"), fg="#ffd700", background=PANEL_BACKGROUND_COLOR
+        )
+        header.pack(pady=(0, 4))
+
+        sub = tkinter.Label(
+            content,
+            text=f"Insurance pays 2:1 if Dealer has Natural Blackjack.\nAvailable Bankroll: ${self.bankroll}",
+            font=get_body_font(11), fg="#b2dfdb", background=PANEL_BACKGROUND_COLOR, justify="center"
+        )
+        sub.pack(pady=(0, 10))
+
+        list_frame = tkinter.LabelFrame(
+            content, text=" Active Seats Wagering Insurance ", font=get_header_font(11),
+            fg="#80cbc4", background=PANEL_BACKGROUND_COLOR, padx=12, pady=8
+        )
+        list_frame.pack(fill="x", pady=(0, 10))
+
+        self.cb_widgets = {}
+        total_all_cost = sum(self.seat_costs.values())
+        seat_labels = {1: "Seat 1 (Right / First Base)", 2: "Seat 2 (Center / Main)", 3: "Seat 3 (Left / Third Base)"}
+
+        for s in self.seats:
+            s_idx = s.seat_index
+            cost = self.seat_costs[s_idx]
+            lbl_text = f"{seat_labels.get(s_idx, f'Seat {s_idx}')}: Main Bet ${s.main_bet} -> Insurance ${cost}"
+            can_afford = (self.bankroll >= cost)
+
+            cb = tkinter.Checkbutton(
+                list_frame,
+                text=lbl_text,
+                variable=self.seat_vars[s_idx],
+                command=self._on_check_toggle,
+                font=get_body_font(11),
+                fg="#ffffff" if can_afford else "#888888",
+                selectcolor="#004d40",
+                activebackground=PANEL_BACKGROUND_COLOR,
+                background=PANEL_BACKGROUND_COLOR,
+                state="normal" if can_afford else "disabled",
+                cursor="hand2" if can_afford else "arrow",
+                anchor="w",
+            )
+            cb.pack(fill="x", pady=3)
+            self.cb_widgets[s_idx] = cb
+
+        self.total_cost_lbl = tkinter.Label(
+            content, text="Selected Insurance: $0",
+            font=get_badge_font(12), fg="#ffd700", background=PANEL_BACKGROUND_COLOR
+        )
+        self.total_cost_lbl.pack(pady=(0, 8))
+
+        btn_row = tkinter.Frame(content, background=PANEL_BACKGROUND_COLOR)
+        btn_row.pack(fill="x", pady=(4, 0))
+        btn_row.columnconfigure(0, weight=1)
+        btn_row.columnconfigure(1, weight=1)
+        btn_row.columnconfigure(2, weight=1)
+
+        can_insure_all = (self.bankroll >= total_all_cost and len(self.seats) > 0)
+        self.btn_insure_all = tkinter.Button(
+            btn_row, text=f"Insure All (${total_all_cost})",
+            font=get_button_font(10), background="#ff9800", fg="#111111",
+            activebackground="#ffa726", activeforeground="#000000",
+            state="normal" if can_insure_all else "disabled",
+            cursor="hand2" if can_insure_all else "arrow",
+            command=self._on_insure_all, padx=4, pady=5
+        )
+        self.btn_insure_all.grid(row=0, column=0, sticky="ew", padx=(0, 3))
+
+        self.btn_confirm = tkinter.Button(
+            btn_row, text="Confirm",
+            font=get_button_font(10), background="#1b5e20", fg="white",
+            activebackground="#2e7d32", activeforeground="white",
+            cursor="hand2", command=self._on_confirm, padx=4, pady=5
+        )
+        self.btn_confirm.grid(row=0, column=1, sticky="ew", padx=3)
+
+        self.btn_decline_all = tkinter.Button(
+            btn_row, text="Decline All",
+            font=get_button_font(10), background="#37474f", fg="white",
+            activebackground="#455a64", activeforeground="white",
+            cursor="hand2", command=self._on_decline, padx=4, pady=5
+        )
+        self.btn_decline_all.grid(row=0, column=2, sticky="ew", padx=(3, 0))
+
+    def _on_check_toggle(self):
+        total = sum(self.seat_costs[s_idx] for s_idx, var in self.seat_vars.items() if var.get())
+        if total > self.bankroll:
+            for s_idx, var in self.seat_vars.items():
+                if var.get() and total > self.bankroll:
+                    var.set(False)
+                    total -= self.seat_costs[s_idx]
+        self.total_cost_lbl.config(text=f"Selected Insurance: ${total}")
+
+    def _on_insure_all(self):
+        total_all_cost = sum(self.seat_costs.values())
+        if self.bankroll < total_all_cost:
+            return
+        for var in self.seat_vars.values():
+            var.set(True)
+        self._on_confirm()
+
+    def _on_confirm(self):
+        if self._closed:
+            return
+        self._closed = True
+        chosen = {s_idx: self.seat_costs[s_idx] for s_idx, var in self.seat_vars.items() if var.get()}
+        try:
+            self.destroy()
+        except Exception:
+            pass
+        if self.on_confirm_cb:
+            self.on_confirm_cb(chosen)
+
+    def _on_decline(self):
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            self.destroy()
+        except Exception:
+            pass
+        if self.on_decline_cb:
+            self.on_decline_cb()
+
+
+# ============================================================================
 # 3. SettingsDialog
 # ============================================================================
 
@@ -301,14 +487,14 @@ class SettingsDialog(tkinter.Toplevel):
             except Exception:
                 pass
 
-        dialog_w, dialog_h = 500, 470
+        dialog_w, dialog_h = 620, 620
         try:
             root_x = parent.winfo_rootx()
             root_y = parent.winfo_rooty()
             root_w = parent.winfo_width()
             root_h = parent.winfo_height()
             screen_h = parent.winfo_screenheight()
-            dialog_h = min(dialog_h, max(380, screen_h - 80))
+            dialog_h = min(dialog_h, max(460, screen_h - 80))
             x = max(0, root_x + (root_w - dialog_w) // 2)
             y = max(0, root_y + (root_h - dialog_h) // 2)
             self.geometry(f"{dialog_w}x{dialog_h}+{x}+{y}")
@@ -368,20 +554,20 @@ class SettingsDialog(tkinter.Toplevel):
         # Header title
         header = tkinter.Label(
             self.scroll_content, text="⚙ CASINO SETTINGS & RECORDS",
-            font=get_element_font("dialog_title"), fg="#ffd700", background=PANEL_BACKGROUND_COLOR
+            font=get_header_font(16, weight="bold"), fg="#ffd700", background=PANEL_BACKGROUND_COLOR
         )
         header.pack(pady=(0, 8))
 
         # Audio & Display Controls Frame (Two-Tier Layout)
         ctrl_frame = tkinter.LabelFrame(
-            self.scroll_content, text=" Table Preferences ", font=get_header_font(12),
+            self.scroll_content, text=" Table Preferences ", font=get_header_font(16),
             fg="#80cbc4", background=PANEL_BACKGROUND_COLOR, padx=12, pady=8
         )
         ctrl_frame.pack(fill="x", pady=(0, 10))
 
         # Tier 1: Audio & Dialogue
         tier1_lbl = tkinter.Label(
-            ctrl_frame, text="Audio & Dialogue:", font=get_badge_font(11),
+            ctrl_frame, text="Audio & Dialogue:", font=get_badge_font(15),
             fg="#b2dfdb", background=PANEL_BACKGROUND_COLOR
         )
         tier1_lbl.pack(anchor="w", pady=(0, 2))
@@ -392,7 +578,7 @@ class SettingsDialog(tkinter.Toplevel):
         audio_row.columnconfigure(1, weight=1)
 
         self.sound_btn = tkinter.Button(
-            audio_row, textvariable=self.app.sound_status_var, font=get_button_font(11),
+            audio_row, textvariable=self.app.sound_status_var, font=get_button_font(15),
             background="#004d40", fg="white", activebackground="#00695c", activeforeground="white",
             relief="ridge", borderwidth=1, cursor="hand2", command=self.app._on_toggle_sound,
             padx=10, pady=4
@@ -401,7 +587,7 @@ class SettingsDialog(tkinter.Toplevel):
 
         if hasattr(self.app, "voice_status_var"):
             self.voice_btn = tkinter.Button(
-                audio_row, textvariable=self.app.voice_status_var, font=get_button_font(11),
+                audio_row, textvariable=self.app.voice_status_var, font=get_button_font(15),
                 background="#004d40", fg="white", activebackground="#00695c", activeforeground="white",
                 relief="ridge", borderwidth=1, cursor="hand2", command=self.app._on_toggle_voice,
                 padx=10, pady=4
@@ -410,7 +596,7 @@ class SettingsDialog(tkinter.Toplevel):
 
         # Tier 2: Display & Customization
         tier2_lbl = tkinter.Label(
-            ctrl_frame, text="Display & Customization:", font=get_badge_font(11),
+            ctrl_frame, text="Display & Customization:", font=get_badge_font(15),
             fg="#b2dfdb", background=PANEL_BACKGROUND_COLOR
         )
         tier2_lbl.pack(anchor="w", pady=(2, 2))
@@ -419,35 +605,26 @@ class SettingsDialog(tkinter.Toplevel):
         disp_row.pack(fill="x", pady=(0, 2))
         disp_row.columnconfigure(0, weight=1)
         disp_row.columnconfigure(1, weight=1)
-        disp_row.columnconfigure(2, weight=1)
-
-        self.scale_btn = tkinter.Button(
-            disp_row, textvariable=self.app.scale_status_var, font=get_button_font(11),
-            background="#004d40", fg="white", activebackground="#00695c", activeforeground="white",
-            relief="ridge", borderwidth=1, cursor="hand2", command=self.app.toggle_scale_mode,
-            padx=8, pady=4
-        )
-        self.scale_btn.grid(row=0, column=0, sticky="ew", padx=(0, 3))
 
         self.dealer_btn = tkinter.Button(
-            disp_row, textvariable=self.app.dealer_view_status_var, font=get_button_font(11),
+            disp_row, textvariable=self.app.dealer_view_status_var, font=get_button_font(15),
             background="#004d40", fg="white", activebackground="#00695c", activeforeground="white",
             relief="ridge", borderwidth=1, cursor="hand2", command=self.app._on_toggle_dealer_view,
             padx=8, pady=4
         )
-        self.dealer_btn.grid(row=0, column=1, sticky="ew", padx=3)
+        self.dealer_btn.grid(row=0, column=0, sticky="ew", padx=(0, 3))
 
         self.wardrobe_btn = tkinter.Button(
-            disp_row, text="🎩 Wardrobe", font=get_button_font(11),
+            disp_row, text="🎩 Wardrobe", font=get_button_font(15),
             background="#1b5e20", fg="white", activebackground="#2e7d32", activeforeground="white",
             relief="ridge", borderwidth=1, cursor="hand2", command=self.app._open_wardrobe_dialog,
             padx=8, pady=4
         )
-        self.wardrobe_btn.grid(row=0, column=2, sticky="ew", padx=(3, 0))
+        self.wardrobe_btn.grid(row=0, column=1, sticky="ew", padx=(3, 0))
 
         # Tier 3: Play Mode & Onboarding Controls
         tier3_lbl = tkinter.Label(
-            ctrl_frame, text="Play Mode & Onboarding:", font=get_badge_font(11),
+            ctrl_frame, text="Play Mode & Onboarding:", font=get_badge_font(15),
             fg="#b2dfdb", background=PANEL_BACKGROUND_COLOR
         )
         tier3_lbl.pack(anchor="w", pady=(4, 2))
@@ -459,7 +636,7 @@ class SettingsDialog(tkinter.Toplevel):
 
         mode_name = getattr(self.app, "play_mode", "betting").capitalize()
         self.mode_btn = tkinter.Button(
-            mode_row, text=f"🎮 Mode: {mode_name}", font=get_button_font(11),
+            mode_row, text=f"🎮 Mode: {mode_name}", font=get_button_font(15),
             background="#004d40", fg="white", activebackground="#00695c", activeforeground="white",
             relief="ridge", borderwidth=1, cursor="hand2", command=self._on_cycle_play_mode,
             padx=8, pady=4
@@ -467,16 +644,37 @@ class SettingsDialog(tkinter.Toplevel):
         self.mode_btn.grid(row=0, column=0, sticky="ew", padx=(0, 3))
 
         self.welcome_btn = tkinter.Button(
-            mode_row, text="🌟 Welcome Screen...", font=get_button_font(11),
+            mode_row, text="🌟 Welcome Screen...", font=get_button_font(15),
             background="#1b5e20", fg="white", activebackground="#2e7d32", activeforeground="white",
             relief="ridge", borderwidth=1, cursor="hand2", command=self._on_open_welcome_screen,
             padx=8, pady=4
         )
         self.welcome_btn.grid(row=0, column=1, sticky="ew", padx=(3, 0))
 
+        # Tier 4: Table Wagering Layout
+        tier4_lbl = tkinter.Label(
+            ctrl_frame, text="Table Wagering Seats:", font=get_badge_font(15),
+            fg="#b2dfdb", background=PANEL_BACKGROUND_COLOR
+        )
+        tier4_lbl.pack(anchor="w", pady=(4, 2))
+
+        seats_row = tkinter.Frame(ctrl_frame, background=PANEL_BACKGROUND_COLOR)
+        seats_row.pack(fill="x", pady=(0, 2))
+        seats_row.columnconfigure(0, weight=1)
+
+        seats_count = getattr(self.app, "table_seats", 1)
+        self.seats_btn = tkinter.Button(
+            seats_row, text=f"🪑 Table Seats: {seats_count} Seat{'s' if seats_count > 1 else ''}",
+            font=get_button_font(15),
+            background="#004d40", fg="white", activebackground="#00695c", activeforeground="white",
+            relief="ridge", borderwidth=1, cursor="hand2", command=self._on_toggle_table_seats,
+            padx=8, pady=4
+        )
+        self.seats_btn.grid(row=0, column=0, sticky="ew")
+
         # Save Data Management Frame
         save_frame = tkinter.LabelFrame(
-            self.scroll_content, text=" Save Data & Hall of Fame Records ", font=get_header_font(12),
+            self.scroll_content, text=" Save Data & Hall of Fame Records ", font=get_header_font(16),
             fg="#ffd700", background=PANEL_BACKGROUND_COLOR, padx=12, pady=8
         )
         save_frame.pack(fill="x", pady=(0, 8))
@@ -486,31 +684,31 @@ class SettingsDialog(tkinter.Toplevel):
         self.stats_frame.pack(fill="x", pady=(0, 6))
 
         self.lbl_peak = tkinter.Label(
-            self.stats_frame, text="", font=get_body_font(11),
+            self.stats_frame, text="", font=get_body_font(15),
             fg="#e0e0e0", background=PANEL_BACKGROUND_COLOR, anchor="w"
         )
         self.lbl_peak.pack(fill="x", pady=1)
 
         self.lbl_hands = tkinter.Label(
-            self.stats_frame, text="", font=get_body_font(11),
+            self.stats_frame, text="", font=get_body_font(15),
             fg="#e0e0e0", background=PANEL_BACKGROUND_COLOR, anchor="w"
         )
         self.lbl_hands.pack(fill="x", pady=1)
 
         self.lbl_counting = tkinter.Label(
-            self.stats_frame, text="", font=get_body_font(11),
+            self.stats_frame, text="", font=get_body_font(15),
             fg="#e0e0e0", background=PANEL_BACKGROUND_COLOR, anchor="w"
         )
         self.lbl_counting.pack(fill="x", pady=1)
 
         self.lbl_side_bets = tkinter.Label(
-            self.stats_frame, text="", font=get_body_font(11),
+            self.stats_frame, text="", font=get_body_font(15),
             fg="#e0e0e0", background=PANEL_BACKGROUND_COLOR, anchor="w"
         )
         self.lbl_side_bets.pack(fill="x", pady=1)
 
         self.lbl_exorcist = tkinter.Label(
-            self.stats_frame, text="", font=get_body_font(11),
+            self.stats_frame, text="", font=get_body_font(15),
             fg="#e0e0e0", background=PANEL_BACKGROUND_COLOR, anchor="w"
         )
         self.lbl_exorcist.pack(fill="x", pady=1)
@@ -519,29 +717,35 @@ class SettingsDialog(tkinter.Toplevel):
 
         # Status feedback label
         lbl_status = tkinter.Label(
-            save_frame, textvariable=self.status_msg_var, font=get_body_font(11),
+            save_frame, textvariable=self.status_msg_var, font=get_body_font(15),
             fg="#ffeb3b", background=PANEL_BACKGROUND_COLOR
         )
         lbl_status.pack(pady=(2, 6))
 
-        # Clear Save File Button
-        self.clear_save_btn = tkinter.Button(
-            save_frame, text="🗑 Clear Save File (Reset to Blank Slate)",
-            font=get_button_font(12), background="#b71c1c", fg="#ffffff",
-            activebackground="#d32f2f", activeforeground="#ffffff",
-            relief="raised", borderwidth=2, cursor="hand2",
-            command=self._on_click_clear_save
-        )
-        self.clear_save_btn.pack(fill="x", pady=2)
+        # Bottom Action Buttons Row: Green "Done" and Red "Reset Data"
+        action_row = tkinter.Frame(self.scroll_content, background=PANEL_BACKGROUND_COLOR)
+        action_row.pack(fill="x", pady=(10, 2))
+        action_row.columnconfigure(0, weight=1)
+        action_row.columnconfigure(1, weight=1)
 
-        # Close Button
-        close_btn = tkinter.Button(
-            self.scroll_content, text="Close", font=get_button_font(12),
-            background="#37474f", fg="white", activebackground="#455a64",
-            activeforeground="white", relief="ridge", borderwidth=1, cursor="hand2",
-            command=self._on_close
+        # Green "Done" button to save settings as-is
+        self.done_btn = tkinter.Button(
+            action_row, text="✔ Done", font=get_button_font(15),
+            background="#2e7d32", fg="white", activebackground="#388e3c",
+            activeforeground="white", relief="raised", borderwidth=2, cursor="hand2",
+            command=self._on_close, padx=12, pady=6
         )
-        close_btn.pack(pady=(4, 0))
+        self.done_btn.grid(row=0, column=0, sticky="ew", padx=(0, 6))
+
+        # Red "Reset Data" button beside it (with confirmation prompt)
+        self.clear_save_btn = tkinter.Button(
+            action_row, text="🗑 Reset Data", font=get_button_font(15),
+            background="#b71c1c", fg="#ffffff", activebackground="#d32f2f",
+            activeforeground="#ffffff", relief="raised", borderwidth=2, cursor="hand2",
+            command=self._on_click_clear_save, padx=12, pady=6
+        )
+        self.clear_save_btn.grid(row=0, column=1, sticky="ew", padx=(6, 0))
+        self.clear_save_btn.grid(row=0, column=1, sticky="ew", padx=(6, 0))
 
     def _refresh_stats_display(self):
         """Refreshes the high scores, counting records, and achievement badges displayed in the dialog."""
@@ -614,6 +818,19 @@ class SettingsDialog(tkinter.Toplevel):
             self.app.apply_play_mode(next_mode)
         self.mode_btn.configure(text=f"🎮 Mode: {next_mode.capitalize()}")
         self.status_msg_var.set(f"Play mode switched to {next_mode.capitalize()}.")
+
+    def _on_toggle_table_seats(self):
+        current = getattr(self.app, "table_seats", 1)
+        new_count = 3 if current == 1 else 1
+        if hasattr(self.app, "set_table_seats"):
+            self.app.set_table_seats(new_count)
+        else:
+            self.app.table_seats = new_count
+        self.seats_btn.config(text=f"🪑 Table Seats: {new_count} Seat{'s' if new_count > 1 else ''}")
+        if new_count == 3:
+            self.status_msg_var.set("3-Seat Wagering enabled. Haunted Mode disabled for multi-seat play.")
+        else:
+            self.status_msg_var.set("Standard 1-Seat Wagering enabled.")
 
     def _on_open_welcome_screen(self):
         """Relaunches the Welcome & Play Mode Selection splash dialog."""
@@ -881,7 +1098,6 @@ class ShortcutsDialog(tkinter.Toplevel):
 
         panel_display = make_panel(left_col_s, "🖥️ AUDIO & DISPLAY")
         add_row(panel_display, ["keyboard_m"], "Toggle Sound", "(Mute / Unmute audio)")
-        add_row(panel_display, ["keyboard_shift", "keyboard_s"], "Scale 1x / 2x", "(Shift+S or F10)")
         add_row(panel_display, ["keyboard_f11"], "Toggle Fullscreen", "(F11 or Escape to exit)")
         add_row(panel_display, ["keyboard_v"], "Dealer Portrait", "(Toggle upper stage view)")
 

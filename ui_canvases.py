@@ -24,13 +24,14 @@ from typing import Any, Callable, Optional
 
 # Optional Pillow support
 try:
-    from PIL import Image, ImageTk, ImageDraw, ImageFont
+    from PIL import Image, ImageTk, ImageDraw, ImageFont, ImageFilter
     PIL_AVAILABLE = True
 except (ImportError, Exception):
     Image = None
     ImageTk = None
     ImageDraw = None
     ImageFont = None
+    ImageFilter = None
     PIL_AVAILABLE = False
 
 from config import (
@@ -55,7 +56,7 @@ from pixel_ui import (
     CanvasPixelPanel,
     CanvasTextLabelProxy,
 )
-from ui_layout import get_ui_layout, resolve_origin, resolve_offset
+from ui_layout import get_ui_layout, resolve_origin, resolve_offset, get_seat_origin
 
 # Parameterized Typography & HUD Constants
 HUD_OUTCOME_FONT_FAMILY = "BoldPixels"
@@ -1279,8 +1280,12 @@ class TableAnnouncementHUD(tkinter.Frame):
                 self.place_forget()
             return
 
-        # Check for lore delimiter
-        if " | " in text:
+        # Check for newline or lore delimiter
+        if "\n" in text:
+            parts = text.split("\n", 1)
+            outcome_text = parts[0].strip()
+            lore_text = parts[1].strip()
+        elif " | " in text:
             parts = text.split(" | ", 1)
             outcome_text = parts[0].strip()
             lore_text = parts[1].strip()
@@ -1330,9 +1335,10 @@ class TableAnnouncementHUD(tkinter.Frame):
             self.badge_canvas.coords(self._outcome_id, cx, cy)
             self.badge_canvas.coords(self._outcome_sh_id, cx + 1, cy + 1)
 
-        # Float in center of parent table felt as an overlay dialog card
+        # Float in center of parent table felt as an overlay dialog card (higher in 3-seat mode to keep Seat 2 un-occluded)
         if not self.winfo_manager() or self.winfo_manager() == "place":
-            self.place(relx=0.5, rely=0.54, anchor="center")
+            target_rely = 0.30 if getattr(self.master, "table_seats", 1) == 3 else 0.54
+            self.place(relx=0.5, rely=target_rely, anchor="center")
             self.lift()
 
         # Automatically dismiss transient announcements after 2.5s
@@ -1346,7 +1352,10 @@ class TableAnnouncementHUD(tkinter.Frame):
 
     def _update_outcome_color(self, outcome_text: str):
         t = outcome_text.lower()
-        if "dealer wins" in t or "bust" in t or "lose" in t or "lost" in t or "damnation" in t:
+        if "total won" in t or "total win" in t:
+            fg = "#69f0ae"  # Vibrant Green
+            border = "#00e676"
+        elif "total loss" in t or "dealer wins" in t or "bust" in t or "lose" in t or "lost" in t or "damnation" in t:
             fg = "#ff5252"  # Crisp Red
             border = "#ff1744"
         elif "blackjack" in t:
@@ -1355,7 +1364,7 @@ class TableAnnouncementHUD(tkinter.Frame):
         elif "win" in t or "won" in t:
             fg = "#69f0ae"  # Vibrant Green
             border = "#00e676"
-        elif "push" in t or "tie" in t or "draw" in t:
+        elif "total push" in t or "push" in t or "tie" in t or "draw" in t:
             fg = "#ffeb3b"  # Amber / Gold
             border = "#ffeb3b"
         else:
@@ -2443,7 +2452,27 @@ class TableFeltCanvas(tkinter.Canvas):
         self._card_anim_timers: dict[int, str] = {}
         self._card_anim_targets: dict[int, tuple[int, int]] = {}
         self._card_anim_callbacks: dict[int, Any] = {}
+        self.table_seats: int = 1
+        self.seat_bets: dict[int, int] = {1: 0, 2: 0, 3: 0}
+        self.seat_side_bets: dict[int, dict[str, int]] = {
+            1: {"perfect_pairs": 0, "21_plus_3": 0},
+            2: {"perfect_pairs": 0, "21_plus_3": 0},
+            3: {"perfect_pairs": 0, "21_plus_3": 0},
+        }
+        self.active_turn_seat: Optional[int] = None
+        self._halo_pulse_timer_id: Optional[str] = None
+        self._halo_pulse_frame_idx: int = 0
+        self._halo_frames_cache: dict[float, list[Any]] = {}
+        self.on_spot_click_callback: Optional[Callable[[int, Optional[str]], None]] = None
+        self.on_spot_clear_callback: Optional[Callable[[int], None]] = None
+        self.on_chip_click_callback: Optional[Callable[[int], None]] = None
+        self.on_chip_deduct_callback: Optional[Callable[[int], None]] = None
+        self.available_bankroll: int = 1000
+        self._hovered_denom: Optional[int] = None
 
+        self.bind("<Button-1>", self._on_canvas_click)
+        self.bind("<Button-3>", self._on_canvas_right_click)
+        self.bind("<Motion>", self._on_felt_motion)
         self.bind("<Configure>", self._on_resize)
         self._redraw_felt()
 
@@ -2454,6 +2483,23 @@ class TableFeltCanvas(tkinter.Canvas):
             self._redraw_felt()
             if getattr(self, "_shoe_visible", False):
                 self.draw_shoe_tray(self._shoe_remaining, self._shoe_total, getattr(self, "_shoe_cut_notice", False))
+
+    def destroy(self):
+        """Cancels all active pulse and card animation timers before destroying canvas."""
+        if getattr(self, "_halo_pulse_timer_id", None):
+            try:
+                self.after_cancel(self._halo_pulse_timer_id)
+            except Exception:
+                pass
+            self._halo_pulse_timer_id = None
+        if hasattr(self, "_card_anim_timers"):
+            for t_id in list(self._card_anim_timers.values()):
+                try:
+                    self.after_cancel(t_id)
+                except Exception:
+                    pass
+            self._card_anim_timers.clear()
+        super().destroy()
 
     def set_theme(self, theme: str):
         t = (theme or "casino").lower()
@@ -2887,6 +2933,435 @@ class TableFeltCanvas(tkinter.Canvas):
         for item_id in items:
             self.cancel_card_animation(item_id)
         self.delete(tag)
+
+    # ------------------------------------------------------------------------
+    # Layer 4: Multi-Seat Betting Spots & Geometric Hit Dispatching
+    # ------------------------------------------------------------------------
+    def set_table_seats(self, seats: int):
+        """Sets the active table seats configuration (1 or 3) and refreshes felt spots."""
+        self.table_seats = max(1, min(3, seats))
+        self.draw_betting_spots()
+
+    def update_seat_bet(self, seat_idx: int, amount: int):
+        """Updates staged bet display for a seat and refreshes spots."""
+        self.seat_bets[seat_idx] = amount
+        self.draw_betting_spots()
+
+    def update_seat_side_bet(self, seat_idx: int, bet_type: str, amount: int):
+        """Updates staged side bet display for a seat and refreshes spots."""
+        if seat_idx in self.seat_side_bets and bet_type in self.seat_side_bets[seat_idx]:
+            self.seat_side_bets[seat_idx][bet_type] = amount
+            self.draw_betting_spots()
+
+    def draw_betting_spots(self):
+        """Draws the felt betting circles, flanking side-bet spots, and 2.5D chip stacks in 3-seat mode."""
+        self.delete("betting_spot")
+        self.delete("turn_halo")
+        self.delete("turn_halo_pulse")
+        if getattr(self, "_halo_pulse_timer_id", None):
+            try:
+                self.after_cancel(self._halo_pulse_timer_id)
+            except Exception:
+                pass
+            self._halo_pulse_timer_id = None
+
+        # In 1-Seat Mode, ChipVisualizer handles betting visuals; draw zero felt rings.
+        if self.table_seats == 1:
+            return
+
+        from ui_chip_renderer import draw_felt_chip_stack
+        s = getattr(self, "scale_factor", 1.0)
+        visible_seats = [1, 2, 3]
+
+        for s_idx in visible_seats:
+            origin = get_seat_origin(s_idx)
+            cx = int(origin["x"] * s)
+            cy = int(origin["y"] * s)
+            sb_offset_x = int(origin.get("side_bet_offset_x", 82) * s)
+            side_y = int(origin.get("side_bet_y", origin["y"]) * s)
+
+            # 1. Left Flanking Spot: Perfect Pairs (cx - sb_offset_x)
+            pp_x = cx - sb_offset_x
+            pp_rx, pp_ry = int(30 * s), int(14 * s)
+            pp_in_rx, pp_in_ry = int(26 * s), int(11 * s)
+            self.create_oval(
+                pp_x - pp_rx, side_y - pp_ry, pp_x + pp_rx, side_y + pp_ry,
+                outline="#d4af37", width=max(1, int(1.5 * s)), dash=(3, 3), fill="",
+                tags=("betting_spot", f"spot_pp_{s_idx}")
+            )
+            self.create_oval(
+                pp_x - pp_in_rx, side_y - pp_in_ry, pp_x + pp_in_rx, side_y + pp_in_ry,
+                outline="#8a6d1b", width=1, dash=(2, 2), fill="",
+                tags=("betting_spot", f"spot_pp_inner_{s_idx}")
+            )
+            pp_bet = self.seat_side_bets.get(s_idx, {}).get("perfect_pairs", 0)
+            if pp_bet > 0:
+                draw_felt_chip_stack(self, pp_x, side_y, pp_bet, tag_prefix=f"chip_pp_{s_idx}", scale=s * 0.8, compact=True)
+            else:
+                self.create_text(
+                    pp_x, side_y, text="PAIRS", fill="#8a6d1b",
+                    font=get_element_font("betting_spot_watermark", scale=0.75 * s),
+                    tags=("betting_spot", f"spot_pp_txt_{s_idx}")
+                )
+
+            # 2. Center Main Betting Spot (cx, cy)
+            rx, ry = int(48 * s), int(18 * s)
+            rx_in, ry_in = int(42 * s), int(14 * s)
+            self.create_oval(
+                cx - rx, cy - ry, cx + rx, cy + ry,
+                outline="#d4af37", width=max(1, int(2 * s)), dash=(4, 3), fill="",
+                tags=("betting_spot", f"spot_main_{s_idx}")
+            )
+            self.create_oval(
+                cx - rx_in, cy - ry_in, cx + rx_in, cy + ry_in,
+                outline="#8a6d1b", width=1, dash=(2, 2), fill="",
+                tags=("betting_spot", f"spot_main_inner_{s_idx}")
+            )
+            main_bet = self.seat_bets.get(s_idx, 0)
+            if main_bet > 0:
+                draw_felt_chip_stack(self, cx, cy, main_bet, tag_prefix=f"chip_main_{s_idx}", scale=s * 0.95, compact=False)
+            else:
+                self.create_text(
+                    cx, cy, text=f"SEAT {s_idx}", fill="#8a6d1b",
+                    font=get_element_font("betting_spot_watermark", scale=0.85 * s),
+                    tags=("betting_spot", f"spot_txt_{s_idx}")
+                )
+
+            # 3. Right Flanking Spot: 21+3 (cx + sb_offset_x)
+            t13_x = cx + sb_offset_x
+            t13_rx, t13_ry = int(30 * s), int(14 * s)
+            t13_in_rx, t13_in_ry = int(26 * s), int(11 * s)
+            self.create_oval(
+                t13_x - t13_rx, side_y - t13_ry, t13_x + t13_rx, side_y + t13_ry,
+                outline="#d4af37", width=max(1, int(1.5 * s)), dash=(3, 3), fill="",
+                tags=("betting_spot", f"spot_t13_{s_idx}")
+            )
+            self.create_oval(
+                t13_x - t13_in_rx, side_y - t13_ry, t13_x + t13_in_rx, side_y + t13_ry,
+                outline="#8a6d1b", width=1, dash=(2, 2), fill="",
+                tags=("betting_spot", f"spot_t13_inner_{s_idx}")
+            )
+            t13_bet = self.seat_side_bets.get(s_idx, {}).get("21_plus_3", 0)
+            if t13_bet > 0:
+                draw_felt_chip_stack(self, t13_x, side_y, t13_bet, tag_prefix=f"chip_t13_{s_idx}", scale=s * 0.8, compact=True)
+            else:
+                self.create_text(
+                    t13_x, side_y, text="21+3", fill="#8a6d1b",
+                    font=get_element_font("betting_spot_watermark", scale=0.75 * s),
+                    tags=("betting_spot", f"spot_t13_txt_{s_idx}")
+                )
+
+        if self.active_turn_seat is not None and self.table_seats == 3:
+            self._render_turn_halo(self.active_turn_seat)
+
+    def _get_halo_pulse_frames(self, s: float) -> list[Any]:
+        """Pre-renders 16 cached RGBA PhotoImage frames of a 5px feathered pulsing glow halo."""
+        if not PIL_AVAILABLE or Image is None or ImageTk is None or ImageDraw is None or ImageFilter is None:
+            return []
+        scale_key = round(float(s), 2)
+        if scale_key in self._halo_frames_cache:
+            return self._halo_frames_cache[scale_key]
+
+        rx = int(54 * s)
+        ry = int(22 * s)
+        pad = int(14 * s)
+        img_w = (rx + pad) * 2
+        img_h = (ry + pad) * 2
+        cx = img_w // 2
+        cy = img_h // 2
+        thickness = max(3, int(5 * s))
+
+        num_frames = 16
+        frames = []
+        for i in range(num_frames):
+            theta = 2.0 * math.pi * (i / num_frames)
+            # Smooth sinusoidal alpha pulse between 0.18 and 0.82
+            alpha_ratio = 0.18 + 0.64 * (0.5 + 0.5 * math.sin(theta))
+            alpha_byte = int(alpha_ratio * 255)
+
+            im = Image.new("RGBA", (img_w, img_h), (0, 0, 0, 0))
+            draw = ImageDraw.Draw(im)
+            draw.ellipse(
+                [cx - rx, cy - ry, cx + rx, cy + ry],
+                outline=(20, 250, 138, alpha_byte),
+                width=thickness,
+            )
+            feathered = im.filter(ImageFilter.GaussianBlur(radius=1.8 * s))
+            try:
+                photo = ImageTk.PhotoImage(feathered, master=self)
+                frames.append(photo)
+            except Exception:
+                pass
+
+        if len(frames) == num_frames:
+            self._halo_frames_cache[scale_key] = frames
+            return frames
+        return frames
+
+    def draw_active_turn_halo(self, seat_index: Optional[int]):
+        """Draws a highlighted gold/emerald glow halo and feathered pulsing ring around the active turn seat betting spot."""
+        if getattr(self, "_halo_pulse_timer_id", None):
+            try:
+                self.after_cancel(self._halo_pulse_timer_id)
+            except Exception:
+                pass
+            self._halo_pulse_timer_id = None
+
+        self.active_turn_seat = seat_index
+        self.delete("turn_halo")
+        self.delete("turn_halo_pulse")
+        if seat_index is not None and self.table_seats == 3:
+            self._render_turn_halo(seat_index)
+
+    def _render_turn_halo(self, seat_index: int):
+        if self.table_seats == 1 or seat_index not in (1, 2, 3):
+            return
+        s = getattr(self, "scale_factor", 1.0)
+        origin = get_seat_origin(seat_index)
+        cx, cy = int(origin["x"] * s), int(origin["y"] * s)
+        rx, ry = int(54 * s), int(22 * s)
+
+        # 1. Base dashed emerald boundary disc
+        self.create_oval(
+            cx - rx, cy - ry, cx + rx, cy + ry,
+            outline="#00e676", width=max(2, int(2.5 * s)), dash=(4, 2), fill="",
+            tags=("betting_spot", "turn_halo")
+        )
+
+        # 2. Feathered transparent pulsing halo sprite
+        frames = self._get_halo_pulse_frames(s)
+        if frames:
+            self._halo_pulse_frame_idx = 0
+            photo = frames[0]
+            self.create_image(
+                cx, cy, image=photo,
+                tags=("betting_spot", "turn_halo", "turn_halo_pulse")
+            )
+            # Position the soft glow under the betting spot text and chips
+            spot_tag = f"spot_main_{seat_index}"
+            if self.find_withtag(spot_tag):
+                self.tag_lower("turn_halo_pulse", spot_tag)
+            self._start_halo_pulse()
+
+    def _start_halo_pulse(self):
+        if getattr(self, "_halo_pulse_timer_id", None):
+            try:
+                self.after_cancel(self._halo_pulse_timer_id)
+            except Exception:
+                pass
+            self._halo_pulse_timer_id = None
+        if self.active_turn_seat is None or self.table_seats == 1:
+            return
+        self._schedule_halo_pulse_step()
+
+    def _schedule_halo_pulse_step(self):
+        # 16 frames per 1400ms cycle -> ~88ms per frame
+        interval_ms = 88
+        try:
+            self._halo_pulse_timer_id = self.after(interval_ms, self._halo_pulse_step)
+        except Exception:
+            self._halo_pulse_timer_id = None
+
+    def _halo_pulse_step(self):
+        self._halo_pulse_timer_id = None
+        if self.active_turn_seat is None or self.table_seats == 1:
+            self.delete("turn_halo_pulse")
+            return
+        s = getattr(self, "scale_factor", 1.0)
+        frames = self._get_halo_pulse_frames(s)
+        if not frames:
+            return
+        self._halo_pulse_frame_idx = (self._halo_pulse_frame_idx + 1) % len(frames)
+        try:
+            self.itemconfigure("turn_halo_pulse", image=frames[self._halo_pulse_frame_idx])
+            self._schedule_halo_pulse_step()
+        except Exception:
+            self._halo_pulse_timer_id = None
+
+    def draw_chip_tray(self, available_bankroll: Optional[int] = None):
+        """Draws the 5 interactive denomination 2.5D chip piles ($5, $25, $100, $500, $1K) on the lower felt baize in 3-seat mode."""
+        self.delete("felt_chip_tray")
+        if self.table_seats == 1:
+            return
+
+        if available_bankroll is not None:
+            self.available_bankroll = max(0, int(available_bankroll))
+        avail = self.available_bankroll
+
+        s = getattr(self, "scale_factor", 1.0)
+        from config import CHIP_STYLES
+        from rules import breakdown_bankroll_piles
+        from ui_chip_renderer import draw_single_25d_chip
+
+        w = max(100, self.winfo_width() if self.winfo_width() > 1 else self.canvas_width)
+        h = max(100, self.winfo_height() if self.winfo_height() > 1 else self.canvas_height)
+        cx = w // 2
+        base_y = max(int(355 * s), h - int(45 * s))
+
+        denoms = (5, 25, 100, 500, 1000)
+        piles = breakdown_bankroll_piles(avail)
+        spacing = int(48 * s)
+        total_span = spacing * (len(denoms) - 1)
+        start_x = cx - (total_span // 2)
+
+        for idx, denom in enumerate(denoms):
+            col_x = start_x + (idx * spacing)
+            count = piles.get(denom, 0)
+            style = CHIP_STYLES.get(denom, CHIP_STYLES[5])
+            pile_tag = f"bank_pile_{denom}"
+            tags = ("felt_chip_tray", pile_tag, f"chip_tray_pile_{denom}")
+
+            # Draw stacked chip cylinder
+            visible_count = min(count, 5) if count > 0 else 1
+            for c_idx in range(visible_count):
+                chip_y = base_y - int(c_idx * 3 * s)
+                is_top = (c_idx == visible_count - 1)
+                draw_single_25d_chip(
+                    self, col_x, chip_y, denom, style,
+                    scale=s * 0.9,
+                    count=count if is_top else None,
+                    tags=tags,
+                    compact=False,
+                )
+
+            # Denomination label below
+            short_lbl = "$1K" if denom == 1000 else f"${denom}"
+            lbl_y = base_y + int(16 * s)
+            self.create_text(
+                col_x, lbl_y, text=short_lbl, fill="#ffd700",
+                font=get_element_font("chip_denomination_label", scale=s * 0.9),
+                tags=("felt_chip_tray", pile_tag)
+            )
+
+        # Bankroll and instruction badge below denomination labels
+        badge_y = base_y + int(32 * s)
+        self.create_text(
+            cx, badge_y,
+            text=f"CHIPS: ${avail:,}  (L-Click: Bet on active seat | R-Click: Deduct)",
+            fill="#ffd700",
+            font=get_element_font("chip_bet_badge", scale=s * 0.9),
+            tags=("felt_chip_tray", "felt_tray_badge")
+        )
+
+    def trigger_chip_tray_click(self, denom: int):
+        """Invokes chip staging callback when a 2.5D chip pile on the felt is clicked."""
+        if callable(self.on_chip_click_callback):
+            self.on_chip_click_callback(denom)
+
+    def trigger_chip_tray_deduct(self, denom: int):
+        """Invokes chip deduction callback when a 2.5D chip pile on the felt is right-clicked."""
+        if callable(self.on_chip_deduct_callback):
+            self.on_chip_deduct_callback(denom)
+
+    def _get_chip_tray_col_coords(self) -> tuple[int, int, int, tuple[int, ...]]:
+        s = getattr(self, "scale_factor", 1.0)
+        w = max(100, self.winfo_width() if self.winfo_width() > 1 else self.canvas_width)
+        h = max(100, self.winfo_height() if self.winfo_height() > 1 else self.canvas_height)
+        cx = w // 2
+        base_y = max(int(355 * s), h - int(45 * s))
+        denoms = (5, 25, 100, 500, 1000)
+        spacing = int(48 * s)
+        total_span = spacing * (len(denoms) - 1)
+        start_x = cx - (total_span // 2)
+        return start_x, base_y, spacing, denoms
+
+    def _on_felt_motion(self, event):
+        if self.table_seats == 1:
+            return
+        s = getattr(self, "scale_factor", 1.0)
+        start_x, base_y, spacing, denoms = self._get_chip_tray_col_coords()
+
+        hovered = None
+        for idx, denom in enumerate(denoms):
+            col_x = start_x + (idx * spacing)
+            if abs(event.x - col_x) <= int(20 * s) and abs(event.y - base_y) <= int(22 * s):
+                hovered = denom
+                break
+
+        if hovered != self._hovered_denom:
+            lift = max(2, int(3 * s))
+            if self._hovered_denom is not None:
+                self.move(f"bank_pile_{self._hovered_denom}", 0, lift)
+            if hovered is not None:
+                self.move(f"bank_pile_{hovered}", 0, -lift)
+            self._hovered_denom = hovered
+
+        if hovered is not None:
+            try:
+                self.configure(cursor="hand2")
+            except Exception:
+                pass
+        else:
+            try:
+                self.configure(cursor="")
+            except Exception:
+                pass
+
+    def _on_canvas_click(self, event):
+        """Geometric coordinate hit dispatcher for left clicks on 3-seat betting spots and chip tray."""
+        if self.table_seats == 1:
+            return
+        s = getattr(self, "scale_factor", 1.0)
+
+        # 1. Check Chip Tray clicks on lower baize
+        start_x, base_y, spacing, denoms = self._get_chip_tray_col_coords()
+        for idx, denom in enumerate(denoms):
+            col_x = start_x + (idx * spacing)
+            if abs(event.x - col_x) <= int(20 * s) and abs(event.y - base_y) <= int(22 * s):
+                self.trigger_chip_tray_click(denom)
+                return
+
+        # 2. Check 3-Seat Betting Spots
+        for s_idx in (1, 2, 3):
+            origin = get_seat_origin(s_idx)
+            cx = int(origin["x"] * s)
+            cy = int(origin["y"] * s)
+            sb_offset_x = int(origin.get("side_bet_offset_x", 82) * s)
+            side_y = int(origin.get("side_bet_y", origin["y"]) * s)
+
+            # Check Perfect Pairs side bet (left flank)
+            pp_x = cx - sb_offset_x
+            if ((event.x - pp_x) / (32.0 * s)) ** 2 + ((event.y - side_y) / (16.0 * s)) ** 2 <= 1.25:
+                if self.on_spot_click_callback:
+                    self.on_spot_click_callback(s_idx, "perfect_pairs")
+                return
+
+            # Check 21+3 side bet (right flank)
+            t13_x = cx + sb_offset_x
+            if ((event.x - t13_x) / (32.0 * s)) ** 2 + ((event.y - side_y) / (16.0 * s)) ** 2 <= 1.25:
+                if self.on_spot_click_callback:
+                    self.on_spot_click_callback(s_idx, "21_plus_3")
+                return
+
+            # Check Main Betting Spot (center)
+            if ((event.x - cx) / (50.0 * s)) ** 2 + ((event.y - cy) / (20.0 * s)) ** 2 <= 1.35:
+                if self.on_spot_click_callback:
+                    self.on_spot_click_callback(s_idx, None)
+                return
+
+    def _on_canvas_right_click(self, event):
+        """Geometric coordinate hit dispatcher for right clicks (clearing seat wager or deducting chip)."""
+        if self.table_seats == 1:
+            return
+        s = getattr(self, "scale_factor", 1.0)
+
+        # 1. Check Chip Tray right-clicks (deduct denomination)
+        start_x, base_y, spacing, denoms = self._get_chip_tray_col_coords()
+        for idx, denom in enumerate(denoms):
+            col_x = start_x + (idx * spacing)
+            if abs(event.x - col_x) <= int(20 * s) and abs(event.y - base_y) <= int(22 * s):
+                self.trigger_chip_tray_deduct(denom)
+                return
+
+        # 2. Check 3-Seat Betting Spots (clear wager)
+        for s_idx in (1, 2, 3):
+            origin = get_seat_origin(s_idx)
+            cx = int(origin["x"] * s)
+            cy = int(origin["y"] * s)
+            if abs(event.x - cx) <= int(80 * s) and abs(event.y - cy) <= int(32 * s):
+                if self.on_spot_clear_callback:
+                    self.on_spot_clear_callback(s_idx)
+                return
 
 
 class MahoganyRailCanvas(tkinter.Canvas):

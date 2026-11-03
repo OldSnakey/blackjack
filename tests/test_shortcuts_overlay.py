@@ -178,7 +178,7 @@ class TestShortcutsOverlayGui(unittest.TestCase):
         """All expected shortcut keys must have bindings on the root window."""
         expected_keys = [
             "<question>", "?", "/", "<F1>", "<h>", "<H>", "<s>", "<S>",
-            "<Key-5>", "<Shift-W>", "<Shift-H>", "<Shift-S>",
+            "<Key-5>", "<Shift-W>", "<Shift-H>", "<F11>", "<v>",
         ]
         for key in expected_keys:
             # Check that root has a binding for this sequence
@@ -250,10 +250,10 @@ class TestShortcutsOverlayGui(unittest.TestCase):
         self.assertIn("Hall of Fame", combined_text, "Missing Hall of Fame shortcut")
         # Check Card Counter
         self.assertIn("Card Counter", combined_text, "Missing Card Counter shortcut")
-        # Check Scale
-        self.assertIn("Scale", combined_text, "Missing Scale shortcut")
         # Check Fullscreen
         self.assertIn("Fullscreen", combined_text, "Missing Fullscreen shortcut")
+        # Ensure Scale 1x / 2x is removed
+        self.assertNotIn("Scale 1x / 2x", combined_text)
 
         self.app._close_shortcuts_overlay()
 

@@ -274,23 +274,30 @@
       "description": "Centered floating banner announcements (BLACKJACK!, DEALER BUSTS, PUSH)"
     },
     "hilo_trainer_title": {
-      "role": "header",
+      "family": "m6x11plus",
+      "base_size": 18,
       "description": "Hi-Lo Card Counting Trainer header tab"
     },
     "hilo_trainer_label": {
-      "role": "badge",
+      "family": "m5x7",
+      "base_size": 18,
       "description": "Trainer HUD metric title badges (RC, TC, DECKS, EDGE, BET)"
     },
     "hilo_trainer_value": {
-      "role": "digital",
+      "family": "m6x11plus",
+      "base_size": 20,
+      "weight": "bold",
       "description": "Trainer HUD numeric readouts"
     },
     "hilo_trainer_button": {
-      "role": "button",
+      "family": "m6x11plus",
+      "base_size": 16,
       "description": "Trainer HUD control buttons (Quiz, Assisted, Close)"
     },
     "hilo_trainer_advice": {
-      "role": "body",
+      "family": "m6x11plus",
+      "base_size": 18,
+      "weight": "bold",
       "description": "Trainer drill hint and betting recommendation text"
     },
     "hilo_floating_badge": {

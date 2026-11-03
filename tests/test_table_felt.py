@@ -124,13 +124,16 @@ class TestTableFeltCanvas(unittest.TestCase):
         card_sprites = self.app.card_table_frame.find_withtag("card_sprite")
         self.assertEqual(len(card_sprites), 0)
 
-    def test_dealer_is_always_enabled(self):
-        """Dealer view is always enabled and cannot be disabled."""
+    def test_dealer_view_toggling(self):
+        """Dealer view toggles upper stage between enabled and disabled."""
         self.assertTrue(self.app.dealer_view_var.get())
-        # Toggling dealer view keeps it enabled (always on)
+        # Toggling dealer view disables it
+        self.app._on_toggle_dealer_view()
+        self.assertFalse(self.app.dealer_view_var.get())
+        # Toggling again re-enables it
         self.app._on_toggle_dealer_view()
         self.assertTrue(self.app.dealer_view_var.get())
-        # Dealer toggle button is removed from visible header grid
+        # Dealer toggle button remains removed from top header grid (accessed via SettingsDialog or 'v')
         self.assertFalse(bool(self.app.dealer_view_button.grid_info()))
 
     def test_empty_cards_frames_do_not_render_solid_boxes(self):

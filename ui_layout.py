@@ -309,7 +309,7 @@ DEFAULT_UI_CONFIG: dict[str, Any] = {
         "compression_factor_split": 0.70,
         "min_overlap": 12,
         "dealer_y_offset": 6,
-        "player_y_offset": 124,
+        "player_y_offset": 199,
         "split_badge_height": 18,
         "slide_duration_ms": 144,
         "slide_interval_ms": 16,
@@ -339,6 +339,13 @@ DEFAULT_UI_CONFIG: dict[str, Any] = {
                 "font_element": "shoe_counter",
             },
         },
+        "seat_origins": {
+            "3": {"x": 235, "y": 285, "card_y": 140, "side_bet_offset_x": 82, "side_bet_y": 285},
+            "2": {"x": 490, "y": 298, "card_y": 150, "side_bet_offset_x": 82, "side_bet_y": 298},
+            "1": {"x": 745, "y": 285, "card_y": 140, "side_bet_offset_x": 82, "side_bet_y": 285},
+        },
+        "split_fan_offset_x": 35,
+        "split_vertical_cascade_y": 16,
     },
     "image_scaling": {
         "cards": {
@@ -504,6 +511,21 @@ def get_rail_button_layout() -> dict[str, Any]:
 def get_card_layout() -> dict[str, Any]:
     """Retrieves card layout rules, dynamic overlap compression factors, and split margins."""
     return get_ui_layout("cards_layout")
+
+
+def get_seat_origin(seat_idx: int) -> dict[str, Any]:
+    """Retrieves coordinates (x, y, card_y, side_bet_offset_x, side_bet_y) for a table seat (1..3) from table_felt configuration."""
+    felt_cfg = get_ui_layout("table_felt")
+    seat_origins = felt_cfg.get("seat_origins", {})
+    origin = seat_origins.get(str(seat_idx))
+    if not origin:
+        fallback = {
+            "1": {"x": 745, "y": 285, "card_y": 140, "side_bet_offset_x": 82, "side_bet_y": 285},
+            "2": {"x": 490, "y": 298, "card_y": 150, "side_bet_offset_x": 82, "side_bet_y": 298},
+            "3": {"x": 235, "y": 285, "card_y": 140, "side_bet_offset_x": 82, "side_bet_y": 285},
+        }
+        origin = fallback.get(str(seat_idx), {"x": 490, "y": 298, "card_y": 150, "side_bet_offset_x": 82, "side_bet_y": 298})
+    return dict(origin)
 
 
 

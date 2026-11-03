@@ -111,6 +111,22 @@ class TestSoundManager(unittest.TestCase):
             except Exception as ex:
                 self.fail(f"{method.__name__} while muted raised exception: {ex}")
 
+    def test_sound_manager_api_contract_matches_blackjack_app_calls(self):
+        """
+        Dynamically extracts all `sound_manager.<method>()` calls in blackjack.py
+        and asserts that each method exists on SoundManager.
+        Guarantees that no missing audio method can cause runtime AttributeError.
+        """
+        import re
+        blackjack_code = Path("blackjack.py").read_text(encoding="utf-8")
+        matches = set(re.findall(r"sound_manager\.([a-zA-Z0-9_]+)\(", blackjack_code))
+
+        for method_name in matches:
+            self.assertTrue(
+                hasattr(self.manager, method_name),
+                f"SoundManager is missing method '{method_name}' called in blackjack.py!"
+            )
+
     def test_stop_all(self):
         """stop_all executes cleanly."""
         try:

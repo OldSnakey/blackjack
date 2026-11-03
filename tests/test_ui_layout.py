@@ -327,6 +327,35 @@ class TestUiLayout(unittest.TestCase):
         self.assertFalse(is_pass_frac)
         self.assertEqual(resample_frac, lanczos)
 
+    def test_table_felt_multi_seat_origins(self):
+        """Validates seat origins for seats 1, 2, and 3 from table_felt configuration."""
+        felt_cfg = ui_layout.get_ui_layout("table_felt")
+        self.assertIn("seat_origins", felt_cfg)
+        self.assertEqual(felt_cfg.get("split_fan_offset_x"), 35)
+        self.assertEqual(felt_cfg.get("split_vertical_cascade_y"), 16)
+
+        seat1 = ui_layout.get_seat_origin(1)
+        seat2 = ui_layout.get_seat_origin(2)
+        seat3 = ui_layout.get_seat_origin(3)
+
+        self.assertEqual(seat1["x"], 745)
+        self.assertEqual(seat2["x"], 490)
+        self.assertEqual(seat3["x"], 235)
+        self.assertEqual(seat1["y"], 285)
+        self.assertEqual(seat2["y"], 298)
+        self.assertEqual(seat3["y"], 285)
+        self.assertEqual(seat1["card_y"], 140)
+        self.assertEqual(seat2["card_y"], 150)
+        self.assertEqual(seat3["card_y"], 140)
+        self.assertEqual(seat1["side_bet_y"], 285)
+        self.assertEqual(seat1["side_bet_offset_x"], 82)
+
+    def test_cards_layout_player_y_offset(self):
+        """cards_layout must configure player_y_offset at 199px (lowered 75px from legacy 124px)."""
+        card_cfg = ui_layout.get_card_layout()
+        self.assertEqual(card_cfg.get("player_y_offset"), 199)
+        self.assertEqual(card_cfg.get("dealer_y_offset"), 6)
+
 
 if __name__ == "__main__":
     unittest.main()
