@@ -1021,6 +1021,79 @@ class TestMultiSeatNormalPlayIntegration(unittest.TestCase):
         seat2 = self.app.engine.get_seat(2)
         self.assertEqual(seat2.main_bet, 5)
 
+    # ------------------------------------------------------------------------
+    # Scenario 15: Arrow Key Navigation for Betting Seat Focus
+    # ------------------------------------------------------------------------
+    def test_arrow_keys_cycle_betting_seat_focus_in_3_seat_mode(self):
+        """
+        Verifies that Left and Right arrow keys visually cycle focused_betting_seat
+        across Seats 1, 2, and 3 during 3-seat betting phase matching screen geometry:
+        - Left arrow (delta=-1) moves visually left: Seat 1 (Right) -> Seat 2 (Center) -> Seat 3 (Left) -> Seat 1 (Wrap).
+        - Right arrow (delta=1) moves visually right: Seat 3 (Left) -> Seat 2 (Center) -> Seat 1 (Right) -> Seat 3 (Wrap).
+        """
+        self.assertEqual(self.app.table_seats, 3)
+        self.assertTrue(self.app.is_betting_phase)
+        self.assertEqual(self.app.focused_betting_seat, 2)
+
+        # Left arrow from center (2) moves visually left to Seat 3 (x=235)
+        self.app._on_key_cycle_seat_focus(-1)
+        self.assertEqual(self.app.focused_betting_seat, 3)
+        self.assertEqual(self.app.card_table_frame.active_turn_seat, 3)
+
+        # Left arrow from Seat 3 wraps visually to Seat 1 (x=745)
+        self.app._on_key_cycle_seat_focus(-1)
+        self.assertEqual(self.app.focused_betting_seat, 1)
+        self.assertEqual(self.app.card_table_frame.active_turn_seat, 1)
+
+        # Left arrow from Seat 1 moves visually left to Seat 2 (x=490)
+        self.app._on_key_cycle_seat_focus(-1)
+        self.assertEqual(self.app.focused_betting_seat, 2)
+        self.assertEqual(self.app.card_table_frame.active_turn_seat, 2)
+
+        # Right arrow from center (2) moves visually right to Seat 1 (x=745)
+        self.app._on_key_cycle_seat_focus(1)
+        self.assertEqual(self.app.focused_betting_seat, 1)
+        self.assertEqual(self.app.card_table_frame.active_turn_seat, 1)
+
+        # Right arrow from Seat 1 wraps visually right to Seat 3 (x=235)
+        self.app._on_key_cycle_seat_focus(1)
+        self.assertEqual(self.app.focused_betting_seat, 3)
+        self.assertEqual(self.app.card_table_frame.active_turn_seat, 3)
+
+        # Right arrow from Seat 3 moves visually right to Seat 2 (x=490)
+        self.app._on_key_cycle_seat_focus(1)
+        self.assertEqual(self.app.focused_betting_seat, 2)
+        self.assertEqual(self.app.card_table_frame.active_turn_seat, 2)
+
+    def test_arrow_keys_no_op_in_single_seat_mode(self):
+        """Arrow keys must not alter seat focus when playing in 1-seat mode."""
+        self.app.set_table_seats(1)
+        self.app.focused_betting_seat = 2
+
+        self.app._on_key_cycle_seat_focus(1)
+        self.assertEqual(self.app.focused_betting_seat, 2)
+
+        self.app._on_key_cycle_seat_focus(-1)
+        self.assertEqual(self.app.focused_betting_seat, 2)
+
+    def test_arrow_keys_no_op_during_player_turn(self):
+        """Arrow keys must be a no-op once betting concludes and cards are in play."""
+        self.app.is_betting_phase = False
+        self.app.focused_betting_seat = 2
+
+        self.app._on_key_cycle_seat_focus(1)
+        self.assertEqual(self.app.focused_betting_seat, 2)
+
+    def test_arrow_keys_no_op_while_dealing(self):
+        """Arrow keys must return 'break' and not modify focus while dealing animations are active."""
+        self.app._dealing = True
+        self.app.focused_betting_seat = 2
+
+        res = self.app._on_key_cycle_seat_focus(1)
+        self.assertEqual(res, "break")
+        self.assertEqual(self.app.focused_betting_seat, 2)
+
+
 
 if __name__ == "__main__":
     unittest.main()

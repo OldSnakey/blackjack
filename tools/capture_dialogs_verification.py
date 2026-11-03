@@ -107,7 +107,7 @@ def main():
 
     artifact_dirs = [
         BASE_DIR / "verification",
-        Path(r"C:\Users\wrehm\.gemini\antigravity-ide\brain\4cc8d8d2-c72e-4a67-8d44-37320d173939"),
+        Path(r"C:\Users\wrehm\.gemini\antigravity\brain\4d4b5af8-c42c-4aa6-a12b-db9778a254c0"),
     ]
     for d in artifact_dirs:
         d.mkdir(parents=True, exist_ok=True)

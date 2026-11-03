@@ -56,6 +56,8 @@ class TestKeyboardOverlayAssets(unittest.TestCase):
         "keyboard_x.png",
         "keyboard_f10.png",
         "keyboard_f11.png",
+        "keyboard_arrow_left.png",
+        "keyboard_arrow_right.png",
         "mouse_left.png",
     ]
 
@@ -179,6 +181,7 @@ class TestShortcutsOverlayGui(unittest.TestCase):
         expected_keys = [
             "<question>", "?", "/", "<F1>", "<h>", "<H>", "<s>", "<S>",
             "<Key-5>", "<Shift-W>", "<Shift-H>", "<F11>", "<v>",
+            "<Left>", "<Right>",
         ]
         for key in expected_keys:
             # Check that root has a binding for this sequence
@@ -252,6 +255,8 @@ class TestShortcutsOverlayGui(unittest.TestCase):
         self.assertIn("Card Counter", combined_text, "Missing Card Counter shortcut")
         # Check Fullscreen
         self.assertIn("Fullscreen", combined_text, "Missing Fullscreen shortcut")
+        # Check Multi-Seat Focus
+        self.assertIn("Seat Focus", combined_text, "Missing Seat Focus shortcut in help overlay")
         # Ensure Scale 1x / 2x is removed
         self.assertNotIn("Scale 1x / 2x", combined_text)
 
@@ -274,6 +279,51 @@ class TestShortcutsOverlayGui(unittest.TestCase):
         self.assertLessEqual(req_h, max_allowed_h, f"Dialog height {req_h} exceeds live display allowance {max_allowed_h}")
 
         self.app._close_shortcuts_overlay()
+
+    def test_shortcuts_dialog_typography_and_colors(self):
+        """Shortcuts dialog uses m6x11plus without faux bold and two-tone high-contrast colors across all tabs."""
+        self.app._show_shortcuts_overlay()
+        dialog = self.app._shortcuts_dialog
+        self.assertIsNotNone(dialog)
+
+        # Inspect action and hint labels across both tabs
+        for tab_idx in (0, 1):
+            dialog._switch_tab(tab_idx)
+            dialog.update_idletasks()
+
+            action_labels = []
+            hint_labels = []
+
+            def collect_styled_labels(widget):
+                if isinstance(widget, tkinter.Label):
+                    fg = widget.cget("fg")
+                    text = widget.cget("text")
+                    if fg == "#fff176":
+                        action_labels.append(widget)
+                    elif fg == "#eceff1":
+                        hint_labels.append(widget)
+                for ch in widget.winfo_children():
+                    collect_styled_labels(ch)
+
+            collect_styled_labels(dialog.scroll_content)
+
+            self.assertGreater(len(action_labels), 0, f"Tab {tab_idx} missing action labels with fg #fff176")
+            self.assertGreater(len(hint_labels), 0, f"Tab {tab_idx} missing hint labels with fg #eceff1")
+
+            # Check that action labels use m6x11plus and normal weight (no faux bold)
+            for lbl in action_labels:
+                font_str = str(lbl.cget("font"))
+                self.assertIn("m6x11plus", font_str)
+                self.assertNotIn("bold", font_str.lower(), f"Action label '{lbl.cget('text')}' should not use faux bold")
+
+            # Check that hint labels use m6x11plus and normal weight
+            for lbl in hint_labels:
+                font_str = str(lbl.cget("font"))
+                self.assertIn("m6x11plus", font_str)
+                self.assertNotIn("bold", font_str.lower())
+
+        self.app._close_shortcuts_overlay()
+
 
 
 if __name__ == "__main__":

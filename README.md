@@ -203,11 +203,13 @@ The game supports complete hands-free keyboard navigation with context-sensitive
 | `P` | Equal Rank Pair | **Split** (Split into two independent hands) |
 | `R` | Initial 2 Cards | **Surrender** (Forfeit hand, recover 50% wager) |
 | `1`, `2`, `3`, `4`, `5` | Betting Phase | Quick Stage \$5, \$25, \$100, \$500, or \$1,000 chip |
+| `Left` / `Right` | 3-Seat Betting | Cycle Betting Focus between Seat 1, Seat 2, and Seat 3 |
+| `Q` (or `6`) | Betting Phase | Stage \$5 on **Perfect Pairs** Side Bet |
+| `E` (or `7`) | Betting Phase | Stage \$5 on **21+3 Poker** Side Bet |
 | `A` | Betting Phase | **All In** (Wager entire bankroll) |
 | `C` | Betting Phase | **Clear Bet** (Reset staged bet to \$0) |
 | `Y` / `N` (or `Esc`)| Dealer Shows Ace | **Take** or **Decline** Insurance (2:1 side bet) |
 | `M` | Any Time | Toggle Sound Mute (`ON` / `OFF`) |
-| `Shift + S` | Any Time | Toggle **2x HiDPI Display Scaling** |
 | `F11` | Any Time | Toggle **Borderless Fullscreen** |
 | `K` / `Shift + C` | Any Time | Toggle **Card Counter Trainer HUD** (Hi-Lo Running & True Count) |
 | `Shift + W` | Any Time | Open **Dealer Wardrobe & Costumes** |

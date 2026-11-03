@@ -297,7 +297,7 @@ graph TD
 #### `ShortcutsDialog` ([ui_dialogs.py](../ui_dialogs.py#L555))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: All keyboard and mouse shortcut mappings across Gameplay, Wagering (`1`--`5` for \$5--\$1,000 chips), Card Counting, and System controls (`Shift+S`, `Shift+W`, `Shift+H`, `F1`/`?`).<br>**Does**: Renders scrollable two-column modal HUD with Kenney graphical keycap icons, auto-hiding scrollbar, and mousewheel bindings. | Collaborates with [KeyboardIconLoader](../audio_assets.py#L210) and [BlackjackApp](../blackjack.py). |
+| **Knows**: All keyboard and mouse shortcut mappings across Gameplay, Wagering (`1`--`5` for \$5--\$1,000 chips, `Left`/`Right` for 3-Seat focus), Card Counting, and System controls (`Shift+W`, `Shift+H`, `F1`/`?`).<br>**Does**: Renders scrollable two-column modal HUD with Kenney graphical keycap icons, auto-hiding scrollbar, and mousewheel bindings. | Collaborates with [KeyboardIconLoader](../audio_assets.py#L210) and [BlackjackApp](../blackjack.py). |
 
 #### `WelcomeSplashDialog` ([ui_dialogs.py](../ui_dialogs.py#L876))
 | Responsibility | Collaboration |

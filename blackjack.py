@@ -1309,6 +1309,33 @@ class BlackjackApp:
         for key in ("<e>", "<E>", "<Key-7>", "<KP_7>"):
             self.root.bind(key, lambda e: self._add_side_bet("21_plus_3", 5))
 
+        # Multi-seat betting focus shortcuts (Left and Right arrow keys)
+        self.root.bind("<Left>", lambda e: self._on_key_cycle_seat_focus(-1))
+        self.root.bind("<Right>", lambda e: self._on_key_cycle_seat_focus(1))
+
+    def _on_key_cycle_seat_focus(self, delta: int):
+        """
+        Cycles betting focus visually across Seat 1, Seat 2, and Seat 3 in multi-seat play:
+        - delta < 0 (Left arrow): moves focus visually to the left (Seat 1 -> Seat 2 -> Seat 3 -> Seat 1).
+        - delta > 0 (Right arrow): moves focus visually to the right (Seat 3 -> Seat 2 -> Seat 1 -> Seat 3).
+        """
+        if getattr(self, "_dealing", False):
+            return "break"
+        if getattr(self, "table_seats", 1) != 3 or not getattr(self, "is_betting_phase", False):
+            return "break"
+        current = getattr(self, "focused_betting_seat", 2) or 2
+        if delta < 0:
+            # Move visually left (decreasing X on table felt: 745 -> 490 -> 235)
+            new_seat = (current % 3) + 1
+        else:
+            # Move visually right (increasing X on table felt: 235 -> 490 -> 745)
+            new_seat = 3 if current == 1 else current - 1
+        self.focused_betting_seat = new_seat
+        self._sync_betting_spots_from_engine()
+        if hasattr(self, "sound_manager"):
+            self.sound_manager.play_chip_add()
+        return "break"
+
     def _on_key_action(self, action_fn, button=None):
         """Invokes an action function if the corresponding button is currently enabled and not dealing."""
         if getattr(self, "_dealing", False):

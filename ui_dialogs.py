@@ -873,7 +873,7 @@ class ShortcutsDialog(tkinter.Toplevel):
             except Exception:
                 pass
 
-        dialog_w, dialog_h = 760, 550
+        dialog_w, dialog_h = 760, 600
         try:
             root_x = parent.winfo_rootx()
             root_y = parent.winfo_rooty()
@@ -944,7 +944,7 @@ class ShortcutsDialog(tkinter.Toplevel):
 
         tkinter.Label(
             title_box, text="Full hands-free keyboard accessibility for authentic casino gameplay",
-            font=get_element_font("dialog_body"), fg="#80cbc4", background=PANEL_BACKGROUND_COLOR
+            font=get_header_font(16), fg="#80cbc4", background=PANEL_BACKGROUND_COLOR
         ).pack(anchor="w")
 
         close_btn = tkinter.Button(
@@ -998,9 +998,9 @@ class ShortcutsDialog(tkinter.Toplevel):
                 parent_f, background="#053612", relief="ridge", borderwidth=2,
                 padx=8, pady=2
             )
-            panel.pack(fill="both", expand=True, padx=4, pady=2)
+            panel.pack(fill="both", expand=True, padx=4, pady=1)
             tkinter.Label(
-                panel, text=title_text, font=get_header_font(12),
+                panel, text=title_text, font=get_header_font(16),
                 fg="#ffeb3b", background="#053612"
             ).pack(anchor="w", pady=(0, 2))
             return panel
@@ -1033,14 +1033,14 @@ class ShortcutsDialog(tkinter.Toplevel):
                     ).pack(side="left", padx=1)
 
             tkinter.Label(
-                r, text=action_text, font=get_body_font(12, "bold"),
-                fg="#ffffff", background="#053612"
-            ).pack(side="left", padx=(6, 2))
+                r, text=action_text, font=get_element_font("dialog_action_label"),
+                fg="#fff176", background="#053612"
+            ).pack(side="left", padx=(5, 2))
 
             if hint_text:
                 tkinter.Label(
-                    r, text=hint_text, font=get_body_font(11),
-                    fg="#a5d6a7", background="#053612"
+                    r, text=hint_text, font=get_element_font("dialog_hint_label"),
+                    fg="#eceff1", background="#053612"
                 ).pack(side="left")
 
         # --------------------------------------------------------------------
@@ -1082,6 +1082,7 @@ class ShortcutsDialog(tkinter.Toplevel):
         add_row(panel_betting, ["keyboard_e"], "21+3 Poker +$5", "(Right spot / 7)")
         add_row(panel_betting, ["keyboard_a"], "All In", "(Wager entire bankroll)")
         add_row(panel_betting, ["keyboard_c"], "Clear Bet", "(Reset bet to $0)")
+        add_row(panel_betting, ["keyboard_arrow_left", "keyboard_arrow_right"], "Seat Focus", "(Cycle Seat 1-3 in 3-Seat)")
 
         # --------------------------------------------------------------------
         # Tab 1: System & Controls Content
@@ -1128,7 +1129,7 @@ class ShortcutsDialog(tkinter.Toplevel):
         tkinter.Label(
             footer_frame,
             text="💡 Tip: Switch tabs with [Left] / [Right] arrow keys or [1] / [2]. Shortcuts activate when controls are enabled.",
-            font=get_body_font(11), fg="#ffe082", background=PANEL_BACKGROUND_COLOR
+            font=get_element_font("dialog_tip_label"), fg="#ffe082", background=PANEL_BACKGROUND_COLOR
         ).pack(anchor="center")
 
         # Initial tab presentation

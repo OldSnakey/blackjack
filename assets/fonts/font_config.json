@@ -387,6 +387,27 @@
       "role": "button",
       "base_size": 14,
       "description": "Equip relic button in angelic blessing draft dialog"
+    },
+    "dialog_action_label": {
+      "family": "m6x11plus",
+      "base_size": 16,
+      "weight": "normal",
+      "fallback": "m5x7",
+      "description": "Shortcuts and controls action verb label"
+    },
+    "dialog_hint_label": {
+      "family": "m6x11plus",
+      "base_size": 14,
+      "weight": "normal",
+      "fallback": "m5x7",
+      "description": "Shortcuts and controls secondary description and hint label"
+    },
+    "dialog_tip_label": {
+      "family": "m6x11plus",
+      "base_size": 15,
+      "weight": "normal",
+      "fallback": "m5x7",
+      "description": "Dialog bottom footer navigation tip banner"
     }
   }
 }
