@@ -149,13 +149,15 @@ def capture_all():
     app.set_table_seats(3)
     if not app.card_counting_hud.is_visible:
         app._toggle_card_counting_hud()
-    app.focused_betting_seat = 0
-    app._add_chip_bet(25)
-    app.focused_betting_seat = 1
-    app._add_chip_bet(50)
+    app._clear_bet()
     app.focused_betting_seat = 2
-    app._add_chip_bet(25)
-    app.focused_betting_seat = 1
+    app._on_key_chip(50)
+    app._on_key_cycle_seat_focus(-1)
+    app._on_key_chip(25)
+    app._on_key_cycle_seat_focus(1)
+    app._on_key_cycle_seat_focus(1)
+    app._on_key_chip(25)
+    app._on_key_cycle_seat_focus(-1)
     app.card_counting_hud.update_counts(cards_remaining=284, base_bet=50)
     app.set_dealer_speech("Welcome to the 3-seat training table. Keep your count sharp!", stream=False)
     pump(root, 10)
@@ -280,34 +282,39 @@ def capture_all():
     app.card_counter.deck_count = 6
     app.card_counting_hud.update_counts(cards_remaining=288, base_bet=50)
 
-    # Frame sequence 1: Betting focus on Seat 2
-    app.focused_betting_seat = 1
-    app._add_chip_bet(50)
-    app.set_dealer_speech("Place your bets on the felt.", stream=False)
+    # Frame sequence 1: Betting focus on Seat 2, place $50 bet
+    app.focused_betting_seat = 2
+    app._on_key_chip(50)
+    app.set_dealer_speech("Place your bets across all three seats.", stream=False)
     pump(root, 5)
     for _ in range(3):
         frames.append(capture_hwnd_to_image(root.winfo_id()))
 
-    # Frame sequence 2: Shift to Seat 1, bet 25
+    # Frame sequence 2: Shift to Seat 1, place $25 bet
     app._on_key_cycle_seat_focus(-1)
-    app._add_chip_bet(25)
+    app._on_key_chip(25)
     pump(root, 5)
     for _ in range(3):
         frames.append(capture_hwnd_to_image(root.winfo_id()))
 
-    # Frame sequence 3: Shift to Seat 3, bet 25
+    # Frame sequence 3: Shift to Seat 3, place $25 bet
     app._on_key_cycle_seat_focus(1)
     app._on_key_cycle_seat_focus(1)
-    app._add_chip_bet(25)
+    app._on_key_chip(25)
     pump(root, 5)
     for _ in range(3):
         frames.append(capture_hwnd_to_image(root.winfo_id()))
 
-    # Setup rigged deck for full round drama:
-    # S1 gets 10 + 8 (18)
-    # S2 gets 6 + 5 (11) -> hits 10 -> 21!
-    # S3 gets 9 + 10 (19)
-    # Dealer gets 6 + 10 (16) -> hits 10 -> 26 BUST!
+    # Return focus to Seat 1
+    app._on_key_cycle_seat_focus(-1)
+    pump(root, 5)
+
+    # Setup rigged deck for full 3-seat round drama:
+    # Clockwise initial deal:
+    # Pass 1: S1 (10), S2 (6), S3 (9), Dealer Upcard (6)
+    # Pass 2: S1 (8 -> 18), S2 (5 -> 11), S3 (10 -> 19), Dealer Hole (10 -> 16)
+    # Player hits: S2 hits (10 -> 21!)
+    # Dealer hits: Dealer hits (Queen -> 26 BUST!)
     c_s1_1 = build_card_helper(app, "10", "spades")
     c_s2_1 = build_card_helper(app, "6", "hearts")
     c_s3_1 = build_card_helper(app, "9", "diamonds")
@@ -319,12 +326,12 @@ def capture_all():
     c_dl_2 = build_card_helper(app, "10", "spades")
 
     c_s2_hit = build_card_helper(app, "10", "clubs")
-    c_dl_bust = build_card_helper(app, "10", "diamonds")
+    c_dl_bust = build_card_helper(app, "queen", "diamonds")
 
     app.deck = [c_dl_bust, c_s2_hit, c_dl_2, c_s3_2, c_s2_2, c_s1_2, c_dl_1, c_s3_1, c_s2_1, c_s1_1]
 
     # Deal hand
-    app.set_dealer_speech("Dealing clockwise across the table...", stream=False)
+    app.set_dealer_speech("Dealing clockwise across all 3 active seats...", stream=False)
     app._deal_hand_with_bet()
     
     # Capture deal progression frames
@@ -336,16 +343,18 @@ def capture_all():
             frames.append(capture_hwnd_to_image(root.winfo_id()))
 
     pump(root, 5)
-    # Cards dealt! Seat 1 active
-    app.set_dealer_speech("Seat 1: 18 points. Stand recommended.", stream=False)
+    # Cards dealt! Seat 1 active (18 points)
+    app.set_dealer_speech("Seat 1: 18 points. Standing.", stream=False)
     pump(root, 5)
     for _ in range(4):
         frames.append(capture_hwnd_to_image(root.winfo_id()))
 
-    # Seat 1 stands -> moves to Seat 2
+    # Seat 1 stands -> moves to Seat 2 (11 points)
     app.on_stand()
+    while getattr(app, "_dealing", False):
+        pump(root, 2, delay=0.01)
     pump(root, 5)
-    app.set_dealer_speech("Seat 2: 11 points. Hit!", stream=False)
+    app.set_dealer_speech("Seat 2: 11 points against Dealer 6. Hit!", stream=False)
     pump(root, 5)
     for _ in range(4):
         frames.append(capture_hwnd_to_image(root.winfo_id()))
@@ -360,8 +369,10 @@ def capture_all():
     for _ in range(4):
         frames.append(capture_hwnd_to_image(root.winfo_id()))
 
-    # Seat 2 stands
+    # Seat 2 stands -> moves to Seat 3 (19 points)
     app.on_stand()
+    while getattr(app, "_dealing", False):
+        pump(root, 2, delay=0.01)
     pump(root, 5)
     app.set_dealer_speech("Seat 3: 19 points. Standing.", stream=False)
     pump(root, 5)
@@ -375,10 +386,10 @@ def capture_all():
         frames.append(capture_hwnd_to_image(root.winfo_id()))
 
     pump(root, 10)
-    # Dealer busts, win banners
-    app.set_dealer_speech("Dealer busts with 26! All seats win!", stream=False)
+    # Dealer busts with 26, win banners on all 3 seats
+    app.set_dealer_speech("Dealer busts with 26! All 3 seats win!", stream=False)
     pump(root, 10)
-    for _ in range(6):
+    for _ in range(8):
         frames.append(capture_hwnd_to_image(root.winfo_id()))
 
     print(f"Captured {len(frames)} frames for animated GIF.")
