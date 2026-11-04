@@ -390,8 +390,18 @@ class TestSideBetsGuiAndIntegration(unittest.TestCase):
         self.assertTrue(self.app.save_manager.data.achievements.pair_perfectionist)
 
     def test_side_bet_shortcuts(self):
-        """Shortcuts Q and E stage side bets during the betting phase."""
+        """Shortcuts Q and E stage side bets during the betting phase only when main bet >= $5."""
         self.assertTrue(self.app.is_betting_phase)
+        # Without main bet: rejected with warning
+        self.app.current_bet_var.set(0)
+        self.app._add_side_bet("perfect_pairs", 5)
+        self.assertEqual(self.app.engine.staged_side_bets["perfect_pairs"], 0)
+        self.assertIn("Must place min $5 main bet before side bets!", self.app.result_var.get())
+
+        # Stage minimum main bet first
+        self.app.current_bet_var.set(10)
+        self.app.engine.stage_bet(10)
+
         self.app._add_side_bet("perfect_pairs", 5)
         self.assertEqual(self.app.engine.staged_side_bets["perfect_pairs"], 5)
         self.app._add_side_bet("21_plus_3", 5)
@@ -400,6 +410,8 @@ class TestSideBetsGuiAndIntegration(unittest.TestCase):
     def test_side_bet_right_click_clears_single_side_bet_to_zero(self):
         """Right-clicking a side bet spot clears that side bet directly back to $0 without desync."""
         self.assertTrue(self.app.is_betting_phase)
+        self.app.current_bet_var.set(10)
+        self.app.engine.stage_bet(10)
         self.app._add_side_bet("perfect_pairs", 25)
         self.app._add_side_bet("21_plus_3", 10)
         self.assertEqual(self.app.engine.staged_side_bets["perfect_pairs"], 25)
@@ -415,8 +427,8 @@ class TestSideBetsGuiAndIntegration(unittest.TestCase):
         self.app.chip_visualizer.trigger_side_bet_click("perfect_pairs", 5)
         self.assertEqual(self.app.engine.staged_side_bets["perfect_pairs"], 5)
 
-    def test_main_bet_deduction_does_not_clear_visual_side_bets(self):
-        """Deducting the main bet to $0 must not clear visual side bet chips or desync staged side bets."""
+    def test_main_bet_deduction_clears_staged_side_bets(self):
+        """Deducting the main bet to $0 must automatically refund/clear staged side bets."""
         self.assertTrue(self.app.is_betting_phase)
         self.app.current_bet_var.set(10)
         self.app.engine.stage_bet(10)
@@ -429,20 +441,24 @@ class TestSideBetsGuiAndIntegration(unittest.TestCase):
         self.app._deduct_chip_bet(10)
         self.assertEqual(self.app.current_bet_var.get(), 0)
 
-        # Visual side bet and domain side bet must remain active and visible
-        self.assertEqual(self.app.engine.staged_side_bets["perfect_pairs"], 15)
-        self.assertEqual(self.app.chip_visualizer.side_bets["perfect_pairs"], 15)
-        badge_text = self.app.chip_visualizer.itemcget("pp_badge", "text")
-        self.assertIn("PAIRS: $15", badge_text)
+        # Side bets must be cleared when main bet drops below $5
+        self.assertEqual(self.app.engine.staged_side_bets["perfect_pairs"], 0)
+        self.assertEqual(self.app.chip_visualizer.side_bets["perfect_pairs"], 0)
 
     def test_bankroll_tray_deduct_when_main_bet_zero_deducts_side_bets(self):
         """Right-clicking bankroll chip piles when main bet is $0 deducts staged side bets."""
         self.assertTrue(self.app.is_betting_phase)
-        self.app.current_bet_var.set(0)
+        self.app.current_bet_var.set(10)
+        self.app.engine.stage_bet(10)
         self.app._add_side_bet("perfect_pairs", 5)
         self.app._add_side_bet("21_plus_3", 5)
 
-        # First deduction consumes 21+3
+        # First deduction consumes 21+3 when main bet is 0 (or deducted)
+        self.app.current_bet_var.set(0)
+        self.app.engine.staged_bet = 0
+        self.app.engine.staged_side_bets["perfect_pairs"] = 5
+        self.app.engine.staged_side_bets["21_plus_3"] = 5
+
         self.app._deduct_chip_bet(5)
         self.assertEqual(self.app.engine.staged_side_bets["21_plus_3"], 0)
         self.assertEqual(self.app.engine.staged_side_bets["perfect_pairs"], 5)
@@ -451,29 +467,26 @@ class TestSideBetsGuiAndIntegration(unittest.TestCase):
         self.app._deduct_chip_bet(5)
         self.assertEqual(self.app.engine.staged_side_bets["perfect_pairs"], 0)
 
-        # Re-adding starts fresh from $0
-        self.app._add_side_bet("perfect_pairs", 5)
-        self.assertEqual(self.app.engine.staged_side_bets["perfect_pairs"], 5)
-
-    def test_center_spot_left_click_adds_main_bet_and_right_click_clears_only_main_bet(self):
-        """Center spot left-click adds $5/$25 to main bet, right-click clears only main bet."""
+    def test_center_spot_left_click_adds_main_bet_and_right_click_clears_all_bets(self):
+        """Center spot left-click adds $5/$25 to main bet, right-click clears main and side bets."""
         self.assertTrue(self.app.is_betting_phase)
-        self.app.current_bet_var.set(0)
+        self.app.current_bet_var.set(10)
+        self.app.engine.stage_bet(10)
         self.app._add_side_bet("perfect_pairs", 15)
 
         # Left-click on center spot adds $5
         self.app.chip_visualizer.trigger_spot_click(5)
-        self.assertEqual(self.app.current_bet_var.get(), 5)
+        self.assertEqual(self.app.current_bet_var.get(), 15)
         self.assertEqual(self.app.engine.staged_side_bets["perfect_pairs"], 15)
 
         # Shift + Left-click on center spot adds $25
         self.app.chip_visualizer.trigger_spot_click(25)
-        self.assertEqual(self.app.current_bet_var.get(), 30)
+        self.assertEqual(self.app.current_bet_var.get(), 40)
 
-        # Right-click on center spot clears ONLY the main bet, keeping side bets intact
+        # Right-click on center spot clears the main bet and side bets
         self.app.chip_visualizer.trigger_spot_clear()
         self.assertEqual(self.app.current_bet_var.get(), 0)
-        self.assertEqual(self.app.engine.staged_side_bets["perfect_pairs"], 15)
+        self.assertEqual(self.app.engine.staged_side_bets["perfect_pairs"], 0)
 
         # The dedicated Clear Bet button at the bottom clears all bets
         self.app._clear_bet()

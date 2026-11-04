@@ -1358,6 +1358,8 @@ class BlackjackApp:
 
     def _on_key_chip(self, amount: int):
         """Adds chip bet in 1-seat mode, or selects denomination & stages on focused seat in 3-seat mode."""
+        if getattr(self, "_dealing", False):
+            return "break"
         if getattr(self, "is_betting_phase", False) and self.chips_mode_var.get():
             if getattr(self, "table_seats", 1) == 3:
                 self.selected_denomination = amount
@@ -1465,6 +1467,8 @@ class BlackjackApp:
 
     def _open_settings_dialog(self):
         """Displays the casino settings and save management modal dialog."""
+        if getattr(self, "_dealing", False):
+            return "break"
         if self._settings_dialog is not None and self._settings_dialog.winfo_exists():
             self._settings_dialog.lift()
             self._settings_dialog.focus_set()
@@ -1510,7 +1514,9 @@ class BlackjackApp:
             self._welcome_splash_dialog = None
 
     def _on_cycle_play_mode_shortcut(self):
-        """Cycles play mode between Casual -> Betting -> Training."""
+        """Cycles play mode between Casual -> Betting -> Training (only when not dealing and betting or round over)."""
+        if getattr(self, "_dealing", False) or getattr(self, "round_phase", None) not in (RoundPhase.BETTING, RoundPhase.ROUND_OVER):
+            return "break"
         modes = ["casual", "betting", "training"]
         try:
             curr_idx = modes.index(getattr(self, "play_mode", "betting"))
@@ -1719,6 +1725,8 @@ class BlackjackApp:
 
     def _open_wardrobe_dialog(self, initial_tab: int = 0):
         """Displays the Dealer Wardrobe & Dressing Room modal dialog."""
+        if getattr(self, "_dealing", False):
+            return "break"
         if getattr(self, "_wardrobe_dialog", None) is not None and self._wardrobe_dialog.winfo_exists():
             if initial_tab in (0, 1):
                 self._wardrobe_dialog._switch_tab(initial_tab)
@@ -3442,6 +3450,8 @@ class BlackjackApp:
             new_bet = current_bet - deduct_amt
             self.current_bet_var.set(new_bet)
             self.engine.stage_bet(new_bet, sound_hint="deduct")
+            if new_bet < MINIMUM_BET:
+                self._clear_side_bets()
         elif hasattr(self, "engine") and hasattr(self.engine, "staged_side_bets"):
             sb_t13 = self.engine.staged_side_bets.get("21_plus_3", 0)
             sb_pp = self.engine.staged_side_bets.get("perfect_pairs", 0)
@@ -3465,11 +3475,12 @@ class BlackjackApp:
             self.sound_manager.play_chip_clear()
 
     def _clear_main_bet(self):
-        """Resets only the staged main bet back to 0, leaving side bets intact."""
+        """Resets the staged main bet back to 0, clearing side bets as well since side bets require a main bet."""
         if not self.fsm.trigger("stage_bet"):
             return
         self.current_bet_var.set(0)
         self.engine.stage_bet(0, sound_hint="clear")
+        self._clear_side_bets()
         self._update_bankroll_display()
         self._update_betting_controls()
         if hasattr(self, "sound_manager"):
@@ -3505,6 +3516,11 @@ class BlackjackApp:
             delta = seat.main_bet - new_bet
             seat.main_bet = new_bet
             self.engine.bankroll += delta
+            if seat.main_bet < MINIMUM_BET:
+                for b_type in list(seat.side_bets.keys()):
+                    if seat.side_bets[b_type] > 0:
+                        self.engine.bankroll += seat.side_bets[b_type]
+                        seat.side_bets[b_type] = 0
             self.bankroll_var.set(self.engine.bankroll)
             self.current_bet_var.set(self.engine.staged_bet)
             self._update_bankroll_display()
@@ -3643,12 +3659,39 @@ class BlackjackApp:
         self._sync_betting_spots_from_engine()
 
     def _add_side_bet(self, bet_type: str, amount: int = 5):
-        """Adds chip amount to specified staged side bet."""
-        if not self.is_betting_phase or not hasattr(self, "engine"):
-            return
-        curr = self.engine.staged_side_bets.get(bet_type, 0)
-        self.engine.stage_side_bet(bet_type, curr + amount, sound_hint="add")
-        self._sync_betting_spots_from_engine()
+        """Adds chip amount to specified staged side bet: requires main bet >= $5 and targets focused seat in multi-seat."""
+        if getattr(self, "_dealing", False) or not getattr(self, "is_betting_phase", False) or not hasattr(self, "engine"):
+            return "break"
+        if not self.chips_mode_var.get():
+            return "break"
+
+        if getattr(self, "table_seats", 1) == 3:
+            target_seat = getattr(self, "focused_betting_seat", 2) or 2
+            seat = self.engine.get_seat(target_seat)
+            if not seat or seat.main_bet < MINIMUM_BET:
+                self.result_var.set(f"Seat {target_seat}: Must place min $5 main bet before side bets!")
+                return "break"
+            if self.engine.bankroll < amount:
+                return "break"
+            curr = seat.side_bets.get(bet_type, 0)
+            self.engine.stage_side_bet(bet_type, curr + amount, sound_hint="add", seat_idx=target_seat)
+            self.bankroll_var.set(self.engine.bankroll)
+            self._update_bankroll_display()
+            self._sync_betting_spots_from_engine()
+            self._update_betting_controls()
+            if hasattr(self, "sound_manager"):
+                self.sound_manager.play_chip_add()
+        else:
+            if self.current_bet_var.get() < MINIMUM_BET:
+                self.result_var.set("Must place min $5 main bet before side bets!")
+                return "break"
+            curr = self.engine.staged_side_bets.get(bet_type, 0)
+            self.engine.stage_side_bet(bet_type, curr + amount, sound_hint="add")
+            self._sync_betting_spots_from_engine()
+            self._update_betting_controls()
+            if hasattr(self, "sound_manager"):
+                self.sound_manager.play_chip_add()
+        return "break"
 
     def _deduct_side_bet(self, bet_type: str, amount: int = 5):
         """Deducts chip amount from specified staged side bet."""
@@ -3726,8 +3769,9 @@ class BlackjackApp:
         d_up = self.dealer_hand[0] if self.dealer_hand else None
         results = self.engine.resolve_side_bets(self.player_hands[0], d_up)
         side_notes = []
-        for b_type, res in results.items():
-            if res.bet > 0:
+        for b_type in ("perfect_pairs", "21_plus_3"):
+            res = results.get(b_type)
+            if res and getattr(res, "bet", 0) > 0:
                 if hasattr(self, "save_manager"):
                     self.save_manager.record_side_bet(res.bet_type, res.outcome, res.bet, res.profit, res.won)
                 if res.won:
@@ -4633,6 +4677,8 @@ class BlackjackApp:
 
     def _toggle_card_counting_hud(self):
         """Toggles the display of the Card Counting Trainer HUD."""
+        if getattr(self, "_dealing", False):
+            return "break"
         if hasattr(self, "card_counting_hud") and self.card_counting_hud:
             is_vis = self.card_counting_hud.toggle_visibility()
             if is_vis:

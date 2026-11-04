@@ -428,12 +428,12 @@ class TestBettingGuiAndState(unittest.TestCase):
         self.assertEqual(self.app.save_manager.data.current_bankroll, STARTING_BANKROLL)
         self.assertEqual(self.app.save_manager.data.highscores.bankruptcies, 1)
         self.assertEqual(self.app.save_manager.data.highscores.total_bailout_funds, STARTING_BANKROLL)
-        self.assertIn("House credit extended", self.app.dealer_speech_var.get())
+        self.assertIn("House credit extended", getattr(self.app, "_current_speech_full", "") or self.app.dealer_speech_var.get())
 
     def test_rebuy_multi_seat_staged_bet_guard(self):
         """Rebuy button is disabled when total staged bets across seats equal or exceed MINIMUM_BET."""
         self.app.chips_mode_var.set(True)
-        self.app._set_table_seats(3)
+        self.app.set_table_seats(3)
         self.app._set_bankroll(0)
         self.app.engine.staged_bet = 25  # Staged bet on another seat
         self.app.current_bet_var.set(0)  # Active seat has 0 staged

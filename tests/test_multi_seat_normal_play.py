@@ -1093,6 +1093,51 @@ class TestMultiSeatNormalPlayIntegration(unittest.TestCase):
         self.assertEqual(res, "break")
         self.assertEqual(self.app.focused_betting_seat, 2)
 
+    def test_keyboard_side_bets_parity_in_multi_seat(self):
+        """
+        Verifies keyboard shortcuts Q (Perfect Pairs) and E (21+3) in multi-seat mode:
+        1. Rejected if focused seat has main bet < $5.
+        2. Targets focused seat and stages side bet when main bet >= $5.
+        3. Switching focus targets the newly focused seat.
+        4. Deducting main bet below $5 clears staged side bets on that seat.
+        """
+        self.app.bankroll_var.set(1000)
+        self.app.engine.bankroll = 1000
+        self.app.focused_betting_seat = 2
+
+        seat2 = self.app.engine.get_seat(2)
+        self.assertEqual(seat2.main_bet, 0)
+
+        # 1. Press Q without main bet on Seat 2 -> rejected
+        self.app._add_side_bet("perfect_pairs", 5)
+        self.assertEqual(seat2.side_bets.get("perfect_pairs", 0), 0)
+        self.assertIn("Seat 2: Must place min $5 main bet before side bets!", self.app.result_var.get())
+
+        # 2. Stage $25 main bet on Seat 2, then press Q
+        self.app._on_felt_chip_click(25)
+        self.assertEqual(seat2.main_bet, 25)
+        self.assertEqual(self.app.bankroll_var.get(), 975)
+
+        self.app._add_side_bet("perfect_pairs", 5)
+        self.assertEqual(seat2.side_bets["perfect_pairs"], 5)
+        self.assertEqual(self.app.bankroll_var.get(), 970)
+
+        # 3. Switch focus to Seat 1 (main bet is 0) -> press E -> rejected
+        self.app.focused_betting_seat = 1
+        seat1 = self.app.engine.get_seat(1)
+        self.assertEqual(seat1.main_bet, 0)
+        self.app._add_side_bet("21_plus_3", 5)
+        self.assertEqual(seat1.side_bets.get("21_plus_3", 0), 0)
+        self.assertIn("Seat 1: Must place min $5 main bet before side bets!", self.app.result_var.get())
+
+        # 4. Switch back to Seat 2, deduct main bet to 0 -> side bets refunded
+        self.app.focused_betting_seat = 2
+        self.app._on_felt_chip_deduct(25)
+        self.assertEqual(seat2.main_bet, 0)
+        self.assertEqual(seat2.side_bets.get("perfect_pairs", 0), 0)
+        # Bankroll was 970 before deduct; 25 refunded from main + 5 refunded from side bet = 1000
+        self.assertEqual(self.app.bankroll_var.get(), 1000)
+
 
 
 if __name__ == "__main__":
