@@ -51,6 +51,7 @@ Desktop.ini
 # Packaging & Distribution
 build/
 dist/
+docs/release/
 *.spec.bak
 
 # Asset Source Packs (curated icons are copied to assets/overlay_icons/)

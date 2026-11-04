@@ -160,11 +160,12 @@ class TestDealerStageCanvasIntegration(unittest.TestCase):
         self.assertTrue(len(clicked) > 0)
 
     def test_stage_scaling_under_2x(self):
-        """Toggling 2x scale mode updates canvas height and backdrop assets."""
+        """Scale mode is frozen at 1.0x; toggle_scale_mode is a safe no-op preserving stage height."""
         initial_h = self.app.dealer_stage_canvas.cget("height")
         self.app.toggle_scale_mode()
         scaled_h = self.app.dealer_stage_canvas.cget("height")
-        self.assertGreater(int(scaled_h), int(initial_h))
+        self.assertEqual(int(scaled_h), int(initial_h))
+        self.assertEqual(getattr(self.app, "scale_factor", 1.0), 1.0)
 
     def test_dealer_sprite_rendered_directly_on_stage_canvas(self):
         """Dealer sprite is drawn directly on DealerStageCanvas with transparent cutout grounded at anchor s."""

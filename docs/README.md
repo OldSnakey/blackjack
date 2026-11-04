@@ -25,6 +25,8 @@ The `docs` directory contains authoritative system architecture blueprints, Clas
 - **[`ITCH_IO_GUIDE.md`](ITCH_IO_GUIDE.md)**:
   - Step-by-step release packaging instructions using PyInstaller and `build_itch_release.ps1`.
   - Storefront metadata configuration, screenshot catalogue, upload tagging, and desktop client compatibility guidelines for [itch.io](https://itch.io).
+- **[`release/`](release/README.md)**:
+  - Authoritative publishing package for itch.io release v1.6.0, including store page description ([`main_game_page.md`](release/main_game_page.md)), devlog announcement ([`devlog_v1.6.0.md`](release/devlog_v1.6.0.md)), animated representative gameplay GIF ([`gameplay_3seat_card_counting.gif`](release/gameplay_3seat_card_counting.gif)), and full screenshots gallery ([`screenshots/`](release/screenshots/)).
 
 ### 3. Feature Design Specifications
 - **[`designs/`](designs/README.md)**:
