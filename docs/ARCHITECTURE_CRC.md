@@ -234,12 +234,12 @@ graph TD
 #### `SaveManager` ([save_manager.py](../save_manager.py#L182))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Active save file path (`blackjack_save.json`), fallback paths, and in-memory `SaveData` payload.<br>**Does**: Safely serializes and deserializes player records, unlocked dealers, unlocked costumes, card counting test streaks and telemetry (`counting_quizzes_taken`, `counting_quizzes_correct`, `counting_accuracy_pct`), and all 12 achievement badges (including `shoe_whisperer`, `count_capitalist`, `pair_perfectionist`, and `poker_face`). Gracefully recovers from corrupted JSON files. | Collaborates with [SaveData](../save_manager.py#L140), [Achievements](../save_manager.py#L65), [HighScores](../save_manager.py#L26), and [BlackjackApp](../blackjack.py). |
+| **Knows**: Active save file path (`blackjack_save.json`), fallback paths, and in-memory `SaveData` payload.<br>**Does**: Safely serializes and deserializes player records, persistent session bankroll (`current_bankroll`), career telemetry (`lifetime_wagered`, `bankruptcies`, `total_bailout_funds`), unlocked dealers, unlocked costumes, card counting test streaks and telemetry (`counting_quizzes_taken`, `counting_quizzes_correct`, `counting_accuracy_pct`), and all achievement badges (including `shoe_whisperer`, `count_capitalist`, `pair_perfectionist`, and `poker_face`). Gracefully recovers from corrupted JSON files. | Collaborates with [SaveData](../save_manager.py#L140), [Achievements](../save_manager.py#L65), [HighScores](../save_manager.py#L26), and [BlackjackApp](../blackjack.py). |
 
 #### `SaveData`, `Achievements`, `HighScores` ([save_manager.py](../save_manager.py#L26))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Persistent player stats: total hands played, hands won/lost/pushed, natural blackjacks, peak bankroll, Hell's Table clears, card counting quiz streaks and accuracy telemetry, side bet statistics (`side_bets_played`, `side_bets_won`, `biggest_side_bet_win`), and all 12 unlocked achievements.<br>**Does**: Provides validated dataclass structures for JSON serialization. | Collaborates with [SaveManager](../save_manager.py#L182). |
+| **Knows**: Persistent player stats: session bankroll (`current_bankroll`), total hands played, hands won/lost/pushed, natural blackjacks, peak bankroll, career wagering volume (`lifetime_wagered`), house credit bailouts (`bankruptcies`, `total_bailout_funds`), net profit calculation, Hell's Table clears, card counting quiz streaks and accuracy telemetry, side bet statistics (`side_bets_played`, `side_bets_won`, `biggest_side_bet_win`), and all 12 unlocked achievements.<br>**Does**: Provides validated dataclass structures for JSON serialization. | Collaborates with [SaveManager](../save_manager.py#L182). |
 
 ---
 
@@ -253,7 +253,7 @@ graph TD
 #### `TableFeltCanvas` ([ui_canvases.py](../ui_canvases.py#L1675))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Casino table boundaries, gold rule arcs, vignette shading, child widget background slice coordinates, and multi-seat table felt spots (Seats 1..3) from centralized configuration.<br>**Does**: Draws baize felt texture, authentic table markings, 3 crescent betting spots (Option B: Seat 3 at $X=180$, Seat 2 at $X=490$, Seat 1 at $X=800$) with horizontal flanking side bets ($X \pm 42\,\text{px}$) and 3D chip stacks (via `ui_chip_renderer.py`), active turn glowing halos, and executes canvas-level geometric click dispatching (left-click stage, right-click clear) without event bubbling. In 1-seat mode, cleanly suppresses felt spots so the baize remains pristine. | Collaborates with [BlackjackApp](../blackjack.py), [ui_chip_renderer](../ui_chip_renderer.py), and [ui_layout](../ui_layout.py). |
+| **Knows**: Casino table boundaries, gold rule arcs, vignette shading, child widget background slice coordinates, and multi-seat table felt spots (Seats 1..3) from centralized configuration.<br>**Does**: Draws baize felt texture, authentic table markings, 3 crescent betting spots (Option B: Seat 3 at $X=235, Y=285$, Seat 2 at $X=490, Y=298$, Seat 1 at $X=745, Y=285$) with horizontal flanking side bets ($X \pm 82\,\text{px}$) and 3D chip stacks (via `ui_chip_renderer.py`), active turn glowing halos, and executes canvas-level geometric click dispatching (left-click stage, right-click clear) without event bubbling. In 1-seat mode, cleanly suppresses felt spots so the baize remains pristine. | Collaborates with [BlackjackApp](../blackjack.py), [ui_chip_renderer](../ui_chip_renderer.py), and [ui_layout](../ui_layout.py). |
 
 #### `ChipRenderer` ([ui_chip_renderer.py](../ui_chip_renderer.py))
 | Responsibility | Collaboration |
@@ -289,27 +289,32 @@ graph TD
 
 ### Subsystem G: Modal Dialogs & Specialized Views
 
-#### `SettingsDialog` ([ui_dialogs.py](../ui_dialogs.py#L219))
+#### `SettingsDialog` ([ui_dialogs.py](../ui_dialogs.py#L468))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Audio toggles, dialogue voice toggle, Haunted Mode toggle, Card Counting HUD/tag toggles, and HiDPI scale factor (`1x` / `2x`).<br>**Does**: Provides adaptive scrollable configuration controls, validates live config changes, and applies them to [BlackjackApp](../blackjack.py) with confirmation safety for save resets. | Collaborates with [SoundManager](../audio_assets.py#L140) and [BlackjackApp](../blackjack.py). |
+| **Knows**: Audio toggles, dialogue voice toggle, Haunted Mode toggle, Card Counting HUD/tag toggles, table play mode selection (Casual, Betting, Training), and table seat configuration (Single-Seat vs 3-Seat Wagering).<br>**Does**: Provides adaptive scrollable configuration controls, validates live config changes, and applies them to [BlackjackApp](../blackjack.py) with confirmation safety for save resets. | Collaborates with [SoundManager](../audio_assets.py#L140) and [BlackjackApp](../blackjack.py). |
 
-#### `ShortcutsDialog` ([ui_dialogs.py](../ui_dialogs.py#L555))
+#### `MultiSeatInsuranceDialog` ([ui_dialogs.py](../ui_dialogs.py#L282))
+| Responsibility | Collaboration |
+| :--- | :--- |
+| **Knows**: Insurable seats (active multi-seat positions when dealer shows an Ace), required insurance bets ($\frac{1}{2}$ main bet per seat), and player bankroll.<br>**Does**: Renders sequential per-seat insurance decision prompts with bankroll clamping, escape auto-decline safety, and emits decision outcomes to [BlackjackEngine](../game_engine.py). | Collaborates with [BlackjackApp](../blackjack.py) and [BlackjackEngine](../game_engine.py). |
+
+#### `ShortcutsDialog` ([ui_dialogs.py](../ui_dialogs.py#L848))
 | Responsibility | Collaboration |
 | :--- | :--- |
 | **Knows**: All keyboard and mouse shortcut mappings across Gameplay, Wagering (`1`--`5` for \$5--\$1,000 chips, `Left`/`Right` for 3-Seat focus), Card Counting, and System controls (`Shift+W`, `Shift+H`, `F1`/`?`).<br>**Does**: Renders scrollable two-column modal HUD with Kenney graphical keycap icons, auto-hiding scrollbar, and mousewheel bindings. | Collaborates with [KeyboardIconLoader](../audio_assets.py#L210) and [BlackjackApp](../blackjack.py). |
 
-#### `WelcomeSplashDialog` ([ui_dialogs.py](../ui_dialogs.py#L876))
+#### `WelcomeSplashDialog` ([ui_dialogs.py](../ui_dialogs.py#L1171))
 | Responsibility | Collaboration |
 | :--- | :--- |
 | **Knows**: First-launch overview of Classic Casino, Haunted Mode, Card Counting Trainer, and essential shortcuts.<br>**Does**: Displays introductory splash modal on first run (or via Help button) with adaptive scrolling. | Collaborates with [BlackjackApp](../blackjack.py). |
 
-#### `StoryDialogueDialog` ([ui_dialogs.py](../ui_dialogs.py#L31))
+#### `StoryDialogueDialog` ([ui_dialogs.py](../ui_dialogs.py#L42))
 | Responsibility | Collaboration |
 | :--- | :--- |
 | **Knows**: Narrative story script branches, speaker character, portraits, and proceed callbacks.<br>**Does**: Displays modal narrative dialogues during major Haunted mode milestone transitions (Hell's Table descent and Celestial Exorcism victory). | Collaborates with [DealerActor](../dealer_actor.py#L133) and [BlackjackApp](../blackjack.py). |
 
-#### `AngelicDraftDialog` ([ui_dialogs.py](../ui_dialogs.py#L130))
+#### `AngelicDraftDialog` ([ui_dialogs.py](../ui_dialogs.py#L174))
 | Responsibility | Collaboration |
 | :--- | :--- |
 | **Knows**: 3 randomly selected Blessing cards drawn from the active pool at `50%` and `75%` Soul Meter milestones.<br>**Does**: Renders 3 selectable blessing cards and equips the chosen celestial power to `HauntedManager`. | Collaborates with [HauntedManager](../haunted_manager.py#L137) and [BlackjackApp](../blackjack.py). |
@@ -331,7 +336,7 @@ graph TD
 #### `BlackjackApp` ([blackjack.py](../blackjack.py#L155))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Application version (`__version__ = "1.5.0"`), Tkinter root and widget tree; active deck shoe, player hand(s), dealer hand, active split hand index; chip bankroll and active bets; `round_phase` (`RoundPhase`), dealing timers, and re-entrancy flags (`_dealing`, `_round_over`).<br>**Does**: Coordinates initial GUI layout and dynamic scaling.<br>**Does**: Handles user input (keyboard shortcuts, buttons, interactive bankroll chip piles); drives the dealing animation sequence; resolves round outcomes and payouts (\$5, \$25, \$100, \$500, \$1,000 chip math); updates score displays and synchronizes table HUDs (`ChipVisualizer` vs. `SoulMeterCanvas`), puppet expressions, and persistence saves. | Collaborates with **ALL** subsystems (Domain rules, Card counter, Haunted manager, Save manager, Sound manager, Puppet actor, Canvases, and Dialogs). |
+| **Knows**: Application version (`__version__ = "1.6.0"`), Tkinter root and widget tree; active deck shoe, player hand(s), dealer hand, active split hand index; chip bankroll and active bets; `round_phase` (`RoundPhase`), dealing timers, and re-entrancy flags (`_dealing`, `_round_over`).<br>**Does**: Coordinates initial GUI layout and dynamic scaling.<br>**Does**: Handles user input (keyboard shortcuts, buttons, interactive bankroll chip piles); drives the dealing animation sequence; resolves round outcomes and payouts (\$5, \$25, \$100, \$500, \$1,000 chip math); updates score displays and synchronizes table HUDs (`ChipVisualizer` vs. `SoulMeterCanvas`), puppet expressions, and persistence saves. | Collaborates with **ALL** subsystems (Domain rules, Card counter, Haunted manager, Save manager, Sound manager, Puppet actor, Canvases, and Dialogs). |
 
 ---
 

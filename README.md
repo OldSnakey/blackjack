@@ -68,13 +68,22 @@ Designed as an educational project for Python learners and junior developers, th
   - Haunted Altar with 5 candles that snuff out on player busts/losses, summoning 2.5D rising gravestones.
   - Showdown against **The Pit Fiend** with a 2.5D Animated Tug-of-War Soul Meter and 7 Celestial Blessings (*Seraph's Grace* bust-redraw protection, *Eye of Providence*, *Archangel's Smite*, *Cherub's Shield*, *Heavenly Tithe*, *Miracle Draw*, and *Hallowed Run*).
 - **Hall of Fame & Save Persistence (`save_manager.py`)**:
-  - Persistent career metrics (`blackjack_save.json`): Peak Bankroll, Longest Win Streak, Total Blackjacks, Hell's Table Clears, and Counting Streaks.
+  - Persistent career metrics (`blackjack_save.json`): Session-persistent bankroll (`current_bankroll`), Lifetime Wagered, Bankruptcies & Bailouts, Net Profit, Peak Bankroll, Longest Win Streak, Total Blackjacks, Hell's Table Clears, and Counting Streaks.
   - 12 unlockable gameplay achievements (*Exorcist*, *High Roller*, *Natural Streak*, *Cursed Survivor*, *Split Maestro*, *Big Spender*, *Apprentice Counter*, *Master Counter*, *Shoe Whisperer*, *Count Capitalist*, *Pair Perfectionist*, *Poker Face*).
-- **Dual Play Modes (Chips Mode Default)**:
-  - **Casino Mode (Default)**: Authentic wagering system with a \$1,000 starting bankroll, 5 authentic casino chip denominations (\$5, \$25, \$100, \$500, and \$1,000 Platinum), interactive bottom-right bankroll chip piles, staged betting, an **"All In"** button, 3:2 Natural Blackjack payouts, and a \$1,000 rebuy feature.
-  - **Casual Mode**: Instant deals, zero-stress casual play with win/loss tracking and no bankroll overhead. Switching modes prompts confirmation and automatically persists preferences to disk.
-- **2x HiDPI Display Scaling & Fullscreen**:
-  - Crisp integer 2x resolution scaling (`Shift + S` / `🔍 2x`) for 1440p and 4K monitors with nearest-neighbor scaled card assets.
+- **Three Table Play Modes (Betting Mode Default)**:
+  - **Betting Mode (Default)**: Authentic wagering system with a persistent bankroll, 5 authentic casino chip denominations (\$5, \$25, \$100, \$500, and \$1,000 Platinum), interactive bottom-right bankroll chip piles, staged betting, an **"All In"** button, 3:2 Natural Blackjack payouts, and a \$1,000 rebuy feature.
+  - **Casual Mode**: Instant deals, zero-stress casual play with win/loss tracking and no bankroll overhead.
+  - **Training Mode**: Combines full betting mechanics with the real-time Hi-Lo Card Counting Trainer HUD and dynamic Basic Strategy hints.
+  - Seamless in-game cycling via `Shift + M` or the Casino Settings dialog.
+- **Multi-Seat Table Wagering Engine (1-Seat vs. 3-Seat Wagering)**:
+  - Symmetrical 3-seat betting layout with Option B crescent baize geometry (Seats 1, 2, and 3).
+  - Independent hands per seat with clockwise deal progression (First Base $\to$ Center $\to$ Third Base).
+  - Dynamic glowing turn halos tracking the active playing seat and split hand.
+  - Independent Double Down, Split, and Surrender decisions across all seats.
+  - Bankroll-guarded `MultiSeatInsuranceDialog` offering sequential insurance decisions across all active seats when the dealer shows an Ace.
+  - Multi-seat felt chip tray and hands-free seat focus navigation via `Left` and `Right` arrow keys.
+- **Fixed 1.0x Scale & Borderless Fullscreen**:
+  - Crisp, fixed 1.0x interface geometry (`1000x700` default) ensuring authentic pixel art rendering without blurring or distortion.
   - Borderless Fullscreen mode (`F11` / `⛶ Full`).
 - **Multi-Deck Shoe & Cut Card Penetration**: 4-deck shoe (208 cards) with persistent card depletion across rounds, live shoe count, and an authentic ~25% cut card penetration reshuffle trigger.
 - **Double Down Option**: Double down on initial 2-card hands (and split hands), doubling the wager, drawing exactly one card, and standing automatically.
@@ -210,10 +219,14 @@ The game supports complete hands-free keyboard navigation with context-sensitive
 | `C` | Betting Phase | **Clear Bet** (Reset staged bet to \$0) |
 | `Y` / `N` (or `Esc`)| Dealer Shows Ace | **Take** or **Decline** Insurance (2:1 side bet) |
 | `M` | Any Time | Toggle Sound Mute (`ON` / `OFF`) |
+| `Shift + M` | Any Time (Betting/Over) | Cycle Table Play Mode (`Casual` $\to$ `Betting` $\to$ `Training`) |
+| `V` | Any Time | Toggle **Dealer Horizon Stage View** (Show / Hide) |
+| `O` / `F2` | Any Time | Open **Casino Settings & Table Preferences** |
 | `F11` | Any Time | Toggle **Borderless Fullscreen** |
 | `K` / `Shift + C` | Any Time | Toggle **Card Counter Trainer HUD** (Hi-Lo Running & True Count) |
 | `Shift + W` | Any Time | Open **Dealer Wardrobe & Costumes** |
 | `Shift + H` | Any Time | Open **Hall of Fame & Achievements** |
+| `X` | Hell's Table | **Miracle Draw** (Celestial Blessing: redraw active hand card) |
 | `?` / `/` / `F1` | Any Time | Toggle Keyboard Shortcuts Help Overlay |
 | `Escape` | Dialog Active | Dismiss Dialog / Overlay |
 
@@ -573,7 +586,7 @@ Blackjack/
 - **Declarative Layout & Geometry (`ui_layout.py`)**: `[ui_layout.py:DEFAULT_UI_CONFIG]`, `[ui_layout.py:UI_CONFIG_FILE]`, `[ui_layout.py:load_ui_config]`, `[ui_layout.py:reload_ui_config]`, `[ui_layout.py:get_ui_layout]`, `[ui_layout.py:get_table_layout]`, `[ui_layout.py:get_rail_button_layout]`, `[ui_layout.py:get_card_layout]`, `[ui_layout.py:get_seat_origin]`, `[ui_layout.py:get_grid_options]`, `[ui_layout.py:get_pack_options]`, `[ui_layout.py:resolve_origin]`, `[ui_layout.py:resolve_offset]`, `[ui_layout.py:get_theme_color]`, `[ui_layout.py:get_widget_style]`, `[ui_layout.py:apply_style]`, `[ui_layout.py:get_image_scaling_config]`, `[ui_layout.py:resolve_pil_resample]`
 
 ### Local Invariants
-- `[blackjack.py:__version__]`: Single source of truth for application semantic version (`"1.5.0"`), aliased as `APP_VERSION`.
+- `[blackjack.py:__version__]`: Single source of truth for application semantic version (`"1.6.0"`), aliased as `APP_VERSION`.
 - `[rules.py:score_hand]`: Sums card values with Aces counted as `1` and promotes at most one Ace by `+10` iff `1 in values and score + 10 <= BLACKJACK_TARGET`.
 - `[rules.py:determine_outcome]` and `[rules.py:calculate_payout]`: Split hands (`is_split=True`) with 2-card 21 evaluate as `PLAYER_WINS` (`1:1`), never `NATURAL_BLACKJACK` (`3:2`); `[rules.py:calculate_insurance_payout]` rounds odd-bet insurance profit via `max(main_bet, insurance_bet * INSURANCE_PAYOUT_RATIO)` when `insurance_bet == main_bet // 2`.
 - `[state_machine.py:GameStateMachine.transition_to]`: Enforces `VALID_TRANSITIONS` across `RoundPhase` and raises `InvalidStateTransitionError` on illegal jumps unless `force=True`.
@@ -586,6 +599,12 @@ Blackjack/
 
 ## Subdirectories & System Boundaries
 
+- `assets`: [`./assets/README.md`](./assets/README.md) — Visual branding, bundled pixel fonts, Kenney overlay keycaps, storefront screenshots, and declarative UI layout configuration.
+- `audio`: [`./audio/README.md`](./audio/README.md) — 42 tactile casino sound effects (.ogg) across 10 categories and procedural supernatural audio stingers.
+- `cards`: [`./cards/README.md`](./cards/README.md) — 55 standard playing card PNG assets (74x107 px) and authentic hole card damask back.
+- `development_roadmap`: [`./development_roadmap/README.md`](./development_roadmap/README.md) — Active development roadmap (`ROADMAP.md`) and historical completed specification archive.
+- `docs`: [`./docs/README.md`](./docs/README.md) — Architectural Class-Responsibility-Collaboration index (`ARCHITECTURE_CRC.md`), itch.io release guide, and technical feature design specifications.
+- `tests`: [`./tests/README.md`](./tests/README.md) — 47 automated test modules covering core rules, multi-seat wagering, card counting, puppet kinematics, and GUI geometry.
 - `tools`: [`./tools/README.md`](./tools/README.md) — Offline procedural asset generators, 19-layer dealer puppet slicers and faceplate de-occluders, and Win32 GDI (`PrintWindow`) visual verification capture scripts.
 - `.agents/skills/package-itch-release`: [`./.agents/skills/package-itch-release/SKILL.md`](./.agents/skills/package-itch-release/SKILL.md) — Standalone PyInstaller packaging and itch.io distribution workflow skill.
 

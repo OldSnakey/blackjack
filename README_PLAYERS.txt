@@ -38,11 +38,11 @@ MOUSE CONTROLS:
   - Click "All In" to wager your entire bankroll on the main hand in Casino Mode.
 - TOP BAR CONTROLS:
   - Click "[M] Sound" to toggle audio ON or OFF.
-  - Click "[🔍 2x]" / "[🔍 1x]" to toggle 1x / 2x interface scaling.
+  - Click "[V] View" to toggle the dealer horizon stage view (show/hide).
   - Click "[⛶ Full]" / "[🗗 Window]" to toggle fullscreen display mode.
   - Click "[?] Help" to open the visual keyboard shortcuts overlay.
   - Click "[⚙ Settings]" (or press [Shift+M]) to switch between Casual, Betting, 
-    and Training modes or reset career save data.
+    and Training modes, toggle 1-Seat vs 3-Seat Wagering, or manage save data.
 
 KEYBOARD SHORTCUTS (Hands-Free Play):
 - [Enter] or [Space] : Context-sensitive action (Deal Hand / Hit / Next Game)
@@ -51,20 +51,21 @@ KEYBOARD SHORTCUTS (Hands-Free Play):
 - [D]                : Double Down (Double bet, draw 1 card)
 - [P]                : Split Pair (Split equal-rank cards into 2 hands)
 - [R]                : Surrender (Forfeit half bet before hitting)
-- [1]..[5]           : Add $5, $25, $100, $500, or $1,000 Platinum chip to main bet
-- [Q] or [Key-6]     : Add $5 to Perfect Pairs side bet
-- [E] or [Key-7]     : Add $5 to 21+3 side bet
+- [1]..[5]           : Add $5, $25, $100, $500, or $1,000 Platinum chip to focused bet
+- [Left] / [Right]   : Cycle betting seat focus between Seat 1, 2, and 3 in 3-Seat Wagering
+- [Q] or [Key-6]     : Add $5 to Perfect Pairs side bet (requires min $5 main bet)
+- [E] or [Key-7]     : Add $5 to 21+3 side bet (requires min $5 main bet)
 - [A]                : All In (Wager full bankroll on main hand)
 - [C]                : Clear All Staged Bets
 - [Y] / [N, Esc]     : Take / Decline Insurance on Dealer Ace
 - [M]                : Mute / Unmute Audio Toggle
+- [V]                : Toggle Dealer Horizon Stage View (Show / Hide)
 - [Shift+M]          : Cycle Play Mode (Casual -> Betting -> Training)
 - [K] or [Shift+C]   : Toggle Card Counter Trainer HUD (Running Count, True Count, Quiz)
 - [Shift+W]          : Open Dealer Wardrobe & Costume Customizer
 - [Shift+H]          : Open Hall of Fame & Achievements
 - [O] or [F2]        : Open Settings & Save Data Dialog
 - [X]                : Miracle Draw (Banish and redraw active card in Hell's Table)
-- [Shift+S] or [F10] : Toggle 1x / 2x Interface Scaling
 - [F11]              : Toggle Fullscreen Mode
 - [?] or [F1]        : Toggle Keyboard Shortcuts Informational Overlay
 - [Esc]              : Close Shortcuts Overlay / Decline Insurance / Exit Fullscreen
@@ -72,9 +73,10 @@ KEYBOARD SHORTCUTS (Hands-Free Play):
 ------------------------------------------------------------------------------
 CASINO SIDE BETS (PERFECT PAIRS & 21+3)
 ------------------------------------------------------------------------------
-In Casino Mode, you can place optional side bets in the flanking felt circles 
-before the cards are dealt. Side bets settle immediately upon the initial 4-card 
-deal, paying out instant winnings before you play out your main blackjack hand!
+In Betting Mode, you can place optional side bets in the flanking felt circles 
+before cards are dealt (requires a min $5 main bet on that seat). Side bets settle 
+immediately upon the initial 4-card deal, paying out instant winnings before you 
+play out your main blackjack hand!
 
 1. PERFECT PAIRS (Left Spot - Pays on player's first 2 cards):
    - Mixed Pair   (6:1)  : Same rank, different color (e.g., 8 of Spades + 8 of Hearts)
@@ -96,7 +98,7 @@ Side bets reset to $0 each hand so you are always in total control of your wager
 ------------------------------------------------------------------------------
 GAME MODES
 ------------------------------------------------------------------------------
-- CASINO MODE (Chips ON):
+- BETTING MODE (Chips ON):
   Play with authentic casino bankroll rules ($1,000 starting bankroll), 
   staged betting, chip denominations, 3:2 Natural Blackjack payouts, 
   Insurance side bets, and automatic rebuy if you bust your bankroll.
@@ -105,13 +107,22 @@ GAME MODES
   Zero-stress play with no bankroll overhead and instant deals. Perfect for 
   quick practice.
 
+- TRAINING MODE (Hi-Lo Counter & Strategy Hints):
+  Combines full betting mechanics with the real-time Hi-Lo Card Counting 
+  Trainer HUD and dynamic Basic Strategy hints to master optimal play.
+
+- MULTI-SEAT WAGERING (1-Seat vs. 3-Seat Wagering):
+  Switch between Single-Seat and 3-Seat play in the Settings menu or rail dock. 
+  In 3-Seat Wagering, place bets across Seats 1, 2, and 3, navigate focus with 
+  arrow keys [Left]/[Right], and play independent hands with clockwise deal order!
+
 - HAUNTED HALLOWEEN & HELL'S TABLE (Slow-Burn Mode):
-  Keep playing through standard hands to experience a subtle reality warp.
-  Survive the ominous Hand 13 and the extinguishing of the 5 candles to face
-  The Pit Fiend at Hell's Table! Draft Balatro-style Roguelike Angelic Blessings
-  (Seraph's Grace, Cherub's Shield, Eye of Providence, Miracle Draw, and more)
-  in a 2.5D Tug-of-War struggle for your mortal soul. Banish the demon to unlock
-  permanent Cursed Stakes, the Exorcist title, and +$6,666 bankroll!
+  In Single-Seat play, keep playing through standard hands to experience a 
+  subtle reality warp. Survive the ominous Hand 13 and the extinguishing of the 
+  5 candles to face The Pit Fiend at Hell's Table! Draft Balatro-style Roguelike 
+  Angelic Blessings (Seraph's Grace, Cherub's Shield, Eye of Providence, Miracle Draw, 
+  and more) in a 2.5D Tug-of-War struggle for your mortal soul. Banish the demon to 
+  unlock permanent Cursed Stakes, the Exorcist title, and +$6,666 bankroll!
 
 ------------------------------------------------------------------------------
 HALL OF FAME & ACHIEVEMENTS (Shift+H)
