@@ -1389,8 +1389,9 @@ class WelcomeSplashDialog(tkinter.Toplevel):
                 "training",
                 "3",
                 "🧠 Strategy & Counting Trainer",
-                "Hi-Lo Running & True Count HUD + Basic Strategy Advisor",
+                "3-Seat Wagering + Hi-Lo Running & True Count HUD",
                 [
+                    "• Full 3-Seat Wagering baize with multi-hand bet spreading practice",
                     "• Real-time Hi-Lo Running Count, Decks Remaining & True Count HUD",
                     "• Dynamic Ideal Bet Sizing advice (1u to 5u) based on player edge",
                     "• Basic Strategy decision hints for every hand (assuming no hole-card peek)",
@@ -1549,6 +1550,11 @@ class WelcomeSplashDialog(tkinter.Toplevel):
         if self.remember_var.get():
             if hasattr(self.app, "save_manager") and self.app.save_manager:
                 self.app.save_manager.complete_onboarding()
+        if hasattr(self.app, "set_table_seats"):
+            if mode == "training":
+                self.app.set_table_seats(3)
+            else:
+                self.app.set_table_seats(1)
         if hasattr(self.app, "apply_play_mode"):
             self.app.apply_play_mode(mode)
         if self.on_confirm_cb:

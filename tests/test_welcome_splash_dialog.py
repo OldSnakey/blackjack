@@ -118,7 +118,19 @@ class TestWelcomeSplashDialog(unittest.TestCase):
         self.assertEqual(confirmed_modes, ["casual"])
         self.assertEqual(self.app.play_mode, "casual")
         self.assertFalse(self.app.chips_mode_var.get())
+        self.assertEqual(self.app.table_seats, 1)
         self.assertTrue(self.app.save_manager.data.onboarding_completed)
+
+    def test_welcome_splash_dialog_confirm_training_enables_3_seats(self):
+        """Tests that confirming Training mode in WelcomeSplashDialog activates 3-seat wagering."""
+        self.app.table_seats = 1
+        dialog = WelcomeSplashDialog(self.root, self.app)
+        dialog.update_idletasks()
+        dialog._select_mode("training")
+        dialog._on_confirm()
+        self.assertEqual(self.app.table_seats, 3)
+        self.assertEqual(self.app.play_mode, "training")
+        self.assertTrue(self.app.card_counting_hud.is_visible)
 
     def test_skip_dismissal_preserves_onboarding_state(self):
         """Tests that pressing skip closes dialog without forcing onboarding completion."""
