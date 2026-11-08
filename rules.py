@@ -118,6 +118,9 @@ class Hand:
     def __getitem__(self, idx):
         return self.cards[idx]
 
+    def __setitem__(self, idx, card: Card) -> None:
+        self.cards[idx] = card
+
     def __iter__(self):
         return iter(self.cards)
 

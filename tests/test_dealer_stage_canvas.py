@@ -45,6 +45,10 @@ class TestDealerStageAssets(unittest.TestCase):
         "backdrop_celestial_2x.png",
         "backdrop_crypt.png",
         "backdrop_crypt_2x.png",
+        "backdrop_cyber.png",
+        "backdrop_cyber_2x.png",
+        "backdrop_academy.png",
+        "backdrop_academy_2x.png",
     ]
 
     REQUIRED_ICONS = [

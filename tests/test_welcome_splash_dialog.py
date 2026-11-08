@@ -122,14 +122,18 @@ class TestWelcomeSplashDialog(unittest.TestCase):
         self.assertTrue(self.app.save_manager.data.onboarding_completed)
 
     def test_welcome_splash_dialog_confirm_training_enables_3_seats(self):
-        """Tests that confirming Training mode in WelcomeSplashDialog activates 3-seat wagering."""
+        """Tests that confirming Training mode in WelcomeSplashDialog activates 3-seat wagering and opens the Bootcamp stage map."""
         self.app.table_seats = 1
+        self.app.save_manager.mark_bootcamp_intro_seen()
         dialog = WelcomeSplashDialog(self.root, self.app)
         dialog.update_idletasks()
         dialog._select_mode("training")
         dialog._on_confirm()
         self.assertEqual(self.app.table_seats, 3)
         self.assertEqual(self.app.play_mode, "training")
+        self.assertTrue(self.app.bootcamp_active)
+        self.assertEqual(self.app.bootcamp_frame.current_view, "map")
+        self.app.exit_counting_bootcamp_to_free_play()
         self.assertTrue(self.app.card_counting_hud.is_visible)
 
     def test_skip_dismissal_preserves_onboarding_state(self):

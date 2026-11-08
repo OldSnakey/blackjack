@@ -99,6 +99,7 @@ class CardCountingHud(tkinter.Frame):
         counter: HiLoCardCounter,
         on_quiz_request: Optional[Callable[[], None]] = None,
         on_stage_bet_request: Optional[Callable[[int], None]] = None,
+        on_bootcamp_request: Optional[Callable[[], None]] = None,
         use_grid: bool = False,
         grid_row: int = 2,
         stage_canvas: Optional[tkinter.Canvas] = None,
@@ -125,6 +126,7 @@ class CardCountingHud(tkinter.Frame):
         self.counter = counter
         self.on_quiz_request = on_quiz_request
         self.on_stage_bet_request = on_stage_bet_request
+        self.on_bootcamp_request = on_bootcamp_request
         self.use_grid = use_grid
         self.grid_row = grid_row
         self.stage_canvas = stage_canvas
@@ -232,9 +234,27 @@ class CardCountingHud(tkinter.Frame):
         )
         self.quiz_btn.pack(side="right", padx=3)
 
+        self.bootcamp_btn = tkinter.Button(
+            self.bar_frame,
+            text="🎓 Bootcamp",
+            font=btn_font,
+            background=self.BTN_BG,
+            foreground=self.GOLD_TEXT,
+            activebackground=self.BTN_ACTIVE_BG,
+            activeforeground="#ffffff",
+            relief="raised",
+            borderwidth=1,
+            padx=5,
+            pady=1,
+            cursor="hand2",
+            takefocus=False,
+            command=self._on_bootcamp_click,
+        )
+        self.bootcamp_btn.pack(side="right", padx=3)
+
         self.mode_btn = tkinter.Button(
             self.bar_frame,
-            text="👁️ Assisted",
+            text="👁 Assisted",
             font=btn_font,
             background=self.BTN_BG,
             foreground="#80cbc4",
@@ -242,7 +262,7 @@ class CardCountingHud(tkinter.Frame):
             activeforeground="#ffffff",
             relief="raised",
             borderwidth=1,
-            padx=5,
+            padx=4,
             pady=1,
             cursor="hand2",
             takefocus=False,
@@ -317,21 +337,48 @@ class CardCountingHud(tkinter.Frame):
         self.bet_guide_label.bind("<Button-1>", lambda e: self._on_stage_bet_click())
 
         # Basic Strategy Advisor Hint & Illustrious 18 Deviation Badge
-        self.strategy_frame = tkinter.Frame(self.bar_frame, background=self.MAHOGANY_BG)
-        self.strategy_frame.pack(side="left", padx=3)
-        tkinter.Label(
-            self.strategy_frame, text="Strategy:", font=f_lbl, fg=self.GOLD_TRIM, background=self.MAHOGANY_BG
-        ).pack(side="left")
+        # When table_canvas is provided (shelf mode), mount as a dedicated plaque on the felt
+        # centered between the Dealer and Seat/Player score boxes.
+        strategy_parent = self.table_canvas if (self.placement_mode == "shelf" and self.table_canvas is not None) else self.bar_frame
+        self.strategy_frame = tkinter.Frame(
+            strategy_parent,
+            background=self.MAHOGANY_BG,
+            relief="flat",
+            borderwidth=0,
+            highlightbackground=self.GOLD_TRIM,
+            highlightcolor=self.GOLD_TRIM,
+            highlightthickness=1 if strategy_parent is self.table_canvas else 0,
+            padx=8 if strategy_parent is self.table_canvas else 3,
+            pady=3 if strategy_parent is self.table_canvas else 0,
+        )
+        if strategy_parent is self.bar_frame:
+            self.strategy_frame.pack(side="left", padx=3)
+
+        self.strategy_title_lbl = tkinter.Label(
+            self.strategy_frame,
+            text="STRATEGY" if strategy_parent is self.table_canvas else "Strategy:",
+            font=f_lbl,
+            fg=self.GOLD_TRIM,
+            background=self.MAHOGANY_BG,
+        )
+        if strategy_parent is self.table_canvas:
+            self.strategy_title_lbl.pack(side="top", anchor="center")
+        else:
+            self.strategy_title_lbl.pack(side="left")
+
         self.strategy_label = tkinter.Label(
             self.strategy_frame,
             text="-",
             font=get_element_font("hilo_trainer_button"),
             fg="#ffffff",
             background=self.MAHOGANY_BG,
-            justify="left",
-            anchor="w",
+            justify="center" if strategy_parent is self.table_canvas else "left",
+            anchor="center" if strategy_parent is self.table_canvas else "w",
         )
-        self.strategy_label.pack(side="left", padx=(2, 0))
+        if strategy_parent is self.table_canvas:
+            self.strategy_label.pack(side="top", anchor="center", pady=(1, 0))
+        else:
+            self.strategy_label.pack(side="left", padx=(2, 0))
 
         # Deviation indicator badge (Illustrious 18)
         self.deviation_badge = tkinter.Label(
@@ -340,7 +387,7 @@ class CardCountingHud(tkinter.Frame):
             font=get_element_font("hilo_trainer_button"),
             fg=self.GOLD_TEXT,
             background=self.BTN_BG,
-            padx=5,
+            padx=4,
             pady=0,
             relief="solid",
             borderwidth=1,
@@ -351,6 +398,10 @@ class CardCountingHud(tkinter.Frame):
     def _on_quiz_click(self):
         if self.on_quiz_request:
             self.on_quiz_request()
+
+    def _on_bootcamp_click(self):
+        if self.on_bootcamp_request:
+            self.on_bootcamp_request()
 
     def _on_stage_bet_click(self):
         """Dispatches stage bet callback if registered."""
@@ -364,10 +415,12 @@ class CardCountingHud(tkinter.Frame):
         return self.is_visible
 
     def toggle_visibility(self) -> bool:
-        """Toggles visibility of the counting HUD shelf."""
+        """Toggles visibility of the counting HUD shelf and felt strategy plaque."""
         if self.is_visible:
             if self.placement_mode == "shelf":
                 self.place_forget()
+                if hasattr(self, "strategy_frame") and self.strategy_frame.master is self.table_canvas:
+                    self.strategy_frame.place_forget()
             elif self.use_grid:
                 self.grid_remove()
             else:
@@ -448,6 +501,49 @@ class CardCountingHud(tkinter.Frame):
                 height=44,
             )
             self.lift()
+        self._place_strategy_plaque()
+
+    def _place_strategy_plaque(self):
+        """
+        Positions `self.strategy_frame` on `self.table_canvas` centered horizontally and
+        vertically between the Dealer score box (row 0, col 0) and the Player/Seat score box (row 1, col 0).
+        """
+        if not hasattr(self, "strategy_frame") or self.table_canvas is None:
+            return
+        if self.strategy_frame.master is not self.table_canvas:
+            return
+        cx, cy = 71, 114
+        try:
+            plaques = [
+                ch for ch in self.table_canvas.winfo_children()
+                if "pixelplaqueframe" in ch.__class__.__name__.lower() and bool(ch.grid_info())
+            ]
+            if len(plaques) >= 2:
+                plaques.sort(key=lambda w: int(w.grid_info().get("row", 0)))
+                top_p, bot_p = plaques[0], plaques[1]
+                top_y = top_p.winfo_y()
+                top_h = top_p.winfo_height() if top_p.winfo_height() > 1 else 60
+                bot_y = bot_p.winfo_y()
+                top_x = top_p.winfo_x() if top_p.winfo_x() > 0 else 14
+                top_w = top_p.winfo_width() if top_p.winfo_width() > 1 else 114
+                if bot_y > top_y + top_h:
+                    cx = top_x + top_w // 2
+                    cy = (top_y + top_h + bot_y) // 2
+                    # When Dealer View is OFF, the HUD shelf sits at y=176..220; keep plaque centered between Dealer box and shelf
+                    if not self._is_container_active(self.stage_canvas) and cy >= 150:
+                        cy = (top_y + top_h + 176) // 2
+            req_w = max(114, self.strategy_frame.winfo_reqwidth())
+            cx = max(14 + req_w // 2, cx)
+        except Exception:
+            cx, cy = 71, 114
+
+        self.strategy_frame.place(
+            in_=self.table_canvas,
+            x=cx,
+            y=cy,
+            anchor="center",
+        )
+        self.strategy_frame.lift()
 
     def on_dealer_view_toggled(self):
         """Updates shelf placement if visible when dealer stage is shown/hidden."""
@@ -574,12 +670,17 @@ class CardCountingHud(tkinter.Frame):
                 display_badge = badge_txt
                 if len(display_badge) > 22 and " (" in display_badge:
                     display_badge = display_badge.split(" (")[0]
-                self.deviation_badge.configure(text=display_badge, font=("m5x7", -14, "bold"))
+                self.deviation_badge.configure(text=display_badge, font=("m5x7", -16, "bold"))
                 if not bool(self.deviation_badge.winfo_manager()):
-                    self.deviation_badge.pack(side="left", padx=(4, 0))
+                    if self.strategy_frame.master is self.table_canvas:
+                        self.deviation_badge.pack(side="top", anchor="center", pady=(2, 0))
+                    else:
+                        self.deviation_badge.pack(side="left", padx=(4, 0))
             else:
                 if bool(self.deviation_badge.winfo_manager()):
                     self.deviation_badge.pack_forget()
+        if self.is_visible and self.placement_mode == "shelf":
+            self._place_strategy_plaque()
 
     def set_drill_mode(self, enabled: bool, cards_remaining: int = 208, base_bet: int = 25) -> bool:
         """Sets Drill Challenge Mode (masks live RC/TC/Edge as '?' when enabled)."""
@@ -588,7 +689,7 @@ class CardCountingHud(tkinter.Frame):
             if self.drill_mode:
                 self.mode_btn.configure(text="🧠 Drill", foreground="#ffd54f", background="#3e2723")
             else:
-                self.mode_btn.configure(text="👁️ Assisted", foreground="#80cbc4", background="#1b382d")
+                self.mode_btn.configure(text="👁 Assisted", foreground="#80cbc4", background="#1b382d")
         if self.drill_mode and hasattr(self, "deviation_badge") and bool(self.deviation_badge.winfo_manager()):
             self.deviation_badge.pack_forget()
         self.update_counts(cards_remaining=cards_remaining, base_bet=base_bet)

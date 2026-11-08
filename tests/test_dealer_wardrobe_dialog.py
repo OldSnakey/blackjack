@@ -155,6 +155,48 @@ class TestDealerWardrobeDialog(unittest.TestCase):
         reloaded = self.app.save_manager.load()
         self.assertEqual(reloaded.equipped_costume, "uriel")
 
+    def test_uriel_costume_variants_carousel_and_equip(self):
+        """Uriel card carousel cycles through 8 costume variants (Option B), updates portrait preview, and equips variant."""
+        self.app.save_manager.data.achievements.exorcist = True
+        self.app._on_click_stage_hanger()
+        dialog = self.app._wardrobe_dialog
+        dialog._switch_page(1)  # Page 2: Supernatural Legends
+
+        uriel_panel = dialog.cards["uriel"]["panel"]
+        self.assertEqual(len(uriel_panel.costumes), 8)
+        self.assertTrue(uriel_panel.prev_costume_btn.enabled)
+        self.assertTrue(uriel_panel.next_costume_btn.enabled)
+        self.assertEqual(
+            uriel_panel.itemcget(uriel_panel.carousel_text_id, "text"),
+            "Seraphic Sky (1/8)",
+        )
+        initial_photo = uriel_panel.portrait_photo
+
+        # Advance to 2/8 (Pearl Alabaster)
+        uriel_panel._next_costume()
+        self.assertEqual(
+            uriel_panel.itemcget(uriel_panel.carousel_text_id, "text"),
+            "Pearl Alabaster (2/8)",
+        )
+        self.assertIsNot(uriel_panel.portrait_photo, initial_photo)
+
+        # Equip Pearl Alabaster variant
+        uriel_panel._on_equip_click()
+        self.assertEqual(self.app.dealer_actor.current_character, "uriel")
+        self.assertEqual(self.app.dealer_actor.current_costume, "uriel_alabaster")
+        self.assertEqual(self.app.save_manager.data.equipped_costume, "uriel_alabaster")
+        self.assertEqual(uriel_panel.equip_btn.text, "✦ EQUIPPED")
+
+        # Advance to 3/8 (Royal Sapphire) -> button becomes enabled 'Equip Costume'
+        uriel_panel._next_costume()
+        self.assertEqual(
+            uriel_panel.itemcget(uriel_panel.carousel_text_id, "text"),
+            "Royal Sapphire (3/8)",
+        )
+        self.assertTrue(uriel_panel.equip_btn.enabled)
+        self.assertEqual(uriel_panel.equip_btn.text, "Equip Costume")
+        dialog._on_close()
+
     def test_wardrobe_dialog_dismissal_on_escape(self):
         """Pressing Escape safely destroys the WardrobeDialog."""
         self.app._on_click_stage_hanger()
@@ -318,8 +360,8 @@ class TestDealerWardrobeDialog(unittest.TestCase):
         # Check achievement plaque description styling
         exorcist_plaque = dialog.plaque_widgets["exorcist"]["frame"]
         items = exorcist_plaque.find_all()
-        # Find description text item (at y=34)
-        desc_items = [it for it in items if exorcist_plaque.type(it) == "text" and exorcist_plaque.coords(it)[1] == 34.0]
+        # Find description text item (at y=32 or y=34)
+        desc_items = [it for it in items if exorcist_plaque.type(it) == "text" and exorcist_plaque.coords(it)[1] in (32.0, 34.0)]
         self.assertEqual(len(desc_items), 1)
         desc_id = desc_items[0]
         self.assertEqual(exorcist_plaque.itemcget(desc_id, "fill"), "#d8e2dc")

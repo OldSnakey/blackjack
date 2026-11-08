@@ -43,7 +43,7 @@ class TestRosterPuppetConversion(unittest.TestCase):
 
     def test_all_characters_marked_as_puppets(self):
         """Every dealer profile in CHARACTERS is marked is_puppet=True."""
-        expected = ["julian", "malphas", "uriel", "mortimer", "tiffany", "selene", "vladimir", "dummy"]
+        expected = ["julian", "malphas", "uriel", "mortimer", "tiffany", "selene", "vladimir", "professor", "dummy"]
         for cid in expected:
             self.assertIn(cid, CHARACTERS, f"Character '{cid}' not registered in CHARACTERS")
             prof = CHARACTERS[cid]
@@ -51,7 +51,7 @@ class TestRosterPuppetConversion(unittest.TestCase):
 
     def test_all_characters_composite_cleanly_at_1x_and_2x(self):
         """Every character composites into a valid non-empty RGBA image at 1x and 2x."""
-        for cid in ("julian", "malphas", "uriel", "mortimer", "tiffany", "selene", "vladimir", "dummy"):
+        for cid in ("julian", "malphas", "uriel", "mortimer", "tiffany", "selene", "vladimir", "professor", "dummy"):
             self.actor.equip_costume(cid)
 
             # 1x scale
@@ -70,7 +70,7 @@ class TestRosterPuppetConversion(unittest.TestCase):
 
     def test_all_visemes_render_for_all_characters(self):
         """All 8 viseme states composite without crashing across all characters."""
-        for cid in ("julian", "malphas", "uriel", "mortimer", "tiffany", "selene", "vladimir"):
+        for cid in ("julian", "malphas", "uriel", "mortimer", "tiffany", "selene", "vladimir", "professor"):
             self.actor.equip_costume(cid)
             for vstate in VISEME_STATES:
                 self.actor.set_mouth_state(vstate)
@@ -79,7 +79,7 @@ class TestRosterPuppetConversion(unittest.TestCase):
 
     def test_all_eye_states_render_for_all_characters(self):
         """Blink eye states (open, half, closed) composite successfully."""
-        for cid in ("julian", "malphas", "uriel", "mortimer", "tiffany", "selene", "vladimir"):
+        for cid in ("julian", "malphas", "uriel", "mortimer", "tiffany", "selene", "vladimir", "professor"):
             self.actor.equip_costume(cid)
             for estate in ("open", "half", "closed"):
                 self.actor.set_eye_state(estate)
@@ -88,7 +88,7 @@ class TestRosterPuppetConversion(unittest.TestCase):
 
     def test_all_arm_gestures_render_for_all_characters(self):
         """Arm gestures (rest, deal, peek) composite successfully."""
-        for cid in ("julian", "malphas", "uriel", "mortimer", "tiffany", "selene", "vladimir"):
+        for cid in ("julian", "malphas", "uriel", "mortimer", "tiffany", "selene", "vladimir", "professor"):
             self.actor.equip_costume(cid)
             for astate in ("rest", "deal", "peek"):
                 self.actor.set_arm_state(astate)
@@ -99,7 +99,7 @@ class TestRosterPuppetConversion(unittest.TestCase):
         """All primary dealer puppets must have 100% opaque interior face/neck/collar pixels (no alpha<255 horizontal slits or black-premultiplied boxes)."""
         import numpy as np
 
-        for cid in ("julian", "malphas", "uriel", "mortimer", "tiffany", "selene", "vladimir"):
+        for cid in ("julian", "malphas", "uriel", "mortimer", "tiffany", "selene", "vladimir", "professor"):
             self.actor.equip_costume(cid)
             self.actor.set_scale(2.0)
             self.actor.set_eye_state("open")
@@ -133,7 +133,7 @@ class TestRosterPuppetConversion(unittest.TestCase):
         """Changing eye_state or mouth_state on puppet characters visibly alters the rendered composite."""
         import numpy as np
 
-        for cid in ("julian", "malphas", "uriel", "mortimer", "tiffany", "selene", "vladimir"):
+        for cid in ("julian", "malphas", "uriel", "mortimer", "tiffany", "selene", "vladimir", "professor"):
             self.actor.equip_costume(cid)
             self.actor.set_scale(2.0)
             self.actor.set_eye_state("open")

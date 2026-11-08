@@ -224,18 +224,18 @@
       "description": "Felt watermark text inside betting circle"
     },
     "chip_bet_badge": {
-      "role": "micro",
-      "base_size": 10,
+      "role": "badge",
+      "base_size": 14,
       "description": "Current staged bet readout above betting spot"
     },
     "chip_bankroll_badge": {
-      "role": "micro",
-      "base_size": 10,
+      "role": "badge",
+      "base_size": 12,
       "description": "Reserve tray bankroll header (CHIPS: $... L-Click + | R-Click -)"
     },
     "chip_denomination_label": {
-      "role": "micro",
-      "base_size": 10,
+      "role": "badge",
+      "base_size": 14,
       "description": "Denomination label under each reserve pile ($5, $25, $100, $500, $1K)"
     },
     "chip_face_value": {
@@ -253,20 +253,23 @@
     },
     "insurance_prompt_label": {
       "role": "header",
-      "base_size": 15,
+      "base_size": 16,
       "description": "Insurance inquiry text prompt"
     },
     "insurance_prompt_button": {
       "role": "button",
-      "base_size": 15,
+      "base_size": 16,
       "description": "Take / Decline Insurance action buttons"
     },
     "dealer_nameplate": {
       "role": "header",
+      "base_size": 16,
       "description": "Dealer character nameplate on narrative dialogue stage"
     },
     "dealer_speech": {
       "role": "body",
+      "family": "m5x7",
+      "base_size": 20,
       "description": "Dialogue box typewriter speech and narrative subtitles"
     },
     "table_announcement": {
@@ -365,27 +368,27 @@
     },
     "angelic_draft_subtitle": {
       "role": "header",
-      "base_size": 15,
+      "base_size": 16,
       "description": "Angelic draft dialog subtitle instruction"
     },
     "angelic_draft_title": {
       "role": "header",
-      "base_size": 16,
+      "base_size": 18,
       "description": "Relic card title in angelic blessing draft dialog"
     },
     "angelic_draft_tagline": {
       "role": "badge",
-      "base_size": 13,
+      "base_size": 16,
       "description": "Relic card tagline in angelic blessing draft dialog"
     },
     "angelic_draft_description": {
       "role": "body",
-      "base_size": 16,
+      "base_size": 18,
       "description": "Relic card power description in angelic blessing draft dialog"
     },
     "angelic_draft_button": {
       "role": "button",
-      "base_size": 14,
+      "base_size": 16,
       "description": "Equip relic button in angelic blessing draft dialog"
     },
     "dialog_action_label": {
@@ -397,14 +400,14 @@
     },
     "dialog_hint_label": {
       "family": "m6x11plus",
-      "base_size": 14,
+      "base_size": 15,
       "weight": "normal",
       "fallback": "m5x7",
       "description": "Shortcuts and controls secondary description and hint label"
     },
     "dialog_tip_label": {
       "family": "m6x11plus",
-      "base_size": 15,
+      "base_size": 16,
       "weight": "normal",
       "fallback": "m5x7",
       "description": "Dialog bottom footer navigation tip banner"

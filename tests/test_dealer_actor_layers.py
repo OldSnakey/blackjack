@@ -174,6 +174,201 @@ class TestDealerActorCompositor(unittest.TestCase):
         self.actor.equip_costume("grim_bones")
         self.assertEqual(self.actor.current_character, "mortimer")
 
+    def test_uriel_costume_variants_alter_torso_and_bust(self):
+        """Uriel exposes 8 costume variants (Option B) that produce distinct composites and busts."""
+        costumes = CHARACTERS["uriel"].get_costumes()
+        costume_ids = [c.costume_id for c in costumes]
+        self.assertEqual(
+            costume_ids,
+            [
+                "uriel",
+                "uriel_alabaster",
+                "uriel_sapphire",
+                "uriel_obsidian",
+                "uriel_archangel",
+                "uriel_olympian",
+                "uriel_pontiff",
+                "uriel_fallen",
+            ],
+        )
+
+        comp_hashes = set()
+        bust_hashes = set()
+        for cid in costume_ids:
+            self.actor.equip_costume(cid)
+            self.assertEqual(self.actor.current_character, "uriel")
+            self.assertEqual(self.actor.current_costume, cid)
+            comp_bytes = self.actor.get_composite_image().tobytes()
+            bust_img = self.actor.get_bust_image("uriel", costume_id=cid)
+            self.assertIsNotNone(bust_img)
+            comp_hashes.add(comp_bytes)
+            bust_hashes.add(bust_img.tobytes())
+
+        self.assertEqual(len(comp_hashes), 8, "Each Uriel costume variant must produce a distinct composite")
+        self.assertEqual(len(bust_hashes), 8, "Each Uriel costume variant must have a distinct bust portrait")
+
+    def test_all_dealers_costume_variants_and_special_outfits(self):
+        """
+        All 8 portrait dealers expose their full Option B costume roster (existing variants + 4 imaginative
+        silhouette-transforming costumes each) that produce unique composites, unique bust portraits,
+        and strictly preserve top/side frame headroom so no head or hat is ever cut off.
+        """
+        import numpy as np
+        from dealer_wardrobe_dialog import COSTUME_VOICE_QUOTES
+
+        expected_costumes = {
+            "julian": [
+                "julian",
+                "julian_monte_carlo",
+                "julian_high_roller",
+                "julian_emerald",
+                "julian_bond",
+                "julian_godfather",
+                "julian_maverick",
+                "julian_miami",
+            ],
+            "tiffany": [
+                "tiffany",
+                "tiffany_sequin",
+                "tiffany_rose",
+                "tiffany_champagne",
+                "tiffany_amethyst",
+                "tiffany_bunny",
+                "tiffany_showgirl",
+                "tiffany_cheongsam",
+                "tiffany_noir",
+            ],
+            "professor": [
+                "professor",
+                "professor_ivy",
+                "professor_oxford",
+                "professor_vegas",
+                "professor_vegas_disguise",
+                "professor_sherlock",
+                "professor_mad_scientist",
+                "professor_dean",
+            ],
+            "selene": [
+                "selene",
+                "selene_chrome",
+                "selene_netrunner",
+                "selene_arasaka",
+                "selene_ghost",
+                "selene_kunoichi",
+                "selene_valkyrie",
+                "selene_synthwave",
+                "selene_bounty",
+            ],
+            "malphas": [
+                "malphas",
+                "malphas_hellfire",
+                "malphas_brimstone",
+                "malphas_abyssal",
+                "malphas_warlord",
+                "malphas_mephisto",
+                "malphas_biker",
+                "malphas_pharaoh",
+            ],
+            "uriel": [
+                "uriel",
+                "uriel_alabaster",
+                "uriel_sapphire",
+                "uriel_obsidian",
+                "uriel_archangel",
+                "uriel_olympian",
+                "uriel_pontiff",
+                "uriel_fallen",
+            ],
+            "mortimer": [
+                "mortimer",
+                "mortimer_baron",
+                "mortimer_lich",
+                "mortimer_gilded",
+                "mortimer_pirate",
+                "mortimer_mariachi",
+                "mortimer_jester",
+                "mortimer_reaper",
+            ],
+            "vladimir": [
+                "vladimir",
+                "vladimir_nosferatu",
+                "vladimir_royal",
+                "vladimir_frost",
+                "vladimir_dracul",
+                "vladimir_phantom",
+                "vladimir_alucard",
+                "vladimir_masquerade",
+            ],
+        }
+        for char_id, exp_ids in expected_costumes.items():
+            costumes = CHARACTERS[char_id].get_costumes()
+            actual_ids = [c.costume_id for c in costumes]
+            self.assertEqual(actual_ids, exp_ids, f"Costume IDs mismatch for {char_id}")
+            comp_hashes = set()
+            bust_hashes = set()
+            for c_var in costumes:
+                cid = c_var.costume_id
+                self.assertIn(cid, COSTUME_VOICE_QUOTES, f"Missing COSTUME_VOICE_QUOTES entry for {cid}")
+                self.actor.equip_costume(cid)
+                self.assertEqual(self.actor.current_character, char_id)
+                self.assertEqual(self.actor.current_costume, cid)
+                comp_hashes.add(self.actor.get_composite_image().tobytes())
+                bust_img = self.actor.get_bust_image(char_id, costume_id=cid)
+                self.assertIsNotNone(bust_img, f"Missing bust image for {cid}")
+                bust_hashes.add(bust_img.tobytes())
+
+                # Verify top and side headroom on 1x (112x112) and 2x (224x224) head and bust
+                head_1x = np.array(self.actor.get_layer_image("head", force_2x=False))
+                head_2x = np.array(self.actor.get_layer_image("head", force_2x=True))
+                bust_1x = np.array(self.actor.get_bust_image(char_id, scale_factor=1.0, costume_id=cid))
+                bust_2x = np.array(self.actor.get_bust_image(char_id, scale_factor=2.0, costume_id=cid))
+
+                self.assertEqual(
+                    int(head_1x[0:3, :, 3].sum()),
+                    0,
+                    f"Costume '{cid}' 1x head touches/clips top frame rows y=0..2!",
+                )
+                self.assertEqual(
+                    int(head_2x[0:6, :, 3].sum()),
+                    0,
+                    f"Costume '{cid}' 2x head touches/clips top frame rows y=0..5!",
+                )
+                self.assertEqual(
+                    int(bust_1x[0:3, :, 3].sum()),
+                    0,
+                    f"Costume '{cid}' 1x bust touches/clips top frame rows y=0..2!",
+                )
+                self.assertEqual(
+                    int(bust_2x[0:6, :, 3].sum()),
+                    0,
+                    f"Costume '{cid}' 2x bust touches/clips top frame rows y=0..5!",
+                )
+                self.assertEqual(
+                    int(head_1x[:, 0:2, 3].sum()) + int(head_1x[:, -2:, 3].sum()),
+                    0,
+                    f"Costume '{cid}' 1x head/hat clips left or right frame border!",
+                )
+
+            self.assertEqual(len(comp_hashes), len(exp_ids), f"Duplicate composite found in {char_id} costumes")
+            self.assertEqual(len(bust_hashes), len(exp_ids), f"Duplicate bust found in {char_id} costumes")
+
+        # Verify Tiffany's Sequin Cocktail dress overrides arms as well as torso
+        self.actor.equip_costume("tiffany")
+        default_arm_deal = self.actor.get_layer_image("arm_deal").tobytes()
+        self.actor.equip_costume("tiffany_sequin")
+        sequin_arm_deal = self.actor.get_layer_image("arm_deal").tobytes()
+        self.assertNotEqual(default_arm_deal, sequin_arm_deal, "tiffany_sequin should use bare arm_deal_sequin")
+
+        # Verify Selene's Liquid Chrome overrides head and eyes as well as torso
+        self.actor.equip_costume("selene")
+        default_head = self.actor.get_layer_image("head").tobytes()
+        default_eyes = self.actor.get_layer_image("eyes_open").tobytes()
+        self.actor.equip_costume("selene_chrome")
+        chrome_head = self.actor.get_layer_image("head").tobytes()
+        chrome_eyes = self.actor.get_layer_image("eyes_open").tobytes()
+        self.assertNotEqual(default_head, chrome_head, "selene_chrome should use chrome head")
+        self.assertNotEqual(default_eyes, chrome_eyes, "selene_chrome should use ice-cyan chrome eyes")
+
     def test_photo_image_caching(self):
         """get_photo_image returns a valid Tkinter PhotoImage and re-uses cache when unchanged."""
         photo1 = self.actor.get_photo_image()

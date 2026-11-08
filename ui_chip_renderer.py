@@ -129,7 +129,7 @@ def draw_felt_chip_stack(
             cx, badge_y,
             text=f"${amount:,}",
             fill="#ffd700",
-            font=get_element_font("chip_bet_badge", scale=scale * (0.85 if compact else 0.95)),
+            font=get_element_font("chip_bet_badge", scale=scale),
             tags=("betting_spot", tag_prefix),
         )
     )

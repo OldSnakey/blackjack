@@ -59,6 +59,7 @@ TIERS: Dict[str, List[str]] = {
     "core": [
         "tests.test_basic_strategy",
         "tests.test_card_counter",
+        "tests.test_counting_bootcamp",
         "tests.test_deck",
         "tests.test_double_down",
         "tests.test_event_bus",
@@ -98,6 +99,7 @@ TIERS: Dict[str, List[str]] = {
     "gui": [
         "tests.test_architectural_integration",
         "tests.test_card_counting_hud",
+        "tests.test_counting_bootcamp",
         "tests.test_gui_state",
         "tests.test_living_animations",
         "tests.test_multi_seat_gui",

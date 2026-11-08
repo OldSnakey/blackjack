@@ -49,17 +49,19 @@ class TestLivingDealerAnimations(unittest.TestCase):
             pass
 
     def test_idle_breathing_offset_bounds(self):
-        """Breathing offset stays strictly within [-2 px, +2 px] across oscillation cycles."""
+        """Breathing torso offset stays strictly within [-2 px, 0 px] with a resting pause at 0."""
         self.assertTrue(hasattr(self.app, "_dealer_breathing_tick"))
         offsets = []
-        for step in range(50):
-            offset = self.app._calculate_breathing_offset(step * 0.15)
+        for step in range(130):
+            offset = self.app._calculate_breathing_offset(step * 0.052)
             offsets.append(offset)
             self.assertGreaterEqual(offset, -2)
-            self.assertLessEqual(offset, 2)
-        # Verifies variation exists (not constant 0)
-        self.assertGreater(max(offsets), 0)
+            self.assertLessEqual(offset, 0)
+        # Verifies inhalation lift (-1 or -2) and resting baseline (0) both exist
+        self.assertEqual(max(offsets), 0)
         self.assertLess(min(offsets), 0)
+        # Resting pause ensures baseline 0 is held for a substantial portion of the cycle
+        self.assertGreaterEqual(offsets.count(0), 40)
 
     def test_autonomous_blinking_transitions(self):
         """Blinking triggers closed eyes and restores open eyes."""
@@ -111,19 +113,22 @@ class TestLivingDealerAnimations(unittest.TestCase):
         self.assertEqual(self.app.dealer_actor.mouth_state, "neutral")
 
     def test_stage_breathing_updates_dealer_sprite_coords(self):
-        """Idle breathing ticker moves dealer_sprite item on dealer_stage_canvas within vertical bounds."""
+        """Idle breathing ticker keeps dealer_sprite grounded on horizon rail while elevating torso_offset."""
         stage = self.app.dealer_stage_canvas
         self.assertTrue(stage.find_withtag("dealer_sprite"))
         initial_coords = stage.coords("dealer_sprite")
         self.assertEqual(len(initial_coords), 2)
         base_y = initial_coords[1]
 
-        # Advance breathing step
-        self.app._dealer_anim_step = 1.57  # ~pi/2, peak positive offset
+        # Advance breathing step to peak inhalation (~pi/2)
+        self.app._dealer_anim_step = 1.52
         self.app._dealer_breathing_tick()
         new_coords = stage.coords("dealer_sprite")
-        self.assertNotEqual(new_coords[1], base_y)
-        self.assertAlmostEqual(new_coords[1] - base_y, 2, delta=1)
+        # Sprite anchor stays grounded at base_y (never floats above horizon rail)
+        self.assertEqual(new_coords[1], base_y)
+        # Head stays stationary at (0, 0) while torso lifts upward (-1 or -2 px)
+        self.assertEqual(self.app.dealer_actor.head_offset, (0, 0))
+        self.assertIn(self.app.dealer_actor.torso_offset[1], (-1, -2))
 
     def test_three_frame_blinking_sequence(self):
         """Blinking transitions smoothly through open -> half -> closed -> half -> open."""

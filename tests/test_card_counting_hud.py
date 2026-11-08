@@ -439,6 +439,44 @@ class TestCardCountingIntegration(unittest.TestCase):
         self.assertEqual(place_info_on.get("in"), self.app.dealer_stage_canvas)
         self.assertEqual(place_info_on.get("y"), "-44")
 
+    def test_strategy_plaque_centered_between_dealer_and_seat_boxes_and_narrow_mode_btn(self):
+        """
+        Verifies Option C layout:
+        1. `strategy_frame` is mounted as a dedicated felt plaque on `card_table_frame`
+           centered between the Dealer and Seat/Player score boxes when the HUD is visible.
+        2. `mode_btn` uses the compact '👁 Assisted' label (no wide variation selector '\ufe0f')
+           so its requested width stays <= 85px.
+        3. Long strategy recommendations (e.g. 'SURRENDER (15 vs 10)') and active Illustrious 18
+           deviation badges render unclipped inside the felt plaque.
+        """
+        from rules import get_basic_strategy_decision
+
+        self.app.exit_counting_bootcamp_to_free_play()
+        hud = self.app.card_counting_hud
+        self.assertTrue(hud.is_visible)
+
+        # 1. Verify mode_btn text has no variation selector '\ufe0f' and stays compact (<= 85px)
+        self.assertNotIn("\ufe0f", hud.mode_btn.cget("text"))
+        self.assertEqual(hud.mode_btn.cget("text"), "👁 Assisted")
+        self.app.root.update_idletasks()
+        self.assertLessEqual(hud.mode_btn.winfo_reqwidth(), 85)
+
+        # 2. Verify strategy_frame is placed on card_table_frame centered between Dealer and Seat boxes
+        self.assertEqual(hud.strategy_frame.winfo_manager(), "place")
+        place_info = hud.strategy_frame.place_info()
+        self.assertEqual(place_info.get("in"), self.app.card_table_frame)
+        self.assertEqual(place_info.get("anchor"), "center")
+
+        # Update with long strategy recommendation + 4-digit bet and verify zero clipping
+        hud.update_counts(cards_remaining=204, base_bet=1567)
+        dec = get_basic_strategy_decision([Card(7), Card(8)], Card(10), can_surrender=True)
+        hud.update_strategy_hint(hint=dec)
+        self.app.root.update_idletasks()
+        self.assertIn("SURRENDER", hud.strategy_label.cget("text"))
+
+        # Hiding HUD also hides the felt strategy plaque
+        hud.set_visible(False)
+        self.assertEqual(hud.strategy_frame.winfo_manager(), "")
 
 
 if __name__ == "__main__":

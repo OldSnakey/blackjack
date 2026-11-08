@@ -83,6 +83,56 @@ CHARACTERS: Dict[str, CharacterProfile] = {
             CostumeVariant(
                 costume_id="julian",
                 name="Classic Tuxedo",
+                bust_image_key="bust",
+                audio_cue="dealer_julian.ogg",
+                unlocked_by_default=True,
+            ),
+            CostumeVariant(
+                costume_id="julian_monte_carlo",
+                name="Monte Carlo",
+                bust_image_key="bust_monte_carlo",
+                audio_cue="dealer_julian.ogg",
+                unlocked_by_default=True,
+            ),
+            CostumeVariant(
+                costume_id="julian_high_roller",
+                name="High Roller",
+                bust_image_key="bust_high_roller",
+                audio_cue="dealer_julian.ogg",
+                unlocked_by_default=True,
+            ),
+            CostumeVariant(
+                costume_id="julian_emerald",
+                name="Emerald Club",
+                bust_image_key="bust_emerald",
+                audio_cue="dealer_julian.ogg",
+                unlocked_by_default=True,
+            ),
+            CostumeVariant(
+                costume_id="julian_bond",
+                name="Secret Agent 007",
+                bust_image_key="bust_bond",
+                audio_cue="dealer_julian.ogg",
+                unlocked_by_default=True,
+            ),
+            CostumeVariant(
+                costume_id="julian_godfather",
+                name="1920s Speakeasy",
+                bust_image_key="bust_godfather",
+                audio_cue="dealer_julian.ogg",
+                unlocked_by_default=True,
+            ),
+            CostumeVariant(
+                costume_id="julian_maverick",
+                name="Wild West Maverick",
+                bust_image_key="bust_maverick",
+                audio_cue="dealer_julian.ogg",
+                unlocked_by_default=True,
+            ),
+            CostumeVariant(
+                costume_id="julian_miami",
+                name="80s Miami Vice",
+                bust_image_key="bust_miami",
                 audio_cue="dealer_julian.ogg",
                 unlocked_by_default=True,
             ),
@@ -99,6 +149,56 @@ CHARACTERS: Dict[str, CharacterProfile] = {
         unlock_key="pit_fiend",
         lore="Menacing archfiend whose molten ram horns and smoldering embers crave mortal soul fragments.",
         is_puppet=True,
+        costumes=(
+            CostumeVariant(
+                costume_id="malphas",
+                name="Ashen Pit Boss",
+                bust_image_key="bust",
+                audio_cue="dealer_malphas.ogg",
+            ),
+            CostumeVariant(
+                costume_id="malphas_hellfire",
+                name="Hellfire Ember",
+                bust_image_key="bust_hellfire",
+                audio_cue="dealer_malphas.ogg",
+            ),
+            CostumeVariant(
+                costume_id="malphas_brimstone",
+                name="Brimstone Gold",
+                bust_image_key="bust_brimstone",
+                audio_cue="dealer_malphas.ogg",
+            ),
+            CostumeVariant(
+                costume_id="malphas_abyssal",
+                name="Abyssal Void",
+                bust_image_key="bust_abyssal",
+                audio_cue="dealer_malphas.ogg",
+            ),
+            CostumeVariant(
+                costume_id="malphas_warlord",
+                name="Infernal Warlord",
+                bust_image_key="bust_warlord",
+                audio_cue="dealer_malphas.ogg",
+            ),
+            CostumeVariant(
+                costume_id="malphas_mephisto",
+                name="Faustian Gentleman",
+                bust_image_key="bust_mephisto",
+                audio_cue="dealer_malphas.ogg",
+            ),
+            CostumeVariant(
+                costume_id="malphas_biker",
+                name="Hell's Highway",
+                bust_image_key="bust_biker",
+                audio_cue="dealer_malphas.ogg",
+            ),
+            CostumeVariant(
+                costume_id="malphas_pharaoh",
+                name="Underworld Anubis",
+                bust_image_key="bust_pharaoh",
+                audio_cue="dealer_malphas.ogg",
+            ),
+        ),
     ),
     "uriel": CharacterProfile(
         id="uriel",
@@ -111,6 +211,56 @@ CHARACTERS: Dict[str, CharacterProfile] = {
         unlock_key="seraph",
         lore="Radiant heavenly messenger whose luminous halo and divine vestments banish ancient infernal curses.",
         is_puppet=True,
+        costumes=(
+            CostumeVariant(
+                costume_id="uriel",
+                name="Seraphic Sky",
+                bust_image_key="bust",
+                audio_cue="dealer_uriel.ogg",
+            ),
+            CostumeVariant(
+                costume_id="uriel_alabaster",
+                name="Pearl Alabaster",
+                bust_image_key="bust_alabaster",
+                audio_cue="dealer_uriel.ogg",
+            ),
+            CostumeVariant(
+                costume_id="uriel_sapphire",
+                name="Royal Sapphire",
+                bust_image_key="bust_sapphire",
+                audio_cue="dealer_uriel.ogg",
+            ),
+            CostumeVariant(
+                costume_id="uriel_obsidian",
+                name="Obsidian Vest",
+                bust_image_key="bust_obsidian",
+                audio_cue="dealer_uriel.ogg",
+            ),
+            CostumeVariant(
+                costume_id="uriel_archangel",
+                name="Crusader Battleplate",
+                bust_image_key="bust_archangel",
+                audio_cue="dealer_uriel.ogg",
+            ),
+            CostumeVariant(
+                costume_id="uriel_olympian",
+                name="Olympian Apollo",
+                bust_image_key="bust_olympian",
+                audio_cue="dealer_uriel.ogg",
+            ),
+            CostumeVariant(
+                costume_id="uriel_pontiff",
+                name="Marble Statue",
+                bust_image_key="bust_pontiff",
+                audio_cue="dealer_uriel.ogg",
+            ),
+            CostumeVariant(
+                costume_id="uriel_fallen",
+                name="70s Disco King",
+                bust_image_key="bust_fallen",
+                audio_cue="dealer_uriel.ogg",
+            ),
+        ),
     ),
     "mortimer": CharacterProfile(
         id="mortimer",
@@ -123,6 +273,56 @@ CHARACTERS: Dict[str, CharacterProfile] = {
         unlock_key="grim_bones",
         lore="Dapper skeleton croupier sporting a purple silk top hat who dryly chuckles at the roll of the bones.",
         is_puppet=True,
+        costumes=(
+            CostumeVariant(
+                costume_id="mortimer",
+                name="Crypt Pinstripe",
+                bust_image_key="bust",
+                audio_cue="dealer_mortimer.ogg",
+            ),
+            CostumeVariant(
+                costume_id="mortimer_baron",
+                name="Baron Crimson",
+                bust_image_key="bust_baron",
+                audio_cue="dealer_mortimer.ogg",
+            ),
+            CostumeVariant(
+                costume_id="mortimer_lich",
+                name="Soulfire Emerald",
+                bust_image_key="bust_lich",
+                audio_cue="dealer_mortimer.ogg",
+            ),
+            CostumeVariant(
+                costume_id="mortimer_gilded",
+                name="Gilded Reaper",
+                bust_image_key="bust_gilded",
+                audio_cue="dealer_mortimer.ogg",
+            ),
+            CostumeVariant(
+                costume_id="mortimer_pirate",
+                name="Ghost Pirate Captain",
+                bust_image_key="bust_pirate",
+                audio_cue="dealer_mortimer.ogg",
+            ),
+            CostumeVariant(
+                costume_id="mortimer_mariachi",
+                name="Día de los Muertos",
+                bust_image_key="bust_mariachi",
+                audio_cue="dealer_mortimer.ogg",
+            ),
+            CostumeVariant(
+                costume_id="mortimer_jester",
+                name="Court of Fools",
+                bust_image_key="bust_jester",
+                audio_cue="dealer_mortimer.ogg",
+            ),
+            CostumeVariant(
+                costume_id="mortimer_reaper",
+                name="Hooded Ferryman",
+                bust_image_key="bust_reaper",
+                audio_cue="dealer_mortimer.ogg",
+            ),
+        ),
     ),
     "tiffany": CharacterProfile(
         id="tiffany",
@@ -138,7 +338,64 @@ CHARACTERS: Dict[str, CharacterProfile] = {
         costumes=(
             CostumeVariant(
                 costume_id="tiffany",
-                name="Velvet Vest",
+                name="Obsidian Velvet",
+                bust_image_key="bust",
+                audio_cue="dealer_tiffany.ogg",
+                unlocked_by_default=True,
+            ),
+            CostumeVariant(
+                costume_id="tiffany_sequin",
+                name="Sequin Cocktail",
+                bust_image_key="bust_sequin",
+                audio_cue="dealer_tiffany.ogg",
+                unlocked_by_default=True,
+            ),
+            CostumeVariant(
+                costume_id="tiffany_rose",
+                name="Velvet Corset",
+                bust_image_key="bust_rose",
+                audio_cue="dealer_tiffany.ogg",
+                unlocked_by_default=True,
+            ),
+            CostumeVariant(
+                costume_id="tiffany_champagne",
+                name="Gold Halter",
+                bust_image_key="bust_champagne",
+                audio_cue="dealer_tiffany.ogg",
+                unlocked_by_default=True,
+            ),
+            CostumeVariant(
+                costume_id="tiffany_amethyst",
+                name="Midnight Bustier",
+                bust_image_key="bust_amethyst",
+                audio_cue="dealer_tiffany.ogg",
+                unlocked_by_default=True,
+            ),
+            CostumeVariant(
+                costume_id="tiffany_bunny",
+                name="VIP Bunny Girl",
+                bust_image_key="bust_bunny",
+                audio_cue="dealer_tiffany.ogg",
+                unlocked_by_default=True,
+            ),
+            CostumeVariant(
+                costume_id="tiffany_showgirl",
+                name="Vegas Showgirl",
+                bust_image_key="bust_showgirl",
+                audio_cue="dealer_tiffany.ogg",
+                unlocked_by_default=True,
+            ),
+            CostumeVariant(
+                costume_id="tiffany_cheongsam",
+                name="Macau Silk Qipao",
+                bust_image_key="bust_cheongsam",
+                audio_cue="dealer_tiffany.ogg",
+                unlocked_by_default=True,
+            ),
+            CostumeVariant(
+                costume_id="tiffany_noir",
+                name="Femme Fatale Noir",
+                bust_image_key="bust_noir",
                 audio_cue="dealer_tiffany.ogg",
                 unlocked_by_default=True,
             ),
@@ -155,6 +412,62 @@ CHARACTERS: Dict[str, CharacterProfile] = {
         unlock_key="selene",
         lore="High-tech synth dealer from the year 2088 whose ocular scanner detects split-second card count shifts.",
         is_puppet=True,
+        costumes=(
+            CostumeVariant(
+                costume_id="selene",
+                name="Neon Runner",
+                bust_image_key="bust",
+                audio_cue="dealer_tiffany.ogg",
+            ),
+            CostumeVariant(
+                costume_id="selene_chrome",
+                name="Liquid Chrome",
+                bust_image_key="bust_chrome",
+                audio_cue="dealer_tiffany.ogg",
+            ),
+            CostumeVariant(
+                costume_id="selene_netrunner",
+                name="Cyber Magenta",
+                bust_image_key="bust_netrunner",
+                audio_cue="dealer_tiffany.ogg",
+            ),
+            CostumeVariant(
+                costume_id="selene_arasaka",
+                name="Corp Executive",
+                bust_image_key="bust_arasaka",
+                audio_cue="dealer_tiffany.ogg",
+            ),
+            CostumeVariant(
+                costume_id="selene_ghost",
+                name="Ghost Protocol",
+                bust_image_key="bust_ghost",
+                audio_cue="dealer_tiffany.ogg",
+            ),
+            CostumeVariant(
+                costume_id="selene_kunoichi",
+                name="Cyber Kunoichi",
+                bust_image_key="bust_kunoichi",
+                audio_cue="dealer_tiffany.ogg",
+            ),
+            CostumeVariant(
+                costume_id="selene_valkyrie",
+                name="Mecha Valkyrie",
+                bust_image_key="bust_valkyrie",
+                audio_cue="dealer_tiffany.ogg",
+            ),
+            CostumeVariant(
+                costume_id="selene_synthwave",
+                name="Retro Arcade Idol",
+                bust_image_key="bust_synthwave",
+                audio_cue="dealer_tiffany.ogg",
+            ),
+            CostumeVariant(
+                costume_id="selene_bounty",
+                name="Void Bounty Hunter",
+                bust_image_key="bust_bounty",
+                audio_cue="dealer_tiffany.ogg",
+            ),
+        ),
     ),
     "vladimir": CharacterProfile(
         id="vladimir",
@@ -167,6 +480,126 @@ CHARACTERS: Dict[str, CharacterProfile] = {
         unlock_key="vladimir",
         lore="Victorian vampire count who has dealt cards for centuries across the shadowy gaming salons of Europe.",
         is_puppet=True,
+        costumes=(
+            CostumeVariant(
+                costume_id="vladimir",
+                name="Crimson Nocturne",
+                bust_image_key="bust",
+                audio_cue="dealer_mortimer.ogg",
+            ),
+            CostumeVariant(
+                costume_id="vladimir_nosferatu",
+                name="Shadow Count",
+                bust_image_key="bust_nosferatu",
+                audio_cue="dealer_mortimer.ogg",
+            ),
+            CostumeVariant(
+                costume_id="vladimir_royal",
+                name="Wallachian Gold",
+                bust_image_key="bust_royal",
+                audio_cue="dealer_mortimer.ogg",
+            ),
+            CostumeVariant(
+                costume_id="vladimir_frost",
+                name="Carpathian Frost",
+                bust_image_key="bust_frost",
+                audio_cue="dealer_mortimer.ogg",
+            ),
+            CostumeVariant(
+                costume_id="vladimir_dracul",
+                name="Vlad the Impaler",
+                bust_image_key="bust_dracul",
+                audio_cue="dealer_mortimer.ogg",
+            ),
+            CostumeVariant(
+                costume_id="vladimir_phantom",
+                name="Opera Phantom",
+                bust_image_key="bust_phantom",
+                audio_cue="dealer_mortimer.ogg",
+            ),
+            CostumeVariant(
+                costume_id="vladimir_alucard",
+                name="Crimson Gunslinger",
+                bust_image_key="bust_alucard",
+                audio_cue="dealer_mortimer.ogg",
+            ),
+            CostumeVariant(
+                costume_id="vladimir_masquerade",
+                name="Venetian Casanova",
+                bust_image_key="bust_masquerade",
+                audio_cue="dealer_mortimer.ogg",
+            ),
+        ),
+    ),
+    "professor": CharacterProfile(
+        id="professor",
+        name="Professor Edward",
+        title="🎓 The MIT Card Professor",
+        theme="academy",
+        nameplate_fg="#80cbc4",
+        speech_bg="#0d1f1a",
+        audio_cue="dealer_professor.ogg",
+        unlock_key="professor",
+        lore="Master mathematician and MIT Blackjack Team mentor who turns running counts and true-count ramps into pure science.",
+        is_puppet=True,
+        costumes=(
+            CostumeVariant(
+                costume_id="professor",
+                name="MIT Seminar Tweed",
+                bust_image_key="bust",
+                audio_cue="dealer_professor.ogg",
+                unlocked_by_default=False,
+            ),
+            CostumeVariant(
+                costume_id="professor_ivy",
+                name="Cambridge Chestnut",
+                bust_image_key="bust_ivy",
+                audio_cue="dealer_professor.ogg",
+                unlocked_by_default=False,
+            ),
+            CostumeVariant(
+                costume_id="professor_oxford",
+                name="Oxford Navy",
+                bust_image_key="bust_oxford",
+                audio_cue="dealer_professor.ogg",
+                unlocked_by_default=False,
+            ),
+            CostumeVariant(
+                costume_id="professor_vegas",
+                name="Vegas Undercover",
+                bust_image_key="bust_vegas",
+                audio_cue="dealer_professor.ogg",
+                unlocked_by_default=False,
+            ),
+            CostumeVariant(
+                costume_id="professor_vegas_disguise",
+                name="Vegas High-Roller",
+                bust_image_key="bust_vegas_disguise",
+                audio_cue="dealer_professor.ogg",
+                unlocked_by_default=False,
+            ),
+            CostumeVariant(
+                costume_id="professor_sherlock",
+                name="Baker Street Detective",
+                bust_image_key="bust_sherlock",
+                audio_cue="dealer_professor.ogg",
+                unlocked_by_default=False,
+            ),
+            CostumeVariant(
+                costume_id="professor_mad_scientist",
+                name="Quantum Lab Coat",
+                bust_image_key="bust_mad_scientist",
+                audio_cue="dealer_professor.ogg",
+                unlocked_by_default=False,
+            ),
+            CostumeVariant(
+                costume_id="professor_dean",
+                name="Grand Chancellor",
+                bust_image_key="bust_dean",
+                audio_cue="dealer_professor.ogg",
+                unlocked_by_default=False,
+            ),
+        ),
     ),
     "dummy": CharacterProfile(
         id="dummy",
@@ -193,29 +626,64 @@ CHARACTERS: Dict[str, CharacterProfile] = {
 COSTUME_ALIASES: Dict[str, str] = {
     "classic": "julian",
     "dealer": "julian",
+    "julian_monte_carlo": "julian",
+    "julian_high_roller": "julian",
+    "julian_emerald": "julian",
     "tiffany": "tiffany",
     "velvet": "tiffany",
+    "tiffany_sequin": "tiffany",
+    "tiffany_rose": "tiffany",
+    "tiffany_champagne": "tiffany",
+    "tiffany_amethyst": "tiffany",
     "pit_fiend": "malphas",
     "demon": "malphas",
     "hell": "malphas",
+    "malphas_hellfire": "malphas",
+    "malphas_brimstone": "malphas",
+    "malphas_abyssal": "malphas",
     "seraph": "uriel",
     "angel": "uriel",
     "celestial": "uriel",
+    "uriel_alabaster": "uriel",
+    "uriel_sapphire": "uriel",
+    "uriel_obsidian": "uriel",
+    "uriel_sky": "uriel",
     "grim_bones": "mortimer",
     "skeleton": "mortimer",
     "bones": "mortimer",
     "crypt": "mortimer",
+    "mortimer_baron": "mortimer",
+    "mortimer_lich": "mortimer",
+    "mortimer_gilded": "mortimer",
     "selene": "selene",
     "cyber": "selene",
     "cyberpunk": "selene",
+    "selene_chrome": "selene",
+    "selene_netrunner": "selene",
+    "selene_arasaka": "selene",
+    "selene_ghost": "selene",
     "vladimir": "vladimir",
     "vampire": "vladimir",
     "blood": "vladimir",
     "nocturne": "vladimir",
+    "vladimir_nosferatu": "vladimir",
+    "vladimir_royal": "vladimir",
+    "vladimir_frost": "vladimir",
+    "professor": "professor",
+    "professor_classic": "professor",
+    "professor_ivy": "professor",
+    "professor_oxford": "professor",
+    "professor_vegas": "professor",
+    "edward": "professor",
+    "mit": "professor",
+    "coach": "professor",
     "dummy": "dummy",
     "puppet": "dummy",
     "test": "dummy",
 }
+for _char_key, _char_prof in CHARACTERS.items():
+    for _c_var in _char_prof.costumes:
+        COSTUME_ALIASES[_c_var.costume_id] = _char_key
 
 VISEME_STATES = ("neutral", "talk", "a", "o", "e", "f", "smirk", "gasp")
 
@@ -290,6 +758,16 @@ CHARACTER_OUTCOME_DIALOGUE: Dict[str, Dict[str, str]] = {
         "SURRENDER": "Prudent humility preserves half your stake.",
         "IDLE": "Let light guide your wager upon the table.",
     },
+    "professor": {
+        "NATURAL_BLACKJACK": "Natural 21! Notice how those two high cards just shifted the Running Count by -2.",
+        "DEALER_BUST": "A dealer bust—classic high-count payoff when the remaining shoe is rich in tens!",
+        "PLAYER_WINS": "Positive expectation realized! Keep tracking those low cards as they leave the shoe.",
+        "PLAYER_BUST": "Variance happens, scholar. Check whether the True Count justified that hit.",
+        "DEALER_WINS": "The house edge takes this hand, but over a thousand hands, math beats luck.",
+        "PUSH": "A statistical standoff. Zero net change to bankroll—stay locked on the Running Count.",
+        "SURRENDER": "Disciplined surrender! Saving half your wager on a negative-EV hand is textbook Thorp.",
+        "IDLE": "Eyes on the shoe, scholar. Track the Running Count from the very first card.",
+    },
     "dummy": {
         "NATURAL_BLACKJACK": "Diagnostic alert: Natural 21 detected! Payout 3 to 2!",
         "DEALER_BUST": "Dealer test rig exceeded 21! Player wins!",
@@ -344,6 +822,12 @@ CHARACTER_TACTICAL_DIALOGUE: Dict[str, Dict[str, str]] = {
         "DOUBLE_ELEVEN": "Doubling upon eleven—fortune favors the righteous!",
         "SPLIT_PAIR": "Two paths diverge in radiant symmetry!",
         "INSURANCE_TAKEN": "A shield of caution raised against the Ace.",
+    },
+    "professor": {
+        "RISKY_HIT": "Hitting a stiff total? Make sure the True Count isn't deeply positive first!",
+        "DOUBLE_ELEVEN": "Doubling on eleven! Peak expected value when the shoe is rich in tens.",
+        "SPLIT_PAIR": "Splitting the pair—maximizing edge across two independent hands!",
+        "INSURANCE_TAKEN": "Insurance is only +EV when the True Count is +3.0 or higher, scholar!",
     },
     "dummy": {
         "RISKY_HIT": "High-risk hit input detected on stiff total!",
@@ -408,7 +892,7 @@ class DealerActor:
         self.head_offset: tuple[int, int] = (0, 0)
         self.arm_offset: tuple[int, int] = (0, 0)
         self.eye_gaze_offset: tuple[int, int] = (0, 0)
-        self.current_costume: str = self.current_character
+        self.current_costume: str = self._resolve_costume_id(self.current_character, initial_character)
 
         # Asset and composite caches
         self._raw_layers_cache: Dict[str, Image.Image] = {}
@@ -428,10 +912,24 @@ class DealerActor:
             return cid
         return COSTUME_ALIASES.get(cid, "julian")
 
+    @staticmethod
+    def _resolve_costume_id(resolved_char: str, raw_costume: Optional[str] = None) -> str:
+        cand = (raw_costume or "").lower().strip()
+        if not cand:
+            return resolved_char
+        prof = CHARACTERS.get(resolved_char)
+        if prof:
+            for c in prof.get_costumes():
+                if c.costume_id == cand:
+                    return cand
+        if cand.startswith(f"{resolved_char}_"):
+            return cand
+        return resolved_char
+
     def equip_costume(self, character_id: str, costume_id: Optional[str] = None) -> None:
         """Swaps active character persona and costume variant. Guarantees game state immutability."""
         resolved = self._resolve_character_id(character_id)
-        cid = costume_id or resolved
+        cid = self._resolve_costume_id(resolved, costume_id or character_id)
         changed = False
         if resolved != self.current_character:
             self.current_character = resolved
@@ -559,15 +1057,27 @@ class DealerActor:
 
     def _get_layer_image(self, layer_name: str, force_2x: bool = False) -> Optional[Image.Image]:
         suffix = "_2x" if (force_2x or self.scale_factor > 1.5) else ""
-        cache_key = f"{self.current_character}_{layer_name}{suffix}"
+        active_costume = getattr(self, "current_costume", self.current_character) or self.current_character
+        cache_key = f"{active_costume}_{layer_name}{suffix}"
         if cache_key in self._raw_layers_cache:
             return self._raw_layers_cache[cache_key]
 
         char_dir = self.characters_dir / self.current_character
-        file_path = char_dir / f"{layer_name}{suffix}.png"
-        if not file_path.exists():
-            # Fallback to 1x file if 2x not found
-            file_path = char_dir / f"{layer_name}.png"
+        file_path = None
+        if active_costume != self.current_character and active_costume.startswith(f"{self.current_character}_"):
+            v_suffix = active_costume[len(self.current_character) :]
+            cand_2x = char_dir / f"{layer_name}{v_suffix}{suffix}.png"
+            cand_1x = char_dir / f"{layer_name}{v_suffix}.png"
+            if cand_2x.exists():
+                file_path = cand_2x
+            elif cand_1x.exists():
+                file_path = cand_1x
+
+        if file_path is None:
+            file_path = char_dir / f"{layer_name}{suffix}.png"
+            if not file_path.exists():
+                # Fallback to 1x file if 2x not found
+                file_path = char_dir / f"{layer_name}.png"
 
         # Viseme graceful degradation fallback for characters without phonetic visemes
         if not file_path.exists() and layer_name.startswith("mouth_") and layer_name not in ("mouth_talk", "mouth_neutral"):
@@ -593,13 +1103,107 @@ class DealerActor:
         return None
 
     @staticmethod
-    def _shift_layer(img: Image.Image, dx: int, dy: int) -> Image.Image:
-        """Returns a translated copy of `img` shifted by (dx, dy) pixels without wrapping."""
+    def _shift_layer(img: Image.Image, dx: int, dy: int, clamp_bottom: bool = False) -> Image.Image:
+        """
+        Returns a translated copy of `img` shifted by (dx, dy) pixels without wrapping.
+        When `clamp_bottom=True` and `dy < 0`, extrudes the bottom-most pixel row into
+        the newly exposed bottom rows so the sprite remains flush with the horizon rail.
+        """
         if dx == 0 and dy == 0:
             return img
-        shifted = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        w, h = img.size
+        shifted = Image.new("RGBA", (w, h), (0, 0, 0, 0))
         shifted.paste(img, (dx, dy))
+        if clamp_bottom and dy < 0 and h > 0:
+            bottom_strip = img.crop((0, h - 1, w, h))
+            if dx != 0:
+                shifted_strip = Image.new("RGBA", (w, 1), (0, 0, 0, 0))
+                shifted_strip.paste(bottom_strip, (dx, 0))
+                bottom_strip = shifted_strip
+            for fill_y in range(max(0, h + dy), h):
+                shifted.paste(bottom_strip, (0, fill_y))
         return shifted
+
+    @staticmethod
+    def _apply_intra_sclera_gaze(
+        img: Image.Image, gaze_dx: int, gaze_dy: int, use_2x: bool, char_id: str = "julian"
+    ) -> Image.Image:
+        """
+        Shifts only the iris/pupil block inside the sclera aperture
+        while keeping eyebrows, glasses frames, and eyelid skin anchored to `head_offset`.
+        """
+        if gaze_dx == 0 and gaze_dy == 0:
+            return img
+        s = 2 if use_2x else 1
+        gdx = max(-s, min(s, int(round(gaze_dx)) if use_2x else (1 if gaze_dx > 0 else (-1 if gaze_dx < 0 else 0))))
+        if gdx == 0:
+            return img
+
+        out = img.copy()
+        if char_id == "tiffany":
+            # Left socket sclera+iris: 1x x=44..49, y=42..44; Right socket: 1x x=62..67, y=42..44
+            y0, y1 = 42 * s, 45 * s
+            sockets = ((44 * s, 50 * s), (62 * s, 68 * s))
+            iris_cols = (1 * s, 5 * s)
+        elif char_id == "selene":
+            # Left socket sclera+iris: 1x x=40..48, y=47..50; Right socket: 1x x=63..71, y=47..50
+            y0, y1 = 47 * s, 51 * s
+            sockets = ((40 * s, 49 * s), (63 * s, 72 * s))
+            iris_cols = (2 * s, 7 * s)
+        elif char_id == "malphas":
+            # Left socket sclera+iris: 1x x=45..50, y=37..38; Right socket: 1x x=61..66, y=37..38
+            y0, y1 = 37 * s, 39 * s
+            sockets = ((45 * s, 51 * s), (61 * s, 67 * s))
+            iris_cols = (1 * s, 5 * s)
+        elif char_id == "mortimer":
+            # Left socket soul-fire pupil: 1x x=45..51, y=36..39; Right socket: 1x x=60..66, y=36..39
+            y0, y1 = 36 * s, 40 * s
+            sockets = ((45 * s, 52 * s), (60 * s, 67 * s))
+            iris_cols = (2 * s, 6 * s)
+        elif char_id == "uriel":
+            # Left socket sapphire eye: 1x x=44..49, y=45..47; Right socket: 1x x=60..65, y=45..47
+            y0, y1 = 45 * s, 48 * s
+            sockets = ((44 * s, 50 * s), (60 * s, 66 * s))
+            iris_cols = (1 * s, 5 * s)
+        elif char_id == "vladimir":
+            # Left socket crimson eye: 1x x=45..51, y=35..37; Right socket: 1x x=60..66, y=35..37
+            y0, y1 = 35 * s, 38 * s
+            sockets = ((45 * s, 52 * s), (60 * s, 67 * s))
+            iris_cols = (1 * s, 6 * s)
+        else:
+            # Left socket 5x2 sclera+iris aperture: 1x x=46..50, y=34..35
+            # Right socket 5x2 sclera+iris aperture: 1x x=61..65, y=34..35
+            y0, y1 = 34 * s, 36 * s
+            sockets = ((46 * s, 51 * s), (61 * s, 66 * s))
+            iris_cols = (1 * s, 4 * s)
+
+        for sx0, sx1 in sockets:
+            band = img.crop((sx0, y0, sx1, y1))
+            for by in range(y1 - y0):
+                if char_id == "tiffany":
+                    sclera_rgba = (42, 18, 14, 255) if by < s else (252, 252, 252, 255)
+                elif char_id == "selene":
+                    sclera_rgba = (26, 26, 26, 255) if by < s else (185, 186, 192, 255)
+                elif char_id == "malphas":
+                    sclera_rgba = (255, 255, 255, 255)
+                elif char_id == "mortimer":
+                    sclera_rgba = (19, 18, 19, 255)
+                elif char_id == "uriel":
+                    sclera_rgba = (16, 27, 43, 255) if by < s else (235, 232, 245, 255)
+                elif char_id == "vladimir":
+                    sclera_rgba = (82, 12, 18, 255)
+                else:
+                    sclera_rgba = (185, 190, 196, 255) if by < s else (252, 252, 252, 255)
+                for bx in range(sx1 - sx0):
+                    if char_id in ("tiffany", "selene") and by < s and (bx < s or bx >= sx1 - sx0 - s):
+                        continue
+                    out.putpixel((sx0 + bx, y0 + by), sclera_rgba)
+            for by in range(y1 - y0):
+                for bx in range(iris_cols[0], iris_cols[1]):
+                    px_rgba = band.getpixel((bx, by))
+                    nx = max(sx0, min(sx1 - 1, sx0 + bx + gdx))
+                    out.putpixel((nx, y0 + by), px_rgba)
+        return out
 
     def get_composite_image(self, force_2x: bool = False) -> Image.Image:
         """Assembles active 7-layer discrete puppet strata with independent sub-layer offsets."""
@@ -619,19 +1223,42 @@ class DealerActor:
         # 2. Neck   -> torso_offset
         # 3. Torso  -> torso_offset
         # 4. Head   -> head_offset
-        # 5. Eyes   -> head_offset (+ eye_gaze_offset when eyes are open)
+        # 5. Eyes   -> head_offset (+ intra-sclera or layer eye_gaze_offset when eyes are open)
         # 6. Mouth  -> head_offset
         # 7. Arms   -> torso_offset + arm_offset
+        use_intra_sclera = (
+            self.current_character
+            in (
+                "julian",
+                "professor",
+                "tiffany",
+                "selene",
+                "malphas",
+                "mortimer",
+                "uriel",
+                "vladimir",
+            )
+            and getattr(self, "current_costume", "")
+            not in (
+                "julian_bond",
+                "julian_miami",
+                "professor_vegas_disguise",
+                "malphas_biker",
+                "uriel_pontiff",
+                "uriel_fallen",
+                "vladimir_alucard",
+            )
+        )
         eye_off = (
-            (self.head_offset[0] + self.eye_gaze_offset[0], self.head_offset[1] + self.eye_gaze_offset[1])
-            if self.eye_state == "open"
-            else self.head_offset
+            self.head_offset
+            if (use_intra_sclera or self.eye_state != "open")
+            else (self.head_offset[0] + self.eye_gaze_offset[0], self.head_offset[1] + self.eye_gaze_offset[1])
         )
         arm_off = (self.torso_offset[0] + self.arm_offset[0], self.torso_offset[1] + self.arm_offset[1])
 
         layer_plan = [
             ("shadow", (0, 0)),
-            ("neck", self.torso_offset),
+            ("neck", (self.head_offset[0], 0)),
             ("torso", self.torso_offset),
             ("head", self.head_offset),
             (f"eyes_{self.eye_state}", eye_off),
@@ -652,10 +1279,19 @@ class DealerActor:
                         resample = getattr(Image, "Resampling", Image).LANCZOS
                     if not is_pass:
                         l_img = l_img.resize(target_size, resample)
+                if lname == "eyes_open" and use_intra_sclera and self.eye_gaze_offset != (0, 0):
+                    l_img = self._apply_intra_sclera_gaze(
+                        l_img,
+                        self.eye_gaze_offset[0],
+                        self.eye_gaze_offset[1],
+                        use_2x=use_2x,
+                        char_id=self.current_character,
+                    )
                 dx = int(round(ox * scale_mult)) if (ox == 0 or use_2x) else (1 if ox > 0 else -1)
                 dy = int(round(oy * scale_mult)) if (oy == 0 or use_2x) else (1 if oy > 0 else -1)
                 if dx != 0 or dy != 0:
-                    l_img = self._shift_layer(l_img, dx, dy)
+                    clamp_b = lname == "torso" or lname.startswith("arm_")
+                    l_img = self._shift_layer(l_img, dx, dy, clamp_bottom=clamp_b)
                 composite.alpha_composite(l_img)
 
         if use_2x and not (self.scale_factor > 1.5):
@@ -676,14 +1312,34 @@ class DealerActor:
         except Exception:
             return None
 
-    def get_bust_image(self, character_id: Optional[str] = None, scale_factor: Optional[float] = None) -> Optional[Image.Image]:
-        """Returns the pre-rendered bust portrait for a character (e.g. for wardrobe cards)."""
+    def get_bust_image(
+        self,
+        character_id: Optional[str] = None,
+        scale_factor: Optional[float] = None,
+        costume_id: Optional[str] = None,
+    ) -> Optional[Image.Image]:
+        """Returns the pre-rendered bust portrait for a character or costume variant."""
         cid = self._resolve_character_id(character_id) if character_id else self.current_character
+        resolved_costume = self._resolve_costume_id(
+            cid,
+            costume_id or character_id or (self.current_costume if cid == self.current_character else cid),
+        )
         s = scale_factor if scale_factor is not None else self.scale_factor
         suffix = "_2x" if s > 1.5 else ""
-        path = self.characters_dir / cid / f"bust{suffix}.png"
-        if not path.exists():
-            path = self.characters_dir / cid / "bust.png"
+        char_dir = self.characters_dir / cid
+        path = None
+        if resolved_costume != cid and resolved_costume.startswith(f"{cid}_"):
+            v_suffix = resolved_costume[len(cid) :]
+            cand_2x = char_dir / f"bust{v_suffix}{suffix}.png"
+            cand_1x = char_dir / f"bust{v_suffix}.png"
+            if cand_2x.exists():
+                path = cand_2x
+            elif cand_1x.exists():
+                path = cand_1x
+        if path is None:
+            path = char_dir / f"bust{suffix}.png"
+            if not path.exists():
+                path = char_dir / "bust.png"
         if path.exists():
             try:
                 return Image.open(path).convert("RGBA")
@@ -691,16 +1347,25 @@ class DealerActor:
                 return None
         return None
 
-    def get_bust_photo_image(self, character_id: Optional[str] = None, scale_factor: Optional[float] = None) -> Optional[ImageTk.PhotoImage]:
+    def get_bust_photo_image(
+        self,
+        character_id: Optional[str] = None,
+        scale_factor: Optional[float] = None,
+        costume_id: Optional[str] = None,
+    ) -> Optional[ImageTk.PhotoImage]:
         """Returns a cached Tkinter PhotoImage bust for dialog portraits or UI cards."""
-        pil_img = self.get_bust_image(character_id, scale_factor)
+        pil_img = self.get_bust_image(character_id, scale_factor, costume_id=costume_id)
         if pil_img is None:
             return None
         if not hasattr(self, "_bust_photo_cache"):
             self._bust_photo_cache = {}
         cid = self._resolve_character_id(character_id) if character_id else self.current_character
+        resolved_costume = self._resolve_costume_id(
+            cid,
+            costume_id or character_id or (self.current_costume if cid == self.current_character else cid),
+        )
         s = scale_factor if scale_factor is not None else self.scale_factor
-        cache_key = f"{cid}_{s}"
+        cache_key = f"{resolved_costume}_{s}"
         if cache_key in self._bust_photo_cache:
             return self._bust_photo_cache[cache_key]
         try:

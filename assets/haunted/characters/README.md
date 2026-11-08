@@ -1,7 +1,7 @@
 # Dealer Puppet Characters Roster (`assets/haunted/characters`)
 
 ## Overview
-The `characters` directory houses the modular 19-layer discrete puppet strata for all 8 dealers in the Blackjack application. Each character features standardized layer decomposition, enabling real-time procedural idle breathing, eye blinking, 8-viseme phonetic lip-sync, and dynamic arm poses across both standard (1x) and HiDPI (2x) resolutions.
+The `characters` directory houses the modular 19-layer discrete puppet strata for all 9 dealers in the Blackjack application. Each character features standardized layer decomposition, enabling real-time procedural idle breathing, eye blinking, 8-viseme phonetic lip-sync, and dynamic arm poses across both standard (1x) and HiDPI (2x) resolutions.
 
 ---
 
@@ -11,14 +11,15 @@ Detailed layer specifications, acoustic parameters, and animation notes are docu
 
 | Character | Title & Persona | Unlock Requirement | Acoustic Profile | Documentation Link |
 | :--- | :--- | :--- | :--- | :--- |
-| **Julian** | *The House Croupier* | Default Unlocked | Warm Baritone (135 Hz) | [`julian/README.md`](julian/README.md) |
-| **Tiffany** | *The VIP Hostess* | Default Unlocked | Upbeat Soprano (245 Hz) | [`tiffany/README.md`](tiffany/README.md) |
-| **Malphas** | *The Gargoyle Watcher* | Default Unlocked | Guttural Bass (85 Hz) | [`malphas/README.md`](malphas/README.md) |
-| **Uriel** | *The Seraph Croupier* | Default Unlocked (Exorcism) | Celestial Tenor (180 Hz) | [`uriel/README.md`](uriel/README.md) |
-| **Mortimer** | *The Plague Physician* | Default Unlocked | Raspy Nasal (105 Hz) | [`mortimer/README.md`](mortimer/README.md) |
-| **Dummy** | *Diagnostic Automaton* | Test / Debug Mode | Flat Diagnostic (110 Hz) | [`dummy/README.md`](dummy/README.md) |
-| **Selene** | *The Neon Croupier* | 5-Quiz Streak (`apprentice_counter`) | Cybernetic Alto (210 Hz) | [`selene/README.md`](selene/README.md) |
-| **Vladimir** | *The Crimson Noble* | 10-Quiz Streak (`master_counter`) | Aristocratic Baritone (120 Hz) | [`vladimir/README.md`](vladimir/README.md) |
+| **Julian** | *The Classic Croupier* | Default Unlocked | Classic Baritone (180 Hz) | [`julian/README.md`](julian/README.md) |
+| **Tiffany** | *♥ The Velvet Croupier* | Default Unlocked | Warm Flute (380 Hz) | [`tiffany/README.md`](tiffany/README.md) |
+| **Malphas** | *☠ The Pit Fiend* | Encounter Hell's Table | Guttural Brimstone (85 Hz) | [`malphas/README.md`](malphas/README.md) |
+| **Uriel** | *✨ Celestial Seraph* | Defeat Hell's Table (`exorcist`) | Angelic Crystal (520 Hz) | [`uriel/README.md`](uriel/README.md) |
+| **Mortimer** | *🎩 Grim Bones* | Survive Card 13 / \$5,000 Bankroll | Crypt Hollow (240 Hz) | [`mortimer/README.md`](mortimer/README.md) |
+| **Dummy** | *🧪 Test Puppet Dummy* | Default Unlocked | Synthetic Square (300 Hz) | [`dummy/README.md`](dummy/README.md) |
+| **Selene** | *⚡ Cyber Croupier* | 5-Quiz Streak (`apprentice_counter`) | Cyber Synth (440 Hz) | [`selene/README.md`](selene/README.md) |
+| **Vladimir** | *🩸 Crimson Nocturne* | 20-Quiz Streak (`master_counter`) | Crimson Velvet (140 Hz) | [`vladimir/README.md`](vladimir/README.md) |
+| **Professor Edward** | *🎓 The MIT Card Professor* | Default in Training Mode; Graduate Bootcamp (`C5`) for All Modes | Academic Baritone (160 Hz) | [`professor/README.md`](professor/README.md) |
 
 ---
 

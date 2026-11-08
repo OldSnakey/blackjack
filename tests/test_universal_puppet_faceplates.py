@@ -52,7 +52,7 @@ class TestUniversalPuppetFaceplates(unittest.TestCase):
         `eyes_open_2x.png` and `mouth_neutral_2x.png` visibly changes the eye and mouth pixels
         compared to `head_2x.png` alone.
         """
-        for cid in ("julian", "tiffany", "malphas", "uriel", "mortimer", "selene", "vladimir", "dummy"):
+        for cid in ("julian", "tiffany", "malphas", "uriel", "mortimer", "selene", "vladimir", "professor", "dummy"):
             self.actor.equip_costume(cid)
             head_img = self.actor.get_layer_image("head", force_2x=True)
             eyes_img = self.actor.get_layer_image("eyes_open", force_2x=True)
@@ -91,7 +91,7 @@ class TestUniversalPuppetFaceplates(unittest.TestCase):
         Compositing `torso_2x` + `arm_rest_2x` must differ substantially from `torso_2x` alone
         in the lower arm zone (y: 145..224), proving hands/forearms are not baked identically into `torso_2x`.
         """
-        for cid in ("julian", "tiffany", "malphas", "uriel", "mortimer", "selene", "vladimir", "dummy"):
+        for cid in ("julian", "tiffany", "malphas", "uriel", "mortimer", "selene", "vladimir", "professor", "dummy"):
             self.actor.equip_costume(cid)
             torso_img = self.actor.get_layer_image("torso", force_2x=True)
             arm_img = self.actor.get_layer_image("arm_rest", force_2x=True)
@@ -110,19 +110,80 @@ class TestUniversalPuppetFaceplates(unittest.TestCase):
 
     def test_selene_and_vladimir_graphic_novel_art_richness(self):
         """
-        Selene and Vladimir must feature richly shaded graphic-novel artwork (> 500 unique RGB colors
-        in bust_2x.png) rather than flat geometric polygon placeholders.
+        All 8 portrait dealers (julian, professor, tiffany, selene, malphas, mortimer, uriel, vladimir)
+        feature native 16-bit chunky pixel-art paper-doll rigs with rich clustered palettes (>= 24 unique colors).
         """
-        for cid in ("selene", "vladimir"):
+        for cid in ("julian", "professor", "tiffany", "selene", "malphas", "mortimer", "uriel", "vladimir"):
             bust_img = self.actor.get_bust_image(cid, scale_factor=2.0)
             self.assertIsNotNone(bust_img)
             arr = np.array(bust_img)
             opaque_rgb = arr[arr[:, :, 3] > 128][:, :3]
             unique_colors = len(np.unique(opaque_rgb, axis=0))
-            self.assertGreater(
+            self.assertGreaterEqual(
                 unique_colors,
-                500,
-                f"Character '{cid}' has only {unique_colors} unique RGB colors (expected > 500 for cel-shaded graphic novel illustration)!",
+                24,
+                f"Chunky pixel-art character '{cid}' has only {unique_colors} unique RGB colors!",
+            )
+
+    def test_chunky_puppet_tall_neck_overlap_and_card_back_dealing_arm(self):
+        """
+        Verifies the new chunky articulated paper-doll rig invariants across all 8 portrait dealers:
+        1. Tall neck column extends high behind the head (y <= 80 in 2x coordinates) so lifting
+           head_offset=(0, -6) never exposes a transparent seam along the central spine.
+        2. Dealing arm (arm_deal_2x) holds a blue-backed playing card matching cards/back.png
+           (royal-blue pixels with B > R + 80) rather than an exposed red card face.
+        3. Intra-sclera gaze tracking shifts pupil pixels inside the eye sockets without moving
+           the outer temple/cheek silhouette of the head.
+        """
+        for cid in ("julian", "professor", "tiffany", "selene", "malphas", "mortimer", "uriel", "vladimir"):
+            self.actor.equip_costume(cid)
+            self.actor.reset_kinematics()
+
+            neck_img = self.actor.get_layer_image("neck", force_2x=True)
+            self.assertIsNotNone(neck_img)
+            neck_arr = np.array(neck_img)
+            neck_ys = np.where(neck_arr[:, :, 3] > 200)[0]
+            self.assertGreater(len(neck_ys), 0)
+            self.assertLessEqual(
+                int(neck_ys.min()),
+                80,
+                f"Character '{cid}' neck_2x top y={int(neck_ys.min())} does not extend high behind the head (<= 80)!",
+            )
+
+            # Lifting head by -6px must leave 100% opaque central spine (y: 60..160, x: 106..118)
+            self.actor.set_layer_offsets(head_offset=(0, -6))
+            lifted_comp = np.array(self.actor.get_composite_image(force_2x=True))
+            spine_min_alpha = int(lifted_comp[60:160, 106:118, 3].min())
+            self.assertEqual(
+                spine_min_alpha,
+                255,
+                f"Character '{cid}' exposed a neck gap (min alpha={spine_min_alpha}) when head lifted by -6px!",
+            )
+
+            # Dealing arm must hold the canonical blue card back (cards/back.png)
+            self.actor.reset_kinematics()
+            arm_deal_img = self.actor.get_layer_image("arm_deal", force_2x=True)
+            self.assertIsNotNone(arm_deal_img)
+            deal_arr = np.array(arm_deal_img, dtype=np.int16)
+            blue_card_pixels = int(
+                ((deal_arr[:, :, 3] > 200) & (deal_arr[:, :, 2] > deal_arr[:, :, 0] + 80) & (deal_arr[:, :, 2] > 180)).sum()
+            )
+            self.assertGreater(
+                blue_card_pixels,
+                150,
+                f"Character '{cid}' arm_deal_2x does not show canonical blue card back (found {blue_card_pixels} blue pixels)!",
+            )
+
+            # Intra-sclera gaze tracking: shifting eye_gaze_offset=(2, 0) changes pupil pixels but keeps outer cheek/temple silhouette fixed
+            self.actor.reset_kinematics()
+            base_c = np.array(self.actor.get_composite_image(force_2x=True))
+            self.actor.set_gaze_target(dx=2, dy=0)
+            gaze_c = np.array(self.actor.get_composite_image(force_2x=True))
+            self.assertFalse(np.array_equal(base_c[50:96, 80:148], gaze_c[50:96, 80:148]))
+            # Outer head silhouette alpha in eye rows (y: 50..96) must be unchanged by gaze shift
+            self.assertTrue(
+                np.array_equal(base_c[50:96, :, 3] > 128, gaze_c[50:96, :, 3] > 128),
+                f"Character '{cid}' eye_gaze_offset altered outer head silhouette!",
             )
 
     def test_multi_layer_kinematics_and_gaze_tracking(self):
@@ -165,6 +226,74 @@ class TestUniversalPuppetFaceplates(unittest.TestCase):
             self.assertEqual(self.actor.set_mouth_for_char("e"), "e")
             self.assertEqual(self.actor.set_mouth_for_char("f"), "f")
             self.assertEqual(self.actor.set_mouth_for_char(" "), "neutral")
+
+    def test_live_speech_head_bob_and_reset_kinematics(self):
+        """
+        Verifies that BlackjackApp._step_speech_mouth drives subtle syllable-synced head_offset
+        articulation on open vowels ('a', 'o') and resets head_offset to (0, 0) when speech completes.
+        """
+        from pathlib import Path
+        import tempfile
+        from blackjack import BlackjackApp
+        from save_manager import SaveManager
+
+        tmp_dir = tempfile.TemporaryDirectory()
+        app = BlackjackApp(self.root, chips_mode=False, sound_enabled=False)
+        app.save_manager = SaveManager(Path(tmp_dir.name) / "save.json")
+        try:
+            app.dealer_actor.equip_costume("julian")
+            app.dealer_actor.reset_kinematics()
+
+            app._step_speech_mouth("a")
+            self.assertEqual(app.dealer_actor.mouth_state, "a")
+            self.assertNotEqual(app.dealer_actor.head_offset, (0, 0), "Open vowel should bob head slightly")
+
+            app._complete_typewriter_speech()
+            self.assertEqual(app.dealer_actor.mouth_state, "neutral")
+            self.assertEqual(app.dealer_actor.head_offset, (0, 0), "Completing speech must reset head_offset to (0, 0)")
+
+            app._step_speech_mouth("o")
+            self.assertNotEqual(app.dealer_actor.head_offset, (0, 0))
+            app.clear_dealer_speech()
+            self.assertEqual(app.dealer_actor.head_offset, (0, 0), "Clearing speech must reset head_offset to (0, 0)")
+        finally:
+            app._on_close()
+            tmp_dir.cleanup()
+
+    def test_biomechanical_torso_breathing_keeps_head_stationary_and_bottom_clamped(self):
+        """
+        Verifies that inhaling via torso_offset=(0, -2) lifts the shoulders/chest while:
+        1. Keeping the head, face, hat, and halo completely stationary (y: 10..96 unchanged).
+        2. Clamping the bottom horizon-rail rows (y: 222..223) so no transparent gap opens at the bottom.
+        """
+        for cid in ("julian", "professor", "tiffany", "selene", "malphas", "mortimer", "uriel", "vladimir"):
+            self.actor.equip_costume(cid)
+            self.actor.reset_kinematics()
+            rest_comp = np.array(self.actor.get_composite_image(force_2x=True))
+
+            self.actor.set_layer_offsets(torso_offset=(0, -2), head_offset=(0, 0))
+            inhale_comp = np.array(self.actor.get_composite_image(force_2x=True))
+
+            # 1. Upper head, eyes, hat/halo (y: 0..88, above popped shirt collars) must remain 100% stationary during torso breath
+            self.assertTrue(
+                np.array_equal(rest_comp[0:88, :, :], inhale_comp[0:88, :, :]),
+                f"Character '{cid}' head/face pixels moved during torso-only breathing!",
+            )
+
+            # 2. Chest/shoulders (y: 120..180) must visibly shift during inhalation
+            self.assertFalse(
+                np.array_equal(rest_comp[120:180, :, :], inhale_comp[120:180, :, :]),
+                f"Character '{cid}' chest/shoulders did not move when torso_offset=(0, -2)!",
+            )
+
+            # 3. Bottom-most rows (y: 222..223) must retain identical opaque coverage (zero floating gap)
+            rest_bottom_opaque = int((rest_comp[222:224, :, 3] > 200).sum())
+            inhale_bottom_opaque = int((inhale_comp[222:224, :, 3] > 200).sum())
+            self.assertEqual(
+                inhale_bottom_opaque,
+                rest_bottom_opaque,
+                f"Character '{cid}' lost bottom-edge horizon coverage during inhale ({inhale_bottom_opaque} vs {rest_bottom_opaque})!",
+            )
 
 
 if __name__ == "__main__":

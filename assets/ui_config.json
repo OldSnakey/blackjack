@@ -329,13 +329,13 @@
     "bankroll_piles": {
       "origin": {
         "x_ratio": 0.5,
-        "y_ratio": 0.66
+        "y_ratio": 0.64
       },
       "margin_x": 24,
       "chip_vertical_step": 3,
       "denomination_label": {
         "offset_x": 0,
-        "offset_y": 15
+        "offset_y": 17
       },
       "hitbox": {
         "pad_x": 4,
@@ -346,7 +346,7 @@
     "bankroll_badge": {
       "origin": {
         "x_ratio": 0.5,
-        "y_ratio": 0.9
+        "y_ratio": 0.91
       }
     },
     "chips": {

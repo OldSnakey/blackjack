@@ -52,9 +52,10 @@ Designed as an educational project for Python learners and junior developers, th
   - Deterministic 1:1 viseme-to-sound phonetic mapping ensuring consistent vocal personality per character rather than random beeps.
   - Punctuation inflection dynamics: rising pitch (+18%) on questions (`?`) and falling pitch (-12%) on statements (`.`).
   - 8 distinct character acoustics (*Julian*, *Tiffany*, *Malphas*, *Uriel*, *Mortimer*, *Dummy*, *Selene*, *Vladimir*) with in-game mute/volume toggle in Settings.
-- **Card Counting Trainer & Testing Engine (`card_counter.py`, `card_counting_hud.py`)**:
+- **Card Counting Trainer, Testing Engine & MIT Hi-Lo Counting Bootcamp (`card_counter.py`, `card_counting_hud.py`, `counting_bootcamp.py`)**:
   - Full implementation of the classic casino **Hi-Lo Card Counting System** (Low cards $2\text{--}6 = +1$, Neutral $7\text{--}9 = 0$, High cards $10\text{--}\text{A} = -1$).
-  - Sleek felt-embedded pill HUD (`K` or `Shift + C`) displaying Running Count (RC), Estimated Remaining Decks ($\max(0.5, \text{cards} / 52.0)$), and True Count ($\text{TC} = \text{RC} / \text{Decks}$) with dynamic Kelly-spread bet recommendations.
+  - **MIT Hi-Lo Counting Bootcamp (`counting_bootcamp.py`)**: Interactive 14-node curriculum DAG (`L0`–`L6` blackboard lectures and `S1`–`S7` timed challenge drills) covering Single-Card Tagging, Pair Cancellation, Running Count Stream, Deck Estimation & True Count, Kelly Bet Sizing, Illustrious 18 Index Deviations (`16 vs 10`, `15 vs 10`, `12 vs 3`, `12 vs 2`, `Insurance at TC >= +3`), and the 3-Seat Full Table Final Exam with persistent `S`/`A`/`B`/`C`/`F` casino chip mastery badges.
+  - Sleek felt-embedded pill HUD (`K` or `Shift + C`) displaying Running Count (RC), Estimated Remaining Decks ($\max(0.5, \text{cards} / 52.0)$), True Count ($\text{TC} = \text{RC} / \text{Decks}$) with dynamic Kelly-spread bet recommendations, and a `🎓 Bootcamp` launcher button.
   - Transient floating count badges (`+1`, `-1`, `0`) dynamically rising above dealt cards.
   - Strict dealer hole card invariant: The dealer's downcard remains uncounted until revealed face-up.
   - Interactive mid-shoe quiz test drills verifying player Running Count, unlocking persistent streak achievements (*Apprentice Counter*, *Master Counter*).
@@ -402,6 +403,7 @@ python -m unittest discover tests -v
 | [`tests/test_card_counter.py`](tests/test_card_counter.py) | Unit tests for pure Hi-Lo card counting logic: tag values (+1, 0, -1), Running Count accumulation, cut-card penetration shoe resets, decks remaining calculation with 0.5 minimum clamp, True Count estimation, bet spread sizing, and quiz verification. |
 | [`tests/test_card_counting_hud.py`](tests/test_card_counting_hud.py) | Verifies CardCountingHud container rendering, dynamic felt theme synchronization, pack/grid integration, floating count badge particle animations (+1, -1, 0), mid-shoe interactive quiz dialogs, and shortcut key bindings (`K`, `Shift+C`). |
 | [`tests/test_chip_visualizer_interactions.py`](tests/test_chip_visualizer_interactions.py) | Validates interactive bankroll chip pile left-click staging, right-click deduction, betting spot click actions, and hover hitbox stability on `ChipVisualizer`. |
+| [`tests/test_counting_bootcamp.py`](tests/test_counting_bootcamp.py) | Unit and headless GUI tests for the MIT Hi-Lo Counting Bootcamp: 14-node DAG prerequisite evaluation, grading rubrics, `SaveManager` persistence & monotonic rank preservation, grid swap lifecycle (`row=3` & `row=4`), first-time Training Mode splash onboarding, keyboard shortcut isolation, and timer cleanup. |
 | [`tests/test_dealer_actor.py`](tests/test_dealer_actor.py) | Unit tests for DealerActor sprite compositing, layer positioning, dynamic scale adjustments, and mouth/eye state changes. |
 | [`tests/test_dealer_actor_layers.py`](tests/test_dealer_actor_layers.py) | Validates layer coordinate math, anchor positioning, and costume asset resolution across all supported outfits. |
 | [`tests/test_dealer_stage_canvas.py`](tests/test_dealer_stage_canvas.py) | Verifies panoramic 1000px/2000px stage backdrop scaling, sconce compositing, and stage lighting across themes. |
@@ -453,6 +455,8 @@ Blackjack/
 ├── blackjack.py                    # Main application coordinator: BlackjackApp event loop & re-exports
 ├── card_counter.py                 # Pure stateless Hi-Lo card counting math, True Count, Edge %, and quiz validation
 ├── card_counting_hud.py            # 2.5D felt HUD pill, Drill Mode toggle, floating count badges, and quiz drill modal
+├── bootcamp_domain.py              # Pure domain Model for MIT Hi-Lo Counting Bootcamp (14-node DAG, drills, grading)
+├── counting_bootcamp.py            # Bootcamp View (BootcampCanvasRenderer, BootcampControlDock) & Controller (CountingBootcampFrame)
 ├── config.py                       # Game constants, ThemePalette dataclasses, and path resolution
 ├── dealer_actor.py                 # Living Dealer 7-layer puppet engine: kinematics, breathing, blinking, visemes
 ├── dealer_wardrobe_dialog.py       # Modal dialog for previewing and equipping dealer costumes
@@ -515,7 +519,9 @@ Blackjack/
 │   └── archive/                    # Archived historical design specifications & plans (obsolete, for reference)
 ├── docs/
 │   ├── ARCHITECTURE_CRC.md         # Class-Responsibility-Collaboration (CRC) architecture & review
-│   └── ITCH_IO_GUIDE.md            # itch.io deployment, store copy, and release guide
+│   ├── ITCH_IO_GUIDE.md            # itch.io deployment, store copy, and release guide
+│   └── designs/
+│       └── counting_bootcamp.md    # Architectural design specification for the MIT Hi-Lo Counting Bootcamp
 └── tests/                          # Automated test suite (300+ unit tests)
     ├── __init__.py
     ├── test_architectural_integration.py
@@ -524,6 +530,7 @@ Blackjack/
     ├── test_card_counter.py
     ├── test_card_counting_hud.py
     ├── test_chip_visualizer_interactions.py
+    ├── test_counting_bootcamp.py
     ├── test_dealer_actor.py
     ├── test_dealer_actor_layers.py
     ├── test_dealer_stage_canvas.py
@@ -576,8 +583,8 @@ Blackjack/
 - **Configuration & Theme Palettes (`config.py`)**: `[config.py:BLACKJACK_TARGET]`, `[config.py:DEALER_STAND_THRESHOLD]`, `[config.py:DEFAULT_DECK_COUNT]`, `[config.py:CUT_CARD_PENETRATION]`, `[config.py:STARTING_BANKROLL]`, `[config.py:MINIMUM_BET]`, `[config.py:CHIP_DENOMINATIONS]`, `[config.py:INSURANCE_PAYOUT_RATIO]`, `[config.py:DEALER_DRAW_DELAY_MS]`, `[config.py:DEFAULT_WINDOW_WIDTH]`, `[config.py:DEFAULT_WINDOW_HEIGHT]`, `[config.py:MIN_WINDOW_WIDTH]`, `[config.py:MIN_WINDOW_HEIGHT]`, `[config.py:CARD_WIDTH]`, `[config.py:CARD_HEIGHT]`, `[config.py:get_base_dir]`, `[config.py:BASE_DIR]`, `[config.py:ASSETS_DIR]`, `[config.py:AUDIO_DIR]`, `[config.py:OVERLAY_ICONS_DIR]`, `[config.py:HAUNTED_ASSETS_DIR]`, `[config.py:HAUNTED_AUDIO_DIR]`, `[config.py:FONTS_DIR]`, `[config.py:hex_to_rgb]`, `[config.py:ThemePalette]`, `[config.py:get_creep_theme]`, `[config.py:get_phase_palette]`
 - **Domain Rules & Math (`rules.py`)**: `[rules.py:RoundPhase]`, `[rules.py:Card]`, `[rules.py:Hand]`, `[rules.py:Player]`, `[rules.py:Seat]`, `[rules.py:score_hand]`, `[rules.py:is_soft_hand]`, `[rules.py:dealer_should_hit]`, `[rules.py:can_split]`, `[rules.py:determine_outcome]`, `[rules.py:calculate_payout]`, `[rules.py:calculate_insurance_payout]`, `[rules.py:breakdown_chips]`, `[rules.py:breakdown_bankroll_piles]`, `[rules.py:build_shoe]`, `[rules.py:BasicStrategyDecision]`, `[rules.py:get_basic_strategy_decision]`
 - **State Machine, Event Bus & Headless Engine (`state_machine.py`, `event_bus.py`, `game_engine.py`)**: `[state_machine.py:InvalidStateTransitionError]`, `[state_machine.py:VALID_TRANSITIONS]`, `[state_machine.py:GameStateMachine]`, `[event_bus.py:GameEventType]`, `[event_bus.py:GameEvent]`, `[event_bus.py:EventHub]`, `[game_engine.py:RoundResult]`, `[game_engine.py:BlackjackEngine]`
-- **Card Counting Subsystem (`card_counter.py`, `card_counting_hud.py`)**: `[card_counter.py:HiLoCardCounter]`, `[card_counting_hud.py:FloatingCountBadge]`, `[card_counting_hud.py:CardCountingHud]`, `[card_counting_hud.py:CardCountingQuizDialog]`
-- **Haunted Narrative & Persistence (`haunted_manager.py`, `save_manager.py`)**: `[haunted_manager.py:Phase]`, `[haunted_manager.py:Blessing]`, `[haunted_manager.py:BlessingDetails]`, `[haunted_manager.py:BLESSING_REGISTRY]`, `[haunted_manager.py:HauntedManager]`, `[save_manager.py:HighScores]`, `[save_manager.py:Achievements]`, `[save_manager.py:SaveData]`, `[save_manager.py:SaveManager]`
+- **Card Counting & Bootcamp Subsystem (`card_counter.py`, `card_counting_hud.py`, `bootcamp_domain.py`, `counting_bootcamp.py`)**: `[card_counter.py:HiLoCardCounter]`, `[card_counting_hud.py:FloatingCountBadge]`, `[card_counting_hud.py:CardCountingHud]`, `[card_counting_hud.py:CardCountingQuizDialog]`, `[bootcamp_domain.py:BootcampLectureSlide]`, `[bootcamp_domain.py:BootcampNodeSpec]`, `[bootcamp_domain.py:BootcampPrompt]`, `[bootcamp_domain.py:BootcampCurriculumDAG]`, `[bootcamp_domain.py:BootcampDrillSession]`, `[bootcamp_domain.py:BOOTCAMP_GRADE_CHIP_STYLES]`, `[counting_bootcamp.py:BootcampControlDock]`, `[counting_bootcamp.py:BootcampCanvasRenderer]`, `[counting_bootcamp.py:CountingBootcampFrame]`
+- **Haunted Narrative & Persistence (`haunted_manager.py`, `save_manager.py`)**: `[haunted_manager.py:Phase]`, `[haunted_manager.py:Blessing]`, `[haunted_manager.py:BlessingDetails]`, `[haunted_manager.py:BLESSING_REGISTRY]`, `[haunted_manager.py:HauntedManager]`, `[save_manager.py:GRADE_RANK_ORDER]`, `[save_manager.py:LECTURE_IDS]`, `[save_manager.py:STAGE_IDS]`, `[save_manager.py:BootcampLectureRecord]`, `[save_manager.py:BootcampStageRecord]`, `[save_manager.py:BootcampProgress]`, `[save_manager.py:create_default_bootcamp_progress]`, `[save_manager.py:HighScores]`, `[save_manager.py:Achievements]`, `[save_manager.py:SaveData]`, `[save_manager.py:SaveManager]`
 - **Living Dealer, Wardrobe & Voice Synthesis (`dealer_actor.py`, `dealer_wardrobe_dialog.py`, `dialogue_voice_engine.py`)**: `[dealer_actor.py:CostumeVariant]`, `[dealer_actor.py:CharacterProfile]`, `[dealer_actor.py:CHARACTERS]`, `[dealer_actor.py:COSTUME_ALIASES]`, `[dealer_actor.py:VISEME_STATES]`, `[dealer_actor.py:map_char_to_viseme]`, `[dealer_actor.py:DealerActor]`, `[dealer_wardrobe_dialog.py:DealerCardPanel]`, `[dealer_wardrobe_dialog.py:MysteryDealerCardPanel]`, `[dealer_wardrobe_dialog.py:WardrobeDialog]`, `[dialogue_voice_engine.py:VOICE_PROFILES]`, `[dialogue_voice_engine.py:SUPPORTED_VISEMES]`, `[dialogue_voice_engine.py:synthesize_viseme_pcm]`, `[dialogue_voice_engine.py:AnimaleseVoiceEngine]`
 - **Audio Presentation & Asset Scaling (`audio_assets.py`)**: `[audio_assets.py:AssetScaler]`, `[audio_assets.py:load_images]`, `[audio_assets.py:SoundManager]`, `[audio_assets.py:KeyboardIconLoader]`
 - **Table Felt, Stage & HUD Canvases (`ui_canvases.py`)**: `[ui_canvases.py:ChipVisualizer]`, `[ui_canvases.py:SoulMeterCanvas]`, `[ui_canvases.py:TableAnnouncementHUD]`, `[ui_canvases.py:HauntedAltarCanvas]`, `[ui_canvases.py:DealerStageCanvas]`, `[ui_canvases.py:TableFeltCanvas]`, `[ui_canvases.py:MahoganyRailCanvas]`

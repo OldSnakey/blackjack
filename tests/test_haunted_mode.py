@@ -198,6 +198,38 @@ class TestHauntedManager(unittest.TestCase):
         self.assertEqual(self.mgr.phase, Phase.HELL_TABLE)
         self.assertAlmostEqual(self.mgr.soul_meter, 0.25)
 
+    def test_haunted_mode_does_not_retrigger_after_exorcist_victory(self):
+        """Once Exorcist is unlocked, automatic CREEP/OMEN/SNUFFING progression must stay disabled."""
+        self.mgr.start_hell_table()
+        self.mgr.soul_meter = 0.90
+        self.mgr.on_round_outcome("PLAYER_WINS")
+        self.assertEqual(self.mgr.phase, Phase.VICTORY)
+        self.mgr.reset_after_victory()
+
+        self.assertTrue(self.mgr.unlocked_exorcist)
+        self.assertTrue(self.mgr.unlocked_cursed_stakes)
+        self.assertEqual(self.mgr.phase, Phase.NORMAL)
+
+        # Play 30 consecutive hands: phase must remain NORMAL on every single hand (including 7 and 13)
+        for hand_num in range(1, 31):
+            phase = self.mgr.on_new_hand()
+            self.assertEqual(
+                phase,
+                Phase.NORMAL,
+                f"Hand {hand_num} after Exorcist victory must stay NORMAL, got {phase}",
+            )
+            self.mgr.on_round_outcome("DEALER_WINS")
+            self.assertEqual(self.mgr.candles_remaining, 5)
+            self.assertEqual(self.mgr.phase, Phase.NORMAL)
+
+        # Manual initiation still enters HELL_TABLE when explicitly requested
+        self.mgr.start_hell_table(manual=True)
+        self.assertEqual(self.mgr.phase, Phase.HELL_TABLE)
+        self.assertTrue(self.mgr.manual_cursed_active)
+        self.mgr.reset_to_mortal()
+        self.assertEqual(self.mgr.phase, Phase.NORMAL)
+        self.assertFalse(self.mgr.manual_cursed_active)
+
 
 import tkinter
 from blackjack import BlackjackApp, Card, StoryDialogueDialog, TABLE_BACKGROUND_COLOR, PANEL_BACKGROUND_COLOR
@@ -734,6 +766,164 @@ class TestHauntedGui(unittest.TestCase):
                     )
                 finally:
                     dlg.destroy()
+
+    def test_gui_haunted_mode_one_time_and_manual_enter_exit_anytime(self):
+        """After clearing Hell's Table once, Haunted Mode never auto-returns and can be manually entered/exited anytime."""
+        # 1. Complete Hell's Table once
+        self.app._trigger_hell_table()
+        self.app.haunted.soul_meter = 1.0
+        self.app.haunted.phase = Phase.VICTORY
+        self.app._show_victory_dialog()
+        self.root.update_idletasks()
+
+        self.assertEqual(self.app.haunted.phase, Phase.NORMAL)
+        self.assertTrue(self.app.haunted.unlocked_exorcist)
+        self.assertTrue(self.app.haunted.unlocked_cursed_stakes)
+        self.assertTrue(bool(self.app.cursed_stakes_button.grid_info()))
+        self.assertEqual(self.app.cursed_stakes_button.cget("text"), "🔥 Cursed")
+
+        # 2. Deal 20 hands in normal play: must NEVER enter CREEP or OMEN or deal Card 13
+        for h_num in range(1, 21):
+            self.app.new_game()
+            self.assertEqual(
+                self.app.haunted.phase,
+                Phase.NORMAL,
+                f"Hand {h_num} after clearing Haunted Mode must remain NORMAL!",
+            )
+            for card in self.app.player_hands[0]:
+                self.assertNotEqual(card.value, 13, "Card 13 must never be dealt automatically after clearing Haunted Mode!")
+
+        # 3. Manually initiate Haunted Mode via Cursed Stakes button
+        self.app.cursed_stakes_button.invoke()
+        self.root.update_idletasks()
+        self.assertEqual(self.app.haunted.phase, Phase.HELL_TABLE)
+        self.assertTrue(self.app.haunted.manual_cursed_active)
+        self.assertTrue(self.app.cursed_stakes_var.get())
+        self.assertEqual(self.app.cursed_stakes_button.cget("text"), "✦ Exit Cursed")
+        self.assertEqual(self.app.cursed_stakes_button.cget("state"), "normal")
+
+        # Equip Miracle Draw and verify no overlap between cursed_stakes_button and miracle_button
+        self.app.haunted.equip_blessing(Blessing.MIRACLE)
+        self.app._update_blessings_tray()
+        self.app._reposition_rail_buttons()
+        self.root.update_idletasks()
+        cs_left = self.app.cursed_stakes_button.x - (self.app.cursed_stakes_button.width // 2)
+        cs_right = self.app.cursed_stakes_button.x + (self.app.cursed_stakes_button.width // 2)
+        m_left = self.app.miracle_button.x - (self.app.miracle_button.width // 2)
+        m_right = self.app.miracle_button.x + (self.app.miracle_button.width // 2)
+        self.assertTrue(
+            cs_right <= m_left or m_right <= cs_left,
+            f"cursed_stakes_button ({cs_left}..{cs_right}) overlaps miracle_button ({m_left}..{m_right})!",
+        )
+
+        # 4. Exit Haunted Mode mid-hand at any time by clicking cursed_stakes_button again
+        self.app.cursed_stakes_button.invoke()
+        self.root.update_idletasks()
+        self.assertEqual(self.app.haunted.phase, Phase.NORMAL)
+        self.assertFalse(self.app.haunted.manual_cursed_active)
+        self.assertFalse(self.app.cursed_stakes_var.get())
+        self.assertEqual(self.app.cursed_stakes_button.cget("text"), "🔥 Cursed")
+        self.assertEqual(self.app.card_table_frame.current_theme, "casino")
+        self.assertFalse(bool(self.app.soul_meter_canvas.grid_info()))
+        self.assertFalse(bool(self.app.blessings_tray.grid_info()))
+
+    def test_blessing_tray_hover_shows_and_hides_miracle_details_dialog(self):
+        """Hovering over an equipped miracle badge in blessings_tray displays its full details and live status."""
+        from haunted_manager import BLESSING_REGISTRY
+
+        self.app._trigger_hell_table(manual=True)
+        self.app.haunted.equip_blessing(Blessing.MIRACLE)
+        self.app.haunted.equip_blessing(Blessing.SERAPH)
+        self.app._update_blessings_tray()
+        self.root.update_idletasks()
+
+        self.assertTrue(hasattr(self.app, "blessing_badge_widgets"))
+        self.assertIn(Blessing.MIRACLE, self.app.blessing_badge_widgets)
+        self.assertIn(Blessing.SERAPH, self.app.blessing_badge_widgets)
+        self.assertEqual(self.app.blessing_tooltip_frame.winfo_manager(), "")
+
+        # 1. Hover over Miracle Draw badge -> tooltip appears with title, tagline, description, and Ready status
+        miracle_badge = self.app.blessing_badge_widgets[Blessing.MIRACLE]
+        self.app._on_blessing_badge_enter(Blessing.MIRACLE, miracle_badge)
+        self.root.update_idletasks()
+
+        self.assertEqual(self.app.blessing_tooltip_frame.winfo_manager(), "place")
+        self.assertIn(BLESSING_REGISTRY[Blessing.MIRACLE].title, self.app.blessing_tooltip_title_var.get())
+        self.assertEqual(self.app.blessing_tooltip_tagline_var.get(), BLESSING_REGISTRY[Blessing.MIRACLE].tagline)
+        self.assertEqual(self.app.blessing_tooltip_desc_var.get(), BLESSING_REGISTRY[Blessing.MIRACLE].description)
+        self.assertIn("Ready", self.app.blessing_tooltip_status_var.get())
+
+        # 2. Mark Miracle Draw used -> re-hover shows Used status
+        self.app.haunted.use_miracle_draw()
+        self.app._on_blessing_badge_enter(Blessing.MIRACLE, miracle_badge)
+        self.root.update_idletasks()
+        self.assertIn("Used this round", self.app.blessing_tooltip_status_var.get())
+
+        # 3. Hover over Seraph's Grace badge -> switches tooltip to Seraph's Grace
+        seraph_badge = self.app.blessing_badge_widgets[Blessing.SERAPH]
+        self.app._on_blessing_badge_enter(Blessing.SERAPH, seraph_badge)
+        self.root.update_idletasks()
+        self.assertIn(BLESSING_REGISTRY[Blessing.SERAPH].title, self.app.blessing_tooltip_title_var.get())
+        self.assertEqual(self.app.blessing_tooltip_desc_var.get(), BLESSING_REGISTRY[Blessing.SERAPH].description)
+
+        # 4. Hide tooltip on leave
+        self.app._hide_blessing_tooltip()
+        self.root.update_idletasks()
+        self.assertEqual(self.app.blessing_tooltip_frame.winfo_manager(), "")
+
+        # 5. Re-show and verify exiting Haunted Mode automatically hides tooltip
+        self.app._on_blessing_badge_enter(Blessing.SERAPH, seraph_badge)
+        self.assertEqual(self.app.blessing_tooltip_frame.winfo_manager(), "place")
+        self.app._exit_haunted_mode()
+        self.assertEqual(self.app.blessing_tooltip_frame.winfo_manager(), "")
+
+        # 6. Switching to 3-seat / Training mode hides Cursed button; returning to 1-seat restores it
+        self.app.set_table_seats(3)
+        self.assertFalse(bool(self.app.cursed_stakes_button.grid_info()))
+        self.app.set_table_seats(1)
+        self.assertTrue(bool(self.app.cursed_stakes_button.grid_info()))
+        self.assertEqual(self.app.cursed_stakes_button.cget("text"), "🔥 Cursed")
+
+    def test_victory_and_exit_cleanup_hells_table_card_overlays_and_decor(self):
+        """Hell's Table Victory and Exit must restore normal crisp card sprites and remove Eye of Providence halo."""
+        normal_map = {(c.rank, c.suit): c for c in self.app.all_cards}
+        c_3d = normal_map[("3", "diamond")]
+        c_ks = normal_map[("king", "spade")]
+        c_9d = normal_map[("9", "diamond")]
+        c_js = normal_map[("jack", "spade")]
+
+        self.app._trigger_hell_table(manual=True)
+        self.app.haunted.equip_blessing(Blessing.EYE)
+
+        # Popped from end of deck: player1=c_9d, player2=c_js, dealer1=c_3d, dealer2(hole)=c_ks
+        self.app.deck = [c_3d] * 60 + [c_ks, c_3d, c_js, c_9d]
+        self.app.shoe_needs_reshuffle = False
+        self.app.new_game()
+        self.root.update_idletasks()
+
+        # During Hell's Table, face cards are swapped to darkened *_haunted_0 sprites and Eye halo is drawn
+        self.assertEqual(self.app.dealer_hand[1].image, self.app.haunted_assets["king_haunted_0"])
+        self.assertEqual(self.app.player_hands[0][1].image, self.app.haunted_assets["jack_haunted_0"])
+        self.assertGreater(len(self.app.card_table_frame.find_withtag("dealer_card_decor")), 0)
+
+        # Revealing the hole card clears the Eye of Providence peek border
+        self.app._reveal_dealer_hole_card()
+        self.assertEqual(len(self.app.card_table_frame.find_withtag("dealer_card_decor")), 0)
+
+        # Re-render with decor to simulate lingering Hell's Table state at Victory
+        self.app.card_table_frame.create_rectangle(0, 0, 10, 10, outline="#00e5ff", tags="dealer_card_decor")
+        self.app.haunted.phase = Phase.VICTORY
+        self.app._show_victory_dialog()
+        self.root.update_idletasks()
+
+        # After Victory, dealer_card_decor must be deleted and cards on the felt restored to normal white sprites
+        self.assertEqual(len(self.app.card_table_frame.find_withtag("dealer_card_decor")), 0)
+        self.assertEqual(self.app.dealer_hand[1].image, c_ks.image)
+        self.assertEqual(self.app.player_hands[0][1].image, c_js.image)
+        dealer_sprite_img = self.app.card_table_frame.itemcget(self.app.dealer_hand.sprite_ids[1], "image")
+        player_sprite_img = self.app.card_table_frame.itemcget(self.app.player_hands[0].sprite_ids[1], "image")
+        self.assertEqual(dealer_sprite_img, str(c_ks.image))
+        self.assertEqual(player_sprite_img, str(c_js.image))
 
 
 if __name__ == "__main__":

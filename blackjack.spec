@@ -37,6 +37,8 @@ hiddenimports = [
     "dialogue_voice_engine",
     "card_counter",
     "card_counting_hud",
+    "bootcamp_domain",
+    "counting_bootcamp",
     "pixel_ui",
     "ui_layout",
     "PIL",

@@ -20,6 +20,9 @@ The `docs` directory contains authoritative system architecture blueprints, Clas
     - *Subsystem H*: Central Orchestration Controller (`blackjack.py:BlackjackApp`)
   - Sequence diagrams detailing round deal lifecycles, hole card privacy invariants, and haunted narrative escalation.
   - Critical architectural review tracking God-object deconstruction and observer event bus decouplings.
+- **[`DEALER_COSTUME_AUTHORING_GUIDE.md`](DEALER_COSTUME_AUTHORING_GUIDE.md)**:
+  - Authoritative engineering and pixel-art pipeline reference for the **19-Layer Universal Chunky Pixel-Art Puppet Engine** (`dealer_actor.py`, `tools/deocclude_dealer_faceplates.py`, `tools/dealer_imaginative_costumes.py`, `tools/convert_selene_prof_vlad_costumes.py`).
+  - Covers per-dealer `128x128` $\to$ `112x112` coordinate alignment tables, frame headroom & horizon rail grounding invariants, 3-stage white background / armpit pocket / outer-halo stripping, the 6 facial & jawline grafting modes, and dealing-arm pixel anatomy (`C` / `H` / `W` / `S`).
 
 ### 2. Packaging, Distribution & Storefront Publishing
 - **[`ITCH_IO_GUIDE.md`](ITCH_IO_GUIDE.md)**:

@@ -302,6 +302,57 @@ class TestChipVisualizerInteractions(unittest.TestCase):
                         f"bankroll_badge bottom ({badge_box[3]}) overflowed canvas height ({self.viz.canvas_height})!"
                     )
 
+    def test_denomination_labels_have_vertical_breathing_room_below_chip_piles(self):
+        """Denomination text labels ($5..$1K) must sit 2-3px lower below the chip pile rim for readability."""
+        viz = ChipVisualizer(self.root)
+        viz.set_scale(1.0)
+        viz.set_bankroll(1000, interactive=True)
+        self.root.update_idletasks()
+
+        for denom in (5, 25, 100, 500, 1000):
+            pile_items = viz.find_withtag(f"bank_pile_{denom}")
+            non_text = [it for it in pile_items if viz.type(it) != "text"]
+            lbl_items = [it for it in pile_items if viz.type(it) == "text"]
+            chip_bot = max(viz.bbox(it)[3] for it in non_text)
+            lbl_box = viz.bbox(lbl_items[-1])
+            # With font internal leading, lbl_box[1] >= chip_bot - 1 ensures 2-3px visible gap below chip rim
+            self.assertGreaterEqual(
+                lbl_box[1], chip_bot - 1,
+                f"denom {denom} label top ({lbl_box[1]}) is too close to chip pile bottom ({chip_bot})!"
+            )
+        viz.destroy()
+
+    def test_no_orphaned_payout_or_bet_chips_after_clear_or_round_completion(self):
+        """Clearing the betting spot or completing a round (win/loss/push) must leave zero stray chips."""
+        # 1. Stage a bet and complete round via non-animated win/loss/push -> all spot chips must be cleared
+        for outcome_fn in (
+            lambda: self.viz.animate_win(50, animated=False),
+            lambda: self.viz.animate_loss(animated=False),
+            lambda: self.viz.animate_push(animated=False),
+        ):
+            self.viz.set_bet(25, animate=False)
+            self.assertGreater(len(self.viz.find_withtag("chip")), 0)
+            outcome_fn()
+            self.assertEqual(self.viz.current_bet, 0)
+            self.assertEqual(self.viz.itemcget("badge", "text"), "")
+            for tag in ("chip", "anim_chip", "payout_stack", "floating_text"):
+                self.assertEqual(len(self.viz.find_withtag(tag)), 0, f"Stray '{tag}' remained after round end!")
+
+        # 2. Simulate an in-flight animate_win interrupted by clear_timers() / animate_clear() (e.g. clicking New Game or Clear Bet)
+        self.viz.set_bet(25, animate=False)
+        orig_anim = self.viz._is_animation_enabled
+        self.viz._is_animation_enabled = lambda: True
+        try:
+            self.viz.animate_win(25, animated=True)
+            # payout_stack is spawned below the betting spot during animate_win
+            self.assertGreater(len(self.viz.find_withtag("payout_stack")), 0)
+            # Interrupting via animate_clear() or clear_timers() must wipe payout_stack and all spot chips
+            self.viz.animate_clear(animated=False)
+            for tag in ("chip", "anim_chip", "payout_stack", "floating_text"):
+                self.assertEqual(len(self.viz.find_withtag(tag)), 0, f"Orphaned '{tag}' remained after animate_clear!")
+        finally:
+            self.viz._is_animation_enabled = orig_anim
+
 
 if __name__ == "__main__":
     unittest.main()

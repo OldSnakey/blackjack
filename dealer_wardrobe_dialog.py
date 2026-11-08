@@ -63,11 +63,189 @@ CHARACTER_VOICE_QUOTES: Dict[str, str] = {
     "vladimir": (
         "Centuries across the shadowy salons of Europe have taught me: the night belongs to patience."
     ),
+    "professor": (
+        "Blackjack isn't a game of luck, scholar—it's a game of conditional probability and memory!"
+    ),
 }
 
 COSTUME_VOICE_QUOTES: Dict[str, str] = {
+    **CHARACTER_VOICE_QUOTES,
+    "julian_monte_carlo": (
+        "Evening at the Monte Carlo salon—ivory silk, golden lapels, and a fresh six-deck shoe."
+    ),
+    "julian_high_roller": (
+        "Welcome to the burgundy VIP room. High limits, sharp tailoring, and pure casino tradition."
+    ),
+    "julian_emerald": (
+        "Dressed in Emerald Club velvet—may the green felt favor your boldest doubles tonight."
+    ),
+    "julian_bond": (
+        "The name is Julian. Shaken, not stirred—and I always stand on a hard seventeen, double-oh."
+    ),
+    "julian_godfather": (
+        "Welcome to the 1920s speakeasy, pal. Keep your fedora low and your chips stacked high."
+    ),
+    "julian_maverick": (
+        "Out on the frontier saloon circuit, a cool hand beats a fast draw every single time."
+    ),
+    "julian_miami": (
+        "Neon palms, white linen, and sunset shades—welcome to the 1980s high-roller strip!"
+    ),
     "tiffany_velvet": (
         "Velvet cards and sharp minds. Let's see how well you handle the house edge tonight, darling!"
+    ),
+    "tiffany_sequin": (
+        "Deep crimson sequins and a single strap, darling—keep your eyes on the cards if you can!"
+    ),
+    "tiffany_rose": (
+        "Crimson velvet corset and satin opera gloves—welcome to the private VIP lounge, sweetheart!"
+    ),
+    "tiffany_champagne": (
+        "Twenty-four karat gold halter and a ruby drop! Raise your glass and place your chips, darling."
+    ),
+    "tiffany_amethyst": (
+        "Midnight sapphire lace and diamonds for the after-hours tables. Deal me in, honey!"
+    ),
+    "tiffany_bunny": (
+        "Satin bunny ears and French cuffs, sugar! VIP service is hopping at my table tonight!"
+    ),
+    "tiffany_showgirl": (
+        "Feathers, rubies, and Vegas Jubilee lights! Every hand's a headliner on the Strip, darling!"
+    ),
+    "tiffany_cheongsam": (
+        "Imperial crimson silk and golden dragons from the Macau high-limit salon. Feeling lucky?"
+    ),
+    "tiffany_noir": (
+        "Arctic-fox fur, emerald satin, and a velvet veil... In a noir casino, every card has a secret."
+    ),
+    "professor_ivy": (
+        "In Cambridge tweed, we treat every shoe like a seminar on expected value and risk management."
+    ),
+    "professor_oxford": (
+        "Oxford navy and brass—remember, scholar, basic strategy is your foundation, the count is your edge."
+    ),
+    "professor_vegas": (
+        "When the MIT team hit Vegas undercover, blending in at the pit was half the science!"
+    ),
+    "professor_vegas_disguise": (
+        "Pit bosses never suspect a tourist in a Hawaiian shirt and Panama hat counting a +4 shoe!"
+    ),
+    "professor_sherlock": (
+        "Elementary, my dear player! When you eliminate the dealt tens, whatever remains is the true count!"
+    ),
+    "professor_mad_scientist": (
+        "Quantum goggles calibrated! By my stochastic equations, this shoe has reached critical mass!"
+    ),
+    "professor_dean": (
+        "By the authority vested in the Academy of Advantage Play, I hereby confer a natural twenty-one!"
+    ),
+    "selene_chrome": (
+        "Full liquid-chrome chassis online. Mirror-finish optics locked onto the shoe at 120 hertz."
+    ),
+    "selene_netrunner": (
+        "Cyber-magenta neural uplinks synced. Slicing through house variance on the neon grid."
+    ),
+    "selene_arasaka": (
+        "Executive syndicate armor engaged. High-limit protocol authorized—place your credits, runner."
+    ),
+    "selene_ghost": (
+        "Ghost Protocol stealth weave active. Zero thermal signature, one hundred percent card precision."
+    ),
+    "selene_kunoichi": (
+        "Oni stealth mask locked. In the Neo-Tokyo shadows, the unseen blade always draws twenty-one."
+    ),
+    "selene_valkyrie": (
+        "Orbital Valkyrie exosuit online—arc reactor humming at full output. Ready to launch the deal."
+    ),
+    "selene_synthwave": (
+        "Cat-ear headphones cranked to 1988 synthwave! Drop a coin in the slot and beat the high score!"
+    ),
+    "selene_bounty": (
+        "Beskar T-visor locked on target. I can bring your chips in warm... or I can bring them in cold."
+    ),
+    "malphas_hellfire": (
+        "Clad in molten Hellfire embers! Every bust feeds the furnace of the lower pit!"
+    ),
+    "malphas_brimstone": (
+        "Brimstone gold and blood-crimson silk—let us see if your nerve survives the infernal shoe!"
+    ),
+    "malphas_abyssal": (
+        "From the deepest violet void of the abyss, I deal the cards of fate, mortal!"
+    ),
+    "malphas_warlord": (
+        "Crowned in black iron and bone pauldrons! Bow before the Warlord of the Seventh Pit!"
+    ),
+    "malphas_mephisto": (
+        "A Victorian top hat and a Faustian contract... Care to sign on the dotted line for an Ace?"
+    ),
+    "malphas_biker": (
+        "Born to raise Hell on the brimstone highway! Rev the engine and double down, road-warrior!"
+    ),
+    "malphas_pharaoh": (
+        "By the golden scales of Anubis, your wager shall be weighed against the feather of truth!"
+    ),
+    "uriel_alabaster": (
+        "Clothed in pearl and burnished gold—may pure serenity bless every hand dealt upon this felt."
+    ),
+    "uriel_sapphire": (
+        "Under the deep sapphire firmament of the high heavens, steadfast courage commands the shoe."
+    ),
+    "uriel_obsidian": (
+        "Even when garbed in twilight obsidian, the golden light of the sanctuary never falters."
+    ),
+    "uriel_archangel": (
+        "Clad in silver Crusader battleplate and the Solar Cross—stand firm against the house edge!"
+    ),
+    "uriel_olympian": (
+        "Crowned in golden laurel from Mount Olympus! May Apollo's sunlight shine upon your draw."
+    ),
+    "uriel_pontiff": (
+        "Carved in eternal Carrara marble—I have contemplated every permutation of this shoe for two millennia."
+    ),
+    "uriel_fallen": (
+        "Ah, ha, ha, ha, stayin' alive at twenty-one! Let the mirror ball spin and deal the groove."
+    ),
+    "mortimer_baron": (
+        "Cackle! The Crimson Baron of the crypt deals tonight—stake your gold before the bell tolls!"
+    ),
+    "mortimer_lich": (
+        "Glowing with emerald soulfire! Even my old ribs tingle when a blackjack hits the felt!"
+    ),
+    "mortimer_gilded": (
+        "Draped in gilded burial brocade! Who says you cannot take your gold to the grave? Hehehe!"
+    ),
+    "mortimer_pirate": (
+        "Yarrr! Dead men tell no tales, matey—but they sure know how to deal a pirate's twenty-one!"
+    ),
+    "mortimer_mariachi": (
+        "¡Viva la fiesta de los muertos! Marigolds, charro silver, and a serenade for your bankroll!"
+    ),
+    "mortimer_jester": (
+        "Jingle, jangle! In the Court of Fools, the wild harlequin laughs last when the dealer busts!"
+    ),
+    "mortimer_reaper": (
+        "Two coins for the Ferryman... Step aboard the River Styx and let the hourglass deal your fate."
+    ),
+    "vladimir_nosferatu": (
+        "Wrapped in shadow velvet, I have watched fortunes rise and vanish before the break of dawn."
+    ),
+    "vladimir_royal": (
+        "Imperial Wallachian purple and gold—worthy of a midnight wager in the grandest courts of Europe."
+    ),
+    "vladimir_frost": (
+        "Cold as a Carpathian winter night... keep your pulse steady as the next card turns."
+    ),
+    "vladimir_dracul": (
+        "In the dragon-crest armor of old Wallachia, I impale the house edge before the moon sets."
+    ),
+    "vladimir_phantom": (
+        "Behind this porcelain mask, the Phantom of the Casino conducts the music of the night!"
+    ),
+    "vladimir_alucard": (
+        "Crimson hat, orange shades, and silver rounds—what a glorious night to hunt for a twenty-one."
+    ),
+    "vladimir_masquerade": (
+        "Welcome to the Venetian Carnival! Behind a gilded masquerade mask, every bluff is art."
     ),
 }
 
@@ -168,15 +346,17 @@ class DealerCardPanel(tkinter.Canvas):
             tag="portrait_frame",
         )
 
-        bust_pil = dialog.app.dealer_actor.get_bust_image(char_id, scale_factor=1.0)
+        cur_variant = self.costumes[self.costume_idx] if self.costumes else None
+        init_costume_id = cur_variant.costume_id if cur_variant else char_id
+        bust_pil = dialog.app.dealer_actor.get_bust_image(char_id, scale_factor=1.0, costume_id=init_costume_id)
         if bust_pil:
             self.portrait_photo = ImageTk.PhotoImage(bust_pil, master=self)
-            dialog._photo_cache[f"bust_{char_id}"] = self.portrait_photo
+            dialog._photo_cache[f"bust_{init_costume_id}"] = self.portrait_photo
             self.portrait_item = self.create_image(80, 80, image=self.portrait_photo, anchor="center")
         else:
             self.portrait_photo = None
             self.portrait_item = self.create_text(
-                80, 80, text="[No Bust]", font=get_role_font("body", size_override=-14), fill="#b0bec5", anchor="center"
+                80, 80, text="[No Bust]", font=get_role_font("body", size_override=-16), fill="#b0bec5", anchor="center"
             )
 
         # Voice Button: centered at cx=80, cy=180, width=128, height=32, scale=2
@@ -188,7 +368,7 @@ class DealerCardPanel(tkinter.Canvas):
             height=32,
             text="🔊 Voice",
             theme="neutral",
-            font=get_role_font("button", size_override=-14),
+            font=get_role_font("button", size_override=-16),
             scale=2,
             command=self._play_voice,
         )
@@ -298,7 +478,7 @@ class DealerCardPanel(tkinter.Canvas):
                 164,
                 102,
                 text="🔒 UNLOCK REQUIREMENT:",
-                font=get_role_font("header", size_override=-14),
+                font=get_role_font("header", size_override=-16),
                 fill="#ffd54f",
                 anchor="nw",
             )
@@ -372,6 +552,17 @@ class DealerCardPanel(tkinter.Canvas):
     def _update_costume_display(self):
         c_label = self._get_carousel_label()
         self.itemconfigure(self.carousel_text_id, text=c_label)
+        cur_variant = self.costumes[self.costume_idx] if self.costumes else None
+        variant_id = cur_variant.costume_id if cur_variant else self.char_id
+        bust_pil = self.dialog.app.dealer_actor.get_bust_image(self.char_id, scale_factor=1.0, costume_id=variant_id)
+        if bust_pil and self.portrait_item and self.type(self.portrait_item) == "image":
+            cache_key = f"bust_{variant_id}"
+            photo = self.dialog._photo_cache.get(cache_key)
+            if photo is None:
+                photo = ImageTk.PhotoImage(bust_pil, master=self)
+                self.dialog._photo_cache[cache_key] = photo
+            self.portrait_photo = photo
+            self.itemconfigure(self.portrait_item, image=self.portrait_photo)
         btn_text, btn_theme, btn_enabled, dis_text_color = self._get_action_state()
         self.equip_btn.set_text(btn_text)
         self.equip_btn.configure(theme=btn_theme)
@@ -454,7 +645,7 @@ class DealerCardPanel(tkinter.Canvas):
         self.create_text(
             160, 24,
             text=f"✦ {self.profile.name.upper()}",
-            font=get_role_font("header", size_override=-14),
+            font=get_role_font("header", size_override=-16),
             fill=header_col,
             anchor="nw",
             tags="speech_bubble",
@@ -462,7 +653,7 @@ class DealerCardPanel(tkinter.Canvas):
         self.create_text(
             412, 24,
             text="[✕]",
-            font=get_role_font("body", size_override=-14),
+            font=get_role_font("body", size_override=-16),
             fill="#78909c",
             anchor="ne",
             tags="speech_bubble",
@@ -642,7 +833,7 @@ class MysteryDealerCardPanel(tkinter.Canvas):
             height=32,
             text="???",
             theme="neutral",
-            font=get_role_font("button", size_override=-14),
+            font=get_role_font("button", size_override=-16),
             scale=2,
             enabled=False,
         )
@@ -738,6 +929,7 @@ class WardrobeDialog(tkinter.Toplevel):
         "mortimer": "Survive Card 13 or attain $5,000 Bankroll",
         "selene": "Answer 5 Card Counting Quizzes (Apprentice Counter)",
         "vladimir": "Answer 20 Card Counting Quizzes (Master Counter)",
+        "professor": "Graduate the Card Counting Bootcamp (Pass Stage C5)",
     }
 
     PAGE_CONFIG = [
@@ -751,7 +943,7 @@ class WardrobeDialog(tkinter.Toplevel):
         },
         {
             "title": "The Masters & High Rollers",
-            "characters": ["selene", "vladimir"],
+            "characters": ["selene", "vladimir", "professor"],
         },
     ]
 
@@ -937,6 +1129,12 @@ class WardrobeDialog(tkinter.Toplevel):
                 return True
             return False
 
+        if char_id == "professor":
+            bp = getattr(save_data, "bootcamp", None) if save_data else None
+            if bp and getattr(bp, "graduated", False):
+                return True
+            return False
+
         return False
 
     def _build_ui(self):
@@ -1070,7 +1268,7 @@ class WardrobeDialog(tkinter.Toplevel):
             height=28,
             text="◀ Previous",
             theme="neutral",
-            font=get_role_font("button", size_override=-14),
+            font=get_role_font("button", size_override=-15),
             scale=2,
             command=self._prev_page,
         )
@@ -1094,7 +1292,7 @@ class WardrobeDialog(tkinter.Toplevel):
             height=28,
             text="Next ▶",
             theme="neutral",
-            font=get_role_font("button", size_override=-14),
+            font=get_role_font("button", size_override=-15),
             scale=2,
             command=self._next_page,
         )
@@ -1256,23 +1454,23 @@ class WardrobeDialog(tkinter.Toplevel):
         )
 
         self.lbl_hands_record = records_canvas.create_text(
-            24, 60, text="• Hands Won / Played: 0 / 0 (0.0% Win Rate)", font=get_role_font("body", size_override=-16), fill="#e0e0e0", anchor="nw"
+            24, 60, text="• Hands Won / Played: 0 / 0 (0.0% Win Rate)", font=get_role_font("body", size_override=-18), fill="#e0e0e0", anchor="nw"
         )
         self.lbl_bjs_record = records_canvas.create_text(
-            660, 60, text="• Total Blackjacks: 0", font=get_role_font("body", size_override=-16), fill="#80d8ff", anchor="nw"
+            660, 60, text="• Total Blackjacks: 0", font=get_role_font("body", size_override=-18), fill="#80d8ff", anchor="nw"
         )
 
         self.lbl_net_pl_record = records_canvas.create_text(
-            24, 82, text="• Net P/L: $0", font=get_role_font("body", size_override=-16), fill="#5ce6b5", anchor="nw"
+            24, 82, text="• Net P/L: $0", font=get_role_font("body", size_override=-18), fill="#5ce6b5", anchor="nw"
         )
         self.lbl_bankruptcies_record = records_canvas.create_text(
-            260, 82, text="• Bankruptcies: 0", font=get_role_font("body", size_override=-16), fill="#e0e0e0", anchor="nw"
+            260, 82, text="• Bankruptcies: 0", font=get_role_font("body", size_override=-18), fill="#e0e0e0", anchor="nw"
         )
         self.lbl_bailouts_record = records_canvas.create_text(
-            460, 82, text="• Bailouts: $0", font=get_role_font("body", size_override=-16), fill="#e0e0e0", anchor="nw"
+            460, 82, text="• Bailouts: $0", font=get_role_font("body", size_override=-18), fill="#e0e0e0", anchor="nw"
         )
         self.lbl_wagered_record = records_canvas.create_text(
-            660, 82, text="• Total Wagered: $0", font=get_role_font("body", size_override=-16), fill="#ffd54f", anchor="nw"
+            660, 82, text="• Total Wagered: $0", font=get_role_font("body", size_override=-18), fill="#ffd54f", anchor="nw"
         )
         self._records_canvas = records_canvas
 
@@ -1310,20 +1508,20 @@ class WardrobeDialog(tkinter.Toplevel):
 
             p_canvas = tkinter.Canvas(
                 self.hof_scroll_frame,
-                width=420,
-                height=84,
+                width=436,
+                height=94,
                 background="#0d1f14",
                 highlightthickness=0,
                 borderwidth=0,
             )
-            p_canvas.grid(row=row, column=col, padx=8, pady=4, sticky="nsew")
+            p_canvas.grid(row=row, column=col, padx=6, pady=4, sticky="nsew")
 
             panel = CanvasPixelPanel(
                 p_canvas,
                 x=0,
                 y=0,
-                width=420,
-                height=84,
+                width=436,
+                height=94,
                 bg="#0c2917",
                 border="#06140b",
                 inner_hi="#1f4d30",
@@ -1336,16 +1534,16 @@ class WardrobeDialog(tkinter.Toplevel):
             )
 
             p_canvas.create_text(
-                14, 12, text=spec["title"], font=get_role_font("header", size_override=-16), fill="#ffd700", anchor="nw"
+                14, 10, text=spec["title"], font=get_role_font("header", size_override=-16), fill="#ffd700", anchor="nw"
             )
             p_canvas.create_text(
-                406, 12, text=f"[{spec['reward']}]", font=get_role_font("badge", size_override=-14), fill="#80cbc4", anchor="ne"
+                422, 10, text=f"[{spec['reward']}]", font=get_role_font("badge", size_override=-15), fill="#80cbc4", anchor="ne"
             )
             p_canvas.create_text(
-                14, 34, text=spec["desc"], font=get_role_font("body", size_override=-16), fill="#d8e2dc", width=390, anchor="nw"
+                14, 32, text=spec["desc"], font=get_role_font("body", size_override=-18), fill="#d8e2dc", width=408, anchor="nw"
             )
             status_text_id = p_canvas.create_text(
-                14, 60, text="🔒 LOCKED", font=get_role_font("badge", size_override=-14), fill="#ff8a80", anchor="nw"
+                14, 68, text="🔒 LOCKED", font=get_role_font("badge", size_override=-15), fill="#ff8a80", anchor="nw"
             )
 
             status_lbl_shim = _CanvasTextShim(p_canvas, status_text_id)

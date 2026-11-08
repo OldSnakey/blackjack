@@ -41,11 +41,12 @@ graph TD
         bus[event_bus.py: EventHub, GameEvent, GameEventType]
         engine[game_engine.py: BlackjackEngine, RoundResult]
         counter[card_counter.py: HiLoCardCounter]
+        bootcamp_dom[counting_bootcamp.py: BootcampCurriculumDAG, BootcampDrillSession]
     end
 
     subgraph Meta Game [Progression & State]
         haunted[haunted_manager.py: HauntedManager, Blessing]
-        save[save_manager.py: SaveManager, SaveData, Achievements]
+        save[save_manager.py: SaveManager, SaveData, Achievements, BootcampProgress]
     end
 
     subgraph Audio & Assets [Audio & Theme Subsystem]
@@ -66,6 +67,7 @@ graph TD
         soul_c[ui_canvases.py: SoulMeterCanvas]
         hud[ui_canvases.py: TableAnnouncementHUD]
         count_hud[card_counting_hud.py: CardCountingHud, FloatingCountBadge]
+        bootcamp_ui[counting_bootcamp.py: CountingBootcampFrame, BootcampControlDock]
     end
 
     subgraph Modal Views [Toplevel Dialogs]
@@ -163,7 +165,12 @@ graph TD
 #### `HiLoCardCounter` ([card_counter.py](../card_counter.py#L23))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Running count (RC), total face-up cards observed, initial shoe deck count (`DEFAULT_DECK_COUNT = 4` decks / 208 cards), and remaining deck estimation.<br>**Does**: Consumes observed face-up cards and applies standard Hi-Lo card counting weights ($2\text{--}6 \to +1$, $7\text{--}9 \to 0$, $10\text{--}\text{A} \to -1$).<br>**Does**: Computes estimated remaining decks ($\max(0.5, \text{cards} / 52.0)$), converts RC to True Count ($\text{TC} = \text{RC} / \text{Decks}$), and calculates player mathematical edge percentage (`get_player_advantage`: $-0.5\% + 0.5\% \times \text{TC}$).<br>**Does**: Provides betting unit recommendations based on Kelly criterion / True Count thresholds. | Collaborates with [Card](../rules.py#L44), [CardCountingHud](../card_counting_hud.py#L58), and [BlackjackApp](../blackjack.py). |
+| **Knows**: Running count (RC), total face-up cards observed, initial shoe deck count (`DEFAULT_DECK_COUNT = 4` decks / 208 cards), and remaining deck estimation.<br>**Knows**: Consumes observed face-up cards and applies standard Hi-Lo card counting weights ($2\text{--}6 \to +1$, $7\text{--}9 \to 0$, $10\text{--}\text{A} \to -1$).<br>**Does**: Computes estimated remaining remaining decks ($\max(0.5, \text{cards} / 52.0)$), converts RC to True Count ($\text{TC} = \text{RC} / \text{Decks}$), and calculates player mathematical edge percentage (`get_player_advantage`: $-0.5\% + 0.5\% \times \text{TC}$).<br>**Does**: Provides betting unit recommendations based on Kelly criterion / True Count thresholds. | Collaborates with [Card](../rules.py#L44), [CardCountingHud](../card_counting_hud.py#L58), and [BlackjackApp](../blackjack.py). |
+
+#### `BootcampCurriculumDAG` & `BootcampDrillSession` ([counting_bootcamp.py](../counting_bootcamp.py))
+| Responsibility | Collaboration |
+| :--- | :--- |
+| **Knows**: 14-node MIT Hi-Lo curriculum DAG (`L0`–`L6` lectures and `S1`–`S7` challenge drills), prerequisite unlock chains, slide decks, prompt distributions, response latencies, and grade rubrics (`S`, `A`, `B`, `C`, `F`).<br>**Does**: Evaluates DAG node statuses (`LOCKED`, `UNLOCKED`, `COMPLETED`), generates deterministic stage drill prompts (Single-Card Tagging, Pair Cancellation, Running Count Stream, Deck Estimation & True Count, Kelly Bet Sizing, Illustrious 18 Index Deviations, and 3-Seat Table Exam), grades submissions, and identifies the primary weakness tag. | Collaborates with [HiLoCardCounter](../card_counter.py#L23), [BootcampProgress](../save_manager.py), and [CountingBootcampFrame](../counting_bootcamp.py). |
 
 ---
 
@@ -283,7 +290,12 @@ graph TD
 #### `CardCountingHud` & `FloatingCountBadge` ([card_counting_hud.py](../card_counting_hud.py#L20))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Hi-Lo Running Count, True Count, remaining shoe decks (`4.0` default), player mathematical Edge %, Assisted vs. Drill Challenge Mode state (`drill_mode`), visibility toggle state, and floating count badge coordinates.<br>**Does**: Draws compact felt-embedded count HUD; masks live RC/TC/Edge % readouts with `???` during Drill Challenge Mode until verified via quiz; animates transient floating text badges (`+1`, `-1`, `0`) above dealt cards; provides betting spread advice. | Collaborates with [HiLoCardCounter](../card_counter.py#L23) and [BlackjackApp](../blackjack.py). |
+| **Knows**: Hi-Lo Running Count, True Count, remaining shoe decks (`4.0` default), player mathematical Edge %, Assisted vs. Drill Challenge Mode state (`drill_mode`), visibility toggle state, and floating count badge coordinates.<br>**Does**: Draws compact felt-embedded count HUD; masks live RC/TC/Edge % readouts with `???` during Drill Challenge Mode until verified via quiz; animates transient floating text badges (`+1`, `-1`, `0`) above dealt cards; provides betting spread advice and a `🎓 Bootcamp` launcher button. | Collaborates with [HiLoCardCounter](../card_counter.py#L23), [CountingBootcampFrame](../counting_bootcamp.py), and [BlackjackApp](../blackjack.py). |
+
+#### `CountingBootcampFrame`, `BootcampCanvasRenderer` & `BootcampControlDock` ([counting_bootcamp.py](../counting_bootcamp.py), [bootcamp_domain.py](../bootcamp_domain.py))
+| Responsibility | Collaboration |
+| :--- | :--- |
+| **Knows**: Active Bootcamp sub-view (`teacher_intro`, `map`, `lecture`, `challenge`, `report_card`), focused DAG node index, active `BootcampDrillSession`, tracked `.after()` timer handles, and bottom dock button definitions.<br>**Does**: Separates pure domain curriculum/drill state ([`BootcampCurriculumDAG`](../bootcamp_domain.py), [`BootcampDrillSession`](../bootcamp_domain.py)), stateless 2.5D baize drawing ([`BootcampCanvasRenderer`](../counting_bootcamp.py)), bottom dock controls ([`BootcampControlDock`](../counting_bootcamp.py)), and navigation/timer orchestration ([`CountingBootcampFrame`](../counting_bootcamp.py)). Swaps cleanly into `row=3` (felt area) and `row=4` (mahogany control dock) while preserving `DealerStageCanvas` (`row=1`) so the live dealer acts as instructor. | Collaborates with [BootcampCurriculumDAG](../bootcamp_domain.py), [ChipRenderer](../ui_chip_renderer.py), [MahoganyRailCanvas](../ui_canvases.py), [SaveManager](../save_manager.py#L182), and [BlackjackApp](../blackjack.py). |
 
 ---
 

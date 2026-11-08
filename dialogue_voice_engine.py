@@ -82,6 +82,11 @@ VOICE_PROFILES: Dict[str, Dict[str, Any]] = {
         "timbre": "crimson_velvet",
         "description": "Aristocratic, dark, brooding cello-like baritone.",
     },
+    "professor": {
+        "base_freq": 160.0,
+        "timbre": "classic_baritone",
+        "description": "Warm, articulate academic baritone with crisp lecture cadence.",
+    },
 }
 
 SUPPORTED_VISEMES = ("a", "o", "e", "f", "talk", "smirk", "gasp", "neutral")

@@ -170,14 +170,14 @@ DEFAULT_UI_CONFIG: dict[str, Any] = {
             "margin_x": 10,
         },
         "bankroll_piles": {
-            "origin": {"x_ratio": 0.5, "y_ratio": 0.66},
+            "origin": {"x_ratio": 0.5, "y_ratio": 0.64},
             "margin_x": 24,
             "chip_vertical_step": 3,
-            "denomination_label": {"offset_x": 0, "offset_y": 15},
+            "denomination_label": {"offset_x": 0, "offset_y": 17},
             "hitbox": {"pad_x": 4, "top_offset": -18, "bottom_offset": 7},
         },
         "bankroll_badge": {
-            "origin": {"x_ratio": 0.5, "y_ratio": 0.90},
+            "origin": {"x_ratio": 0.5, "y_ratio": 0.91},
         },
         "chips": {
             "compact": {"rx": 12, "ry": 6, "depth": 3, "stripe_x": 6},

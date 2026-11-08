@@ -146,6 +146,7 @@ class HauntedManager:
         self.unlocked_cursed_stakes: bool = False
         self.unlocked_haunted_deck: bool = False
         self.dealer_view_enabled: bool = False
+        self.manual_cursed_active: bool = False
 
     def reset_after_victory(self):
         """Resets the slow-burn state machine back to NORMAL mortal play after triumph."""
@@ -159,6 +160,7 @@ class HauntedManager:
         self.hand_counter = 0
         self.miracle_used_this_round = False
         self.seraph_used_this_hand = False
+        self.manual_cursed_active = False
         # Preserves persistent unlocks:
         self.unlocked_exorcist = True
         self.unlocked_cursed_stakes = True
@@ -180,6 +182,12 @@ class HauntedManager:
             return self.phase
 
         self.hand_counter += 1
+
+        # Once the player has cleared Haunted Mode once, automatic slow-burn
+        # progression is permanently disabled; Haunted Mode is manual-only.
+        if self.unlocked_exorcist or self.unlocked_cursed_stakes:
+            self.phase = Phase.NORMAL
+            return self.phase
 
         if self.hand_counter < 7:
             self.phase = Phase.NORMAL
@@ -340,9 +348,10 @@ class HauntedManager:
     # Mode Transitions & Replayability
     # ------------------------------------------------------------------------
 
-    def start_hell_table(self):
+    def start_hell_table(self, manual: bool = False):
         """Forces the table into Hell's Table mode (used on 5th snuff or Cursed Stakes toggle)."""
         self.phase = Phase.HELL_TABLE
+        self.manual_cursed_active = bool(manual)
         self.candles_remaining = 0
         self.soul_meter = self.STARTING_SOUL_METER
         self.consecutive_wins = 0
@@ -362,6 +371,7 @@ class HauntedManager:
     def reset_to_mortal(self):
         """Resets the game state back to mortal Normal play."""
         self.phase = Phase.NORMAL
+        self.manual_cursed_active = False
         self.hand_counter = 0
         self.candles_remaining = 5
         self.soul_meter = self.STARTING_SOUL_METER

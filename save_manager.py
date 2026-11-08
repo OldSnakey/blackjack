@@ -61,6 +61,59 @@ class Achievements:
     poker_face: bool = False         # Hit Three of a Kind, Straight Flush, or Suited Trips on 21+3
 
 
+GRADE_RANK_ORDER: Dict[str, int] = {"": 0, "F": 1, "C": 2, "B": 3, "A": 4, "S": 5}
+
+LECTURE_IDS = ("L1", "L2A", "L2B", "L3A", "L3B", "L4", "L5")
+STAGE_IDS = ("C1", "C2A", "C2B", "C3A", "C3B", "C4", "C5")
+
+
+@dataclass
+class BootcampLectureRecord:
+    unlocked: bool = False
+    completed: bool = False
+    views: int = 0
+
+
+@dataclass
+class BootcampStageRecord:
+    unlocked: bool = False
+    passed: bool = False
+    best_grade: str = ""
+    best_accuracy_pct: float = 0.0
+    best_score: int = 0
+    attempts: int = 0
+
+    @property
+    def completions(self) -> int:
+        return self.attempts
+
+
+@dataclass
+class BootcampProgress:
+    intro_seen: bool = False
+    graduated: bool = False
+    total_drills_completed: int = 0
+    overall_best_accuracy_pct: float = 0.0
+    lectures: Dict[str, BootcampLectureRecord] = field(default_factory=dict)
+    stages: Dict[str, BootcampStageRecord] = field(default_factory=dict)
+
+    @property
+    def lectures_completed(self) -> int:
+        return sum(1 for rec in self.lectures.values() if rec.completed)
+
+
+def create_default_bootcamp_progress() -> BootcampProgress:
+    lectures = {
+        lid: BootcampLectureRecord(unlocked=(lid == "L1"))
+        for lid in LECTURE_IDS
+    }
+    stages = {
+        sid: BootcampStageRecord(unlocked=(sid == "C1"))
+        for sid in STAGE_IDS
+    }
+    return BootcampProgress(lectures=lectures, stages=stages)
+
+
 @dataclass
 class SaveData:
     version: str = "1.1"
@@ -72,6 +125,7 @@ class SaveData:
     chips_mode: bool = True
     play_mode: str = "betting"  # "casual" | "betting" | "training"
     onboarding_completed: bool = False
+    bootcamp: BootcampProgress = field(default_factory=create_default_bootcamp_progress)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -84,6 +138,7 @@ class SaveData:
             "chips_mode": self.chips_mode,
             "play_mode": self.play_mode,
             "onboarding_completed": self.onboarding_completed,
+            "bootcamp": asdict(self.bootcamp),
         }
 
     @classmethod
@@ -95,6 +150,36 @@ class SaveData:
             unlocked.append("classic")
         if "tiffany" not in unlocked:
             unlocked.append("tiffany")
+        bc_raw = data.get("bootcamp", {})
+        default_bc = create_default_bootcamp_progress()
+        if isinstance(bc_raw, dict):
+            raw_lectures = bc_raw.get("lectures", {})
+            raw_stages = bc_raw.get("stages", {})
+            for lid in LECTURE_IDS:
+                l_entry = raw_lectures.get(lid, {}) if isinstance(raw_lectures, dict) else {}
+                default_bc.lectures[lid] = BootcampLectureRecord(
+                    unlocked=bool(l_entry.get("unlocked", lid == "L1")) or (lid == "L1"),
+                    completed=bool(l_entry.get("completed", False)),
+                    views=int(l_entry.get("views", 0)),
+                )
+            for sid in STAGE_IDS:
+                s_entry = raw_stages.get(sid, {}) if isinstance(raw_stages, dict) else {}
+                default_bc.stages[sid] = BootcampStageRecord(
+                    unlocked=bool(s_entry.get("unlocked", sid == "C1")) or (sid == "C1"),
+                    passed=bool(s_entry.get("passed", False)),
+                    best_grade=str(s_entry.get("best_grade", "")),
+                    best_accuracy_pct=float(s_entry.get("best_accuracy_pct", 0.0)),
+                    best_score=int(s_entry.get("best_score", 0)),
+                    attempts=int(s_entry.get("attempts", 0)),
+                )
+            default_bc.intro_seen = bool(bc_raw.get("intro_seen", False))
+            default_bc.graduated = bool(bc_raw.get("graduated", False))
+            default_bc.total_drills_completed = int(bc_raw.get("total_drills_completed", 0))
+            default_bc.overall_best_accuracy_pct = float(bc_raw.get("overall_best_accuracy_pct", 0.0))
+
+        if default_bc.graduated and "professor" not in unlocked:
+            unlocked.append("professor")
+
         return cls(
             version="1.1",
             current_bankroll=int(data.get("current_bankroll", DEFAULT_STARTING_BANKROLL)),
@@ -136,6 +221,7 @@ class SaveData:
             chips_mode=bool(data.get("chips_mode", True)),
             play_mode=str(data.get("play_mode", "betting")),
             onboarding_completed=bool(data.get("onboarding_completed", False)),
+            bootcamp=default_bc,
         )
 
 
@@ -463,3 +549,108 @@ class SaveManager:
             self._shoe_quizzes_taken = 0
             self._shoe_quizzes_correct = 0
         return unlocked
+
+    # --- MIT Hi-Lo Counting Bootcamp Persistence ---
+
+    def mark_bootcamp_intro_seen(self, save_now: bool = True) -> bool:
+        """Marks the first-time Teacher Intro sequence as seen."""
+        self.data.bootcamp.intro_seen = True
+        if save_now:
+            return self.save()
+        return True
+
+    def record_bootcamp_lecture(self, lecture_id: str) -> BootcampLectureRecord:
+        """Records that the player viewed/completed a Bootcamp Show & Tell lecture."""
+        if lecture_id not in self.data.bootcamp.lectures:
+            self.data.bootcamp.lectures[lecture_id] = BootcampLectureRecord(unlocked=True)
+        rec = self.data.bootcamp.lectures[lecture_id]
+        rec.unlocked = True
+        rec.completed = True
+        rec.views += 1
+        self.save()
+        return rec
+
+    def record_bootcamp_stage(
+        self,
+        stage_id: str,
+        grade: str,
+        accuracy_pct: float,
+        score: int,
+    ) -> Dict[str, Any]:
+        """
+        Records a Bootcamp Challenge stage completion, ratchets high-water marks,
+        propagates downstream DAG node unlocks, and saves atomically.
+        """
+        bp = self.data.bootcamp
+        if stage_id not in bp.stages:
+            bp.stages[stage_id] = BootcampStageRecord(unlocked=True)
+        record = bp.stages[stage_id]
+        record.unlocked = True
+        record.attempts += 1
+        bp.total_drills_completed += 1
+
+        if GRADE_RANK_ORDER.get(grade, 0) > GRADE_RANK_ORDER.get(record.best_grade, 0):
+            record.best_grade = grade
+        if accuracy_pct > record.best_accuracy_pct:
+            record.best_accuracy_pct = round(float(accuracy_pct), 1)
+        if score > record.best_score:
+            record.best_score = int(score)
+
+        if GRADE_RANK_ORDER.get(grade, 0) >= GRADE_RANK_ORDER["B"]:
+            record.passed = True
+
+        newly_unlocked: List[str] = []
+
+        def _unlock_lecture(lid: str) -> None:
+            if lid in bp.lectures and not bp.lectures[lid].unlocked:
+                bp.lectures[lid].unlocked = True
+                newly_unlocked.append(lid)
+
+        def _unlock_stage(sid: str) -> None:
+            if sid in bp.stages and not bp.stages[sid].unlocked:
+                bp.stages[sid].unlocked = True
+                newly_unlocked.append(sid)
+
+        if bp.stages["C1"].passed:
+            _unlock_lecture("L2A")
+            _unlock_stage("C2A")
+            _unlock_lecture("L2B")
+            _unlock_stage("C2B")
+
+        if bp.stages["C2A"].passed:
+            _unlock_lecture("L3A")
+            _unlock_stage("C3A")
+
+        if bp.stages["C2B"].passed:
+            _unlock_lecture("L3B")
+            _unlock_stage("C3B")
+
+        if bp.stages["C3A"].passed or bp.stages["C3B"].passed:
+            _unlock_lecture("L4")
+            _unlock_stage("C4")
+
+        if bp.stages["C4"].passed:
+            _unlock_lecture("L5")
+            _unlock_stage("C5")
+
+        if bp.stages["C5"].passed:
+            bp.graduated = True
+            if "professor" not in self.data.unlocked_costumes:
+                self.data.unlocked_costumes.append("professor")
+                newly_unlocked.append("professor")
+
+        attempted = [s.best_accuracy_pct for s in bp.stages.values() if s.attempts > 0]
+        if attempted:
+            bp.overall_best_accuracy_pct = round(sum(attempted) / len(attempted), 1)
+        else:
+            bp.overall_best_accuracy_pct = 0.0
+
+        self.save()
+        return {
+            "stage_id": stage_id,
+            "passed": record.passed,
+            "best_grade": record.best_grade,
+            "newly_unlocked": newly_unlocked,
+            "graduated": bp.graduated,
+        }
+

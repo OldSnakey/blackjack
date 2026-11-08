@@ -344,12 +344,12 @@ class MultiSeatInsuranceDialog(tkinter.Toplevel):
         sub = tkinter.Label(
             content,
             text=f"Insurance pays 2:1 if Dealer has Natural Blackjack.\nAvailable Bankroll: ${self.bankroll}",
-            font=get_body_font(11), fg="#b2dfdb", background=PANEL_BACKGROUND_COLOR, justify="center"
+            font=get_body_font(18), fg="#b2dfdb", background=PANEL_BACKGROUND_COLOR, justify="center"
         )
         sub.pack(pady=(0, 10))
 
         list_frame = tkinter.LabelFrame(
-            content, text=" Active Seats Wagering Insurance ", font=get_header_font(11),
+            content, text=" Active Seats Wagering Insurance ", font=get_header_font(16),
             fg="#80cbc4", background=PANEL_BACKGROUND_COLOR, padx=12, pady=8
         )
         list_frame.pack(fill="x", pady=(0, 10))
@@ -369,7 +369,7 @@ class MultiSeatInsuranceDialog(tkinter.Toplevel):
                 text=lbl_text,
                 variable=self.seat_vars[s_idx],
                 command=self._on_check_toggle,
-                font=get_body_font(11),
+                font=get_body_font(18),
                 fg="#ffffff" if can_afford else "#888888",
                 selectcolor="#004d40",
                 activebackground=PANEL_BACKGROUND_COLOR,
@@ -383,7 +383,7 @@ class MultiSeatInsuranceDialog(tkinter.Toplevel):
 
         self.total_cost_lbl = tkinter.Label(
             content, text="Selected Insurance: $0",
-            font=get_badge_font(12), fg="#ffd700", background=PANEL_BACKGROUND_COLOR
+            font=get_badge_font(16), fg="#ffd700", background=PANEL_BACKGROUND_COLOR
         )
         self.total_cost_lbl.pack(pady=(0, 8))
 
@@ -396,7 +396,7 @@ class MultiSeatInsuranceDialog(tkinter.Toplevel):
         can_insure_all = (self.bankroll >= total_all_cost and len(self.seats) > 0)
         self.btn_insure_all = tkinter.Button(
             btn_row, text=f"Insure All (${total_all_cost})",
-            font=get_button_font(10), background="#ff9800", fg="#111111",
+            font=get_button_font(15), background="#ff9800", fg="#111111",
             activebackground="#ffa726", activeforeground="#000000",
             state="normal" if can_insure_all else "disabled",
             cursor="hand2" if can_insure_all else "arrow",
@@ -406,7 +406,7 @@ class MultiSeatInsuranceDialog(tkinter.Toplevel):
 
         self.btn_confirm = tkinter.Button(
             btn_row, text="Confirm",
-            font=get_button_font(10), background="#1b5e20", fg="white",
+            font=get_button_font(15), background="#1b5e20", fg="white",
             activebackground="#2e7d32", activeforeground="white",
             cursor="hand2", command=self._on_confirm, padx=4, pady=5
         )
@@ -414,7 +414,7 @@ class MultiSeatInsuranceDialog(tkinter.Toplevel):
 
         self.btn_decline_all = tkinter.Button(
             btn_row, text="Decline All",
-            font=get_button_font(10), background="#37474f", fg="white",
+            font=get_button_font(15), background="#37474f", fg="white",
             activebackground="#455a64", activeforeground="white",
             cursor="hand2", command=self._on_decline, padx=4, pady=5
         )
@@ -661,6 +661,7 @@ class SettingsDialog(tkinter.Toplevel):
         seats_row = tkinter.Frame(ctrl_frame, background=PANEL_BACKGROUND_COLOR)
         seats_row.pack(fill="x", pady=(0, 2))
         seats_row.columnconfigure(0, weight=1)
+        seats_row.columnconfigure(1, weight=1)
 
         seats_count = getattr(self.app, "table_seats", 1)
         self.seats_btn = tkinter.Button(
@@ -670,7 +671,16 @@ class SettingsDialog(tkinter.Toplevel):
             relief="ridge", borderwidth=1, cursor="hand2", command=self._on_toggle_table_seats,
             padx=8, pady=4
         )
-        self.seats_btn.grid(row=0, column=0, sticky="ew")
+        self.seats_btn.grid(row=0, column=0, sticky="ew", padx=(0, 3))
+
+        self.bootcamp_btn = tkinter.Button(
+            seats_row, text="🎓 Counting Bootcamp...",
+            font=get_button_font(15),
+            background="#1b5e20", fg="white", activebackground="#2e7d32", activeforeground="white",
+            relief="ridge", borderwidth=1, cursor="hand2", command=self._on_open_counting_bootcamp,
+            padx=8, pady=4
+        )
+        self.bootcamp_btn.grid(row=0, column=1, sticky="ew", padx=(3, 0))
 
         # Save Data Management Frame
         save_frame = tkinter.LabelFrame(
@@ -814,8 +824,16 @@ class SettingsDialog(tkinter.Toplevel):
         except ValueError:
             next_idx = 0
         next_mode = modes[next_idx]
-        if hasattr(self.app, "apply_play_mode"):
-            self.app.apply_play_mode(next_mode)
+        if next_mode == "training" and hasattr(self.app, "activate_training_mode_entry"):
+            self.app.activate_training_mode_entry(sync_save=True)
+        else:
+            if hasattr(self.app, "set_table_seats"):
+                self.app.set_table_seats(3 if next_mode == "training" else 1)
+            if hasattr(self.app, "apply_play_mode"):
+                self.app.apply_play_mode(next_mode)
+        if hasattr(self, "seats_btn"):
+            seats_count = getattr(self.app, "table_seats", 1)
+            self.seats_btn.config(text=f"🪑 Table Seats: {seats_count} Seat{'s' if seats_count > 1 else ''}")
         self.mode_btn.configure(text=f"🎮 Mode: {next_mode.capitalize()}")
         self.status_msg_var.set(f"Play mode switched to {next_mode.capitalize()}.")
 
@@ -836,6 +854,12 @@ class SettingsDialog(tkinter.Toplevel):
         """Relaunches the Welcome & Play Mode Selection splash dialog."""
         if hasattr(self.app, "_open_welcome_splash_dialog"):
             self.app._open_welcome_splash_dialog()
+
+    def _on_open_counting_bootcamp(self):
+        """Closes Settings and launches the MIT Hi-Lo Counting Bootcamp stage map."""
+        self._on_close()
+        if hasattr(self.app, "enter_counting_bootcamp"):
+            self.app.enter_counting_bootcamp(start_view="map")
 
     def _on_close(self):
         self.app._close_settings_dialog()
@@ -948,7 +972,7 @@ class ShortcutsDialog(tkinter.Toplevel):
         ).pack(anchor="w")
 
         close_btn = tkinter.Button(
-            header_frame, text="✕ Close (Esc)", font=get_button_font(11),
+            header_frame, text="✕ Close (Esc)", font=get_button_font(15),
             background="#c62828", foreground="#ffffff", activebackground="#e53935",
             activeforeground="#ffffff", relief="raised", borderwidth=1, cursor="hand2",
             takefocus=False, command=self._on_close
@@ -960,7 +984,7 @@ class ShortcutsDialog(tkinter.Toplevel):
         tab_nav.pack(fill="x", padx=14, pady=(2, 3))
 
         self.btn_tab_gameplay = tkinter.Button(
-            tab_nav, text="🃏 Gameplay & Betting", font=get_button_font(12),
+            tab_nav, text="🃏 Gameplay & Betting", font=get_button_font(15),
             background="#2e7d32", fg="white", activebackground="#388e3c",
             activeforeground="white", relief="raised", borderwidth=2, cursor="hand2",
             padx=14, pady=3, command=lambda: self._switch_tab(0)
@@ -968,7 +992,7 @@ class ShortcutsDialog(tkinter.Toplevel):
         self.btn_tab_gameplay.pack(side="left", padx=(0, 8))
 
         self.btn_tab_system = tkinter.Button(
-            tab_nav, text="⚙️ System & Controls", font=get_button_font(12),
+            tab_nav, text="⚙️ System & Controls", font=get_button_font(15),
             background="#1e382b", fg="#cfd8dc", activebackground="#2e5441",
             activeforeground="white", relief="raised", borderwidth=1, cursor="hand2",
             padx=14, pady=3, command=lambda: self._switch_tab(1)
@@ -1015,7 +1039,7 @@ class ShortcutsDialog(tkinter.Toplevel):
             for i, name in enumerate(icon_names):
                 if i > 0:
                     tkinter.Label(
-                        badges, text="or", font=get_badge_font(10),
+                        badges, text="or", font=get_badge_font(14),
                         fg="#80cbc4", background="#053612"
                     ).pack(side="left", padx=2)
 
@@ -1027,7 +1051,7 @@ class ShortcutsDialog(tkinter.Toplevel):
                 else:
                     disp = name.replace("keyboard_", "").replace("mouse_", "").upper()
                     tkinter.Label(
-                        badges, text=f"[{disp}]", font=get_badge_font(11),
+                        badges, text=f"[{disp}]", font=get_badge_font(14),
                         background="#ffffff", foreground="#000000",
                         padx=3, pady=1, relief="raised", bd=1
                     ).pack(side="left", padx=1)
@@ -1389,12 +1413,12 @@ class WelcomeSplashDialog(tkinter.Toplevel):
                 "training",
                 "3",
                 "🧠 Strategy & Counting Trainer",
-                "3-Seat Wagering + Hi-Lo Running & True Count HUD",
+                "MIT Hi-Lo Counting Bootcamp + 3-Seat Wagering & Count HUD",
                 [
+                    "• Interactive 14-Node MIT Hi-Lo Counting Bootcamp (Lectures & Drills)",
                     "• Full 3-Seat Wagering baize with multi-hand bet spreading practice",
                     "• Real-time Hi-Lo Running Count, Decks Remaining & True Count HUD",
-                    "• Dynamic Ideal Bet Sizing advice (1u to 5u) based on player edge",
-                    "• Basic Strategy decision hints for every hand (assuming no hole-card peek)",
+                    "• Dynamic Ideal Bet Sizing & Basic Strategy hints for every hand",
                 ],
                 "#00e5ff",  # Cyan
             ),
@@ -1419,7 +1443,7 @@ class WelcomeSplashDialog(tkinter.Toplevel):
             hdr_row.pack(fill="x")
 
             key_lbl = tkinter.Label(
-                hdr_row, text=f"[{key_str}]", font=get_button_font(14),
+                hdr_row, text=f"[{key_str}]", font=get_button_font(15),
                 fg="#b0bec5", background="#1b382b", padx=6, pady=1, relief="ridge", borderwidth=1
             )
             key_lbl.pack(side="left", padx=(0, 6))
@@ -1475,7 +1499,7 @@ class WelcomeSplashDialog(tkinter.Toplevel):
             self.scroll_content,
             text="Remember my preference (don't show again on startup; can reopen anytime in Settings)",
             variable=self.remember_var,
-            font=get_body_font(15),
+            font=get_body_font(16),
             fg="#cfd8dc",
             background=PANEL_BACKGROUND_COLOR,
             selectcolor="#004d40",
@@ -1550,6 +1574,10 @@ class WelcomeSplashDialog(tkinter.Toplevel):
         if self.remember_var.get():
             if hasattr(self.app, "save_manager") and self.app.save_manager:
                 self.app.save_manager.complete_onboarding()
+        if mode == "training" and hasattr(self.app, "activate_training_mode_entry"):
+            self._on_close()
+            self.app.activate_training_mode_entry(sync_save=True)
+            return
         if hasattr(self.app, "set_table_seats"):
             if mode == "training":
                 self.app.set_table_seats(3)

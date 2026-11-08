@@ -77,16 +77,16 @@ DEFAULT_FONT_CONFIG = {
         "betting_button": {"role": "button", "family": "m5x7", "base_size": 32, "description": "Bet staging action buttons (Deal, Clear, Rebet, All-In, Rebuy)"},
         "betting_chip_button": {"role": "button", "description": "Quick chip increment buttons in casual mode"},
         "betting_spot_watermark": {"role": "badge", "description": "Felt watermark text inside betting circle"},
-        "chip_bet_badge": {"role": "micro", "base_size": 10, "description": "Current staged bet readout above betting spot"},
-        "chip_bankroll_badge": {"role": "micro", "base_size": 10, "description": "Reserve tray bankroll header (CHIPS: $... L-Click + | R-Click -)"},
-        "chip_denomination_label": {"role": "digital", "base_size": 11, "description": "Denomination label under each reserve pile ($5, $25, $100, $500, $1K)"},
+        "chip_bet_badge": {"role": "badge", "base_size": 14, "description": "Current staged bet readout above betting spot"},
+        "chip_bankroll_badge": {"role": "badge", "base_size": 12, "description": "Reserve tray bankroll header (CHIPS: $... L-Click + | R-Click -)"},
+        "chip_denomination_label": {"role": "badge", "base_size": 14, "description": "Denomination label under each reserve pile ($5, $25, $100, $500, $1K)"},
         "chip_face_value": {"role": "micro", "description": "Denomination and multiplier text stamped on individual chip sprites"},
         "chip_floating_payout": {"role": "digital", "description": "Animated floating payout text (+$150)"},
         "chip_push_banner": {"role": "header", "description": "Push announcement banner on betting spot"},
-        "insurance_prompt_label": {"role": "header", "description": "Insurance inquiry text prompt"},
-        "insurance_prompt_button": {"role": "button", "description": "Take / Decline Insurance action buttons"},
-        "dealer_nameplate": {"role": "header", "description": "Dealer character nameplate on narrative dialogue stage"},
-        "dealer_speech": {"role": "body", "description": "Dialogue box typewriter speech and narrative subtitles"},
+        "insurance_prompt_label": {"role": "header", "base_size": 16, "description": "Insurance inquiry text prompt"},
+        "insurance_prompt_button": {"role": "button", "base_size": 16, "description": "Take / Decline Insurance action buttons"},
+        "dealer_nameplate": {"role": "header", "base_size": 16, "description": "Dealer character nameplate on narrative dialogue stage"},
+        "dealer_speech": {"role": "body", "family": "m5x7", "base_size": 20, "description": "Dialogue box typewriter speech and narrative subtitles"},
         "table_announcement": {"role": "title", "description": "Centered floating banner announcements (BLACKJACK!, DEALER BUSTS, PUSH)"},
         "hilo_trainer_title": {"family": "m6x11plus", "base_size": 18, "description": "Hi-Lo Card Counting Trainer header tab"},
         "hilo_trainer_label": {"family": "m5x7", "base_size": 18, "description": "Trainer HUD metric title badges (RC, TC, DECKS, EDGE, BET)"},
@@ -106,16 +106,16 @@ DEFAULT_FONT_CONFIG = {
         "dialog_badge": {"role": "badge", "description": "Modal dialog shortcut key badges ([Space], [Esc], etc.)"},
         "dialog_button": {"role": "button", "description": "Modal dialog action and dismissal buttons"},
         "dialog_action_label": {"family": "m6x11plus", "base_size": 16, "weight": "normal", "fallback": "m5x7", "description": "Shortcuts and controls action verb label"},
-        "dialog_hint_label": {"family": "m6x11plus", "base_size": 14, "weight": "normal", "fallback": "m5x7", "description": "Shortcuts and controls secondary description and hint label"},
-        "dialog_tip_label": {"family": "m6x11plus", "base_size": 15, "weight": "normal", "fallback": "m5x7", "description": "Dialog bottom footer navigation tip banner"},
+        "dialog_hint_label": {"family": "m6x11plus", "base_size": 15, "weight": "normal", "fallback": "m5x7", "description": "Shortcuts and controls secondary description and hint label"},
+        "dialog_tip_label": {"family": "m6x11plus", "base_size": 16, "weight": "normal", "fallback": "m5x7", "description": "Dialog bottom footer navigation tip banner"},
         "story_dialog_speaker": {"role": "header", "base_size": 20, "description": "Speaker name in narrative story dialogue modal"},
         "story_dialog_body": {"role": "body", "base_size": 18, "description": "Story narrative text in story dialogue modal"},
         "story_dialog_button": {"role": "button", "base_size": 16, "description": "Dismiss / proceed button in story dialogue modal"},
-        "angelic_draft_subtitle": {"role": "header", "base_size": 15, "description": "Angelic draft dialog subtitle instruction"},
-        "angelic_draft_title": {"role": "header", "base_size": 16, "description": "Relic card title in angelic blessing draft dialog"},
-        "angelic_draft_tagline": {"role": "badge", "base_size": 13, "description": "Relic card tagline in angelic blessing draft dialog"},
-        "angelic_draft_description": {"role": "body", "base_size": 16, "description": "Relic card power description in angelic blessing draft dialog"},
-        "angelic_draft_button": {"role": "button", "base_size": 14, "description": "Equip relic button in angelic blessing draft dialog"}
+        "angelic_draft_subtitle": {"role": "header", "base_size": 16, "description": "Angelic draft dialog subtitle instruction"},
+        "angelic_draft_title": {"role": "header", "base_size": 18, "description": "Relic card title in angelic blessing draft dialog"},
+        "angelic_draft_tagline": {"role": "badge", "base_size": 16, "description": "Relic card tagline in angelic blessing draft dialog"},
+        "angelic_draft_description": {"role": "body", "base_size": 18, "description": "Relic card power description in angelic blessing draft dialog"},
+        "angelic_draft_button": {"role": "button", "base_size": 16, "description": "Equip relic button in angelic blessing draft dialog"}
     }
 }
 
@@ -1057,9 +1057,9 @@ class PixelDialogueFrame(tkinter.Frame):
         self._bg = bg
         self._nameplate_fg = nameplate_fg
         s = self.scale / 2.0
-        self.width_px = int(180 * s)
-        self.nameplate_h = int(38 * s)
-        self.speech_h = int(78 * s)
+        self.width_px = int(280 * s)
+        self.nameplate_h = int(40 * s)
+        self.speech_h = int(102 * s)
         self.height_px = self.nameplate_h
 
         self.canvas = tkinter.Canvas(
@@ -1090,8 +1090,8 @@ class PixelDialogueFrame(tkinter.Frame):
         )
 
         cx = self.width_px // 2
-        ny = int(19 * s)
-        title_font = get_header_font(int(12 * s))
+        ny = int(20 * s)
+        title_font = get_element_font("dealer_nameplate", scale=s)
         self._name_sh = self.canvas.create_text(
             cx + 1, ny + 1, text=title, font=title_font, fill="#0c0603", anchor="center"
         )
@@ -1108,10 +1108,10 @@ class PixelDialogueFrame(tkinter.Frame):
             bg=self._bg,
         )
 
-        speech_font = get_body_font(int(14 * s))
+        speech_font = get_element_font("dealer_speech", scale=s)
         sy = int(34 * s)
         pad_x = int(12 * s)
-        wrap_w = int(156 * s)
+        wrap_w = int(256 * s)
         init_speech = speech_var.get() if speech_var is not None else ""
         self._speech_sh = self.canvas.create_text(
             pad_x + 1, sy + 1, text=init_speech, font=speech_font, fill="#0c0603",
@@ -1140,7 +1140,7 @@ class PixelDialogueFrame(tkinter.Frame):
         self.canvas.config(height=self.height_px)
         cx = self.width_px // 2
         cy = self.height_px // 2
-        ny = int(14 * s) if is_packed else int(19 * s)
+        ny = int(16 * s) if is_packed else int(20 * s)
         self.panel.resize(cx, cy, self.width_px, self.height_px, scale=self.scale)
         self.canvas.coords(self._name_sh, cx + 1, ny + 1)
         self.canvas.coords(self._name_id, cx, ny)
@@ -1154,27 +1154,27 @@ class PixelDialogueFrame(tkinter.Frame):
     def set_scale(self, scale_factor: float):
         self.scale = max(1, int(2 * scale_factor))
         s = scale_factor
-        self.width_px = int(180 * s)
-        self.nameplate_h = int(38 * s)
-        self.speech_h = int(78 * s)
+        self.width_px = int(280 * s)
+        self.nameplate_h = int(40 * s)
+        self.speech_h = int(102 * s)
         is_packed = self.speech_label._is_managed
         self.height_px = self.speech_h if is_packed else self.nameplate_h
         self.canvas.config(width=self.width_px, height=self.height_px)
         cx = self.width_px // 2
         cy = self.height_px // 2
-        ny = int(14 * s) if is_packed else int(19 * s)
+        ny = int(16 * s) if is_packed else int(20 * s)
         self.panel.resize(cx, cy, self.width_px, self.height_px, scale=self.scale)
         self.canvas.coords(self._name_sh, cx + 1, ny + 1)
         self.canvas.coords(self._name_id, cx, ny)
         sy = int(34 * s)
         pad_x = int(12 * s)
-        wrap_w = int(156 * s)
+        wrap_w = int(256 * s)
         self.canvas.coords(self._speech_sh, pad_x + 1, sy + 1)
         self.canvas.coords(self._speech_id, pad_x, sy)
         self.canvas.itemconfigure(self._speech_sh, width=wrap_w)
         self.canvas.itemconfigure(self._speech_id, width=wrap_w)
-        self.nameplate_label.set_font(get_header_font(int(12 * s)))
-        self.speech_label.set_font(get_body_font(int(14 * s)))
+        self.nameplate_label.set_font(get_element_font("dealer_nameplate", scale=s))
+        self.speech_label.set_font(get_element_font("dealer_speech", scale=s))
 
     def configure(self, **kwargs):
         if "background" in kwargs or "bg" in kwargs:

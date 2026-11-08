@@ -6,6 +6,7 @@ Architecture & Separation of Concerns:
 - rules.py: Pure, stateless Blackjack math, card models, and shoe building (Zero Tkinter).
 - card_counter.py: Hi-Lo card counting domain engine, True Count math, and bet sizing guide.
 - card_counting_hud.py: Felt-embedded count HUD, floating count badges, and Count Check quiz modal.
+- counting_bootcamp.py: MIT Hi-Lo Counting Bootcamp 14-node DAG curriculum and 2.5D tabletop training views.
 - audio_assets.py: SoundManager, High-DPI AssetScaler, and Kenney KeyboardIconLoader.
 - dialogue_voice_engine.py: Procedural in-memory Animalese phoneme synthesis per dealer persona.
 - ui_canvases.py: Custom 2.5D visualizers (ChipVisualizer, SoulMeterCanvas, TableAnnouncementHUD,
@@ -173,6 +174,7 @@ from dealer_wardrobe_dialog import WardrobeDialog
 from haunted_manager import HauntedManager, Phase, Blessing, BLESSING_REGISTRY
 from card_counter import HiLoCardCounter
 from card_counting_hud import CardCountingHud, CardCountingQuizDialog, FloatingCountBadge
+from counting_bootcamp import BootcampControlDock, CountingBootcampFrame
 from event_bus import EventHub, GameEventType, GameEvent
 from game_engine import BlackjackEngine, RoundResult
 from state_machine import GameStateMachine
@@ -427,9 +429,9 @@ class BlackjackApp:
             if hasattr(self, "chip_visualizer"):
                 if action == "add":
                     self.chip_visualizer.animate_chip_drop(abs(delta), staged)
-                elif action in ("clear", "deduct") or staged <= 0:
+                elif action == "clear" or staged <= 0:
                     self.chip_visualizer.animate_clear()
-                elif action == "all_in":
+                elif action in ("all_in", "deduct"):
                     self.chip_visualizer.set_bet(staged, animate=False)
                 else:
                     self.chip_visualizer.set_bet(staged, animate=True)
@@ -596,7 +598,11 @@ class BlackjackApp:
             save_path = Path(tempfile.mkdtemp()) / "isolated_test_save.json"
         self.save_manager = SaveManager(save_path=save_path)
         self._settings_dialog = None
-        if self.save_manager.data.achievements.exorcist:
+        if (
+            self.save_manager.data.achievements.exorcist
+            or self.save_manager.data.highscores.hell_table_clears > 0
+            or "seraph" in self.save_manager.data.unlocked_costumes
+        ):
             self.haunted.unlocked_cursed_stakes = True
             self.haunted.unlocked_exorcist = True
 
@@ -654,6 +660,9 @@ class BlackjackApp:
         self.table_seats: int = 1
         self.selected_denomination: int = 5
         self.focused_betting_seat: int = 2
+        self.bootcamp_active: bool = False
+        self.bootcamp_frame: Optional[CountingBootcampFrame] = None
+        self.bootcamp_dock: Optional[BootcampControlDock] = None
 
         # Scale and Fullscreen Display Mode State
         self.scale_factor: float = 1.0
@@ -708,6 +717,10 @@ class BlackjackApp:
 
         # Start first game
         self.new_game()
+
+        # Restore 3-Seat Training Mode & Counting Bootcamp (teacher_intro or default Stage Map) on launch
+        if self.play_mode == "training":
+            self.activate_training_mode_entry(sync_save=False)
 
 
     @property
@@ -826,7 +839,7 @@ class BlackjackApp:
 
         # Shoe Cards Remaining Display (Relocated to card table felt beneath shoe tray; retained for backward-compatibility)
         self.shoe_label = tkinter.Label(
-            scoreboard_frame, textvariable=self.shoe_info_var, font=get_digital_font(14),
+            scoreboard_frame, textvariable=self.shoe_info_var, font=get_digital_font(16),
             background=TABLE_BACKGROUND_COLOR, fg="#80cbc4"
         )
         self.shoe_label.grid(**get_grid_options("top_bar", "shoe_label"))
@@ -908,7 +921,7 @@ class BlackjackApp:
 
         # Status / Result banner (Preserved for backwards compatibility, hidden from crowded top bar)
         self.result_label = tkinter.Label(
-            scoreboard_frame, textvariable=self.result_var, font=get_header_font(13),
+            scoreboard_frame, textvariable=self.result_var, font=get_header_font(16),
             background=TABLE_BACKGROUND_COLOR, fg="#ffeb3b"
         )
         self.result_label.grid(**get_grid_options("top_bar", "result_label"))
@@ -1087,6 +1100,7 @@ class BlackjackApp:
             counter=self.card_counter,
             on_quiz_request=self._open_card_counting_quiz,
             on_stage_bet_request=self._stage_recommended_bet,
+            on_bootcamp_request=lambda: self.enter_counting_bootcamp(start_view="map"),
             stage_canvas=self.dealer_stage_canvas,
             table_canvas=card_table_frame,
             dialogue_frame=self.dealer_dialogue_frame,
@@ -1222,6 +1236,9 @@ class BlackjackApp:
         self.blessings_tray = tkinter.Frame(self.root, background=TABLE_BACKGROUND_COLOR)
         self.blessings_tray.grid(**get_grid_options("blessings_tray"))
         self.blessings_tray.grid_remove()
+        self.blessing_badge_widgets: dict[Blessing, tkinter.Frame] = {}
+        self._blessing_tooltip_hide_id = None
+        self._init_blessing_tooltip()
 
         # Initialize shoe tray display on table felt
         self._update_shoe_display()
@@ -1294,14 +1311,14 @@ class BlackjackApp:
 
         # Chip denomination shortcuts: 1=$5, 2=$25, 3=$100, 4=$500, 5=$1000
         chip_keys = {
-            "<Key-1>": 5, "<KP_1>": 5,
-            "<Key-2>": 25, "<KP_2>": 25,
-            "<Key-3>": 100, "<KP_3>": 100,
-            "<Key-4>": 500, "<KP_4>": 500,
-            "<Key-5>": 1000, "<KP_5>": 1000,
+            "<Key-1>": (5, "1"), "<KP_1>": (5, "1"),
+            "<Key-2>": (25, "2"), "<KP_2>": (25, "2"),
+            "<Key-3>": (100, "3"), "<KP_3>": (100, "3"),
+            "<Key-4>": (500, "4"), "<KP_4>": (500, "4"),
+            "<Key-5>": (1000, "5"), "<KP_5>": (1000, "5"),
         }
-        for k, amt in chip_keys.items():
-            self.root.bind(k, lambda e, a=amt: self._on_key_chip(a))
+        for k, (amt, k_idx) in chip_keys.items():
+            self.root.bind(k, lambda e, a=amt, ki=k_idx: self._on_key_chip(a, key_index=ki))
 
         # Side bet shortcuts during betting phase: Q/6=Perfect Pairs, E/7=21+3
         for key in ("<q>", "<Q>", "<Key-6>", "<KP_6>"):
@@ -1309,16 +1326,23 @@ class BlackjackApp:
         for key in ("<e>", "<E>", "<Key-7>", "<KP_7>"):
             self.root.bind(key, lambda e: self._add_side_bet("21_plus_3", 5))
 
-        # Multi-seat betting focus shortcuts (Left and Right arrow keys)
-        self.root.bind("<Left>", lambda e: self._on_key_cycle_seat_focus(-1))
-        self.root.bind("<Right>", lambda e: self._on_key_cycle_seat_focus(1))
+        # Multi-seat betting focus shortcuts (Left and Right arrow keys) & Bootcamp map navigation
+        self.root.bind("<Left>", lambda e: self._on_key_cycle_seat_focus(-1, keysym="Left"))
+        self.root.bind("<Right>", lambda e: self._on_key_cycle_seat_focus(1, keysym="Right"))
+        self.root.bind("<Up>", lambda e: self._on_key_cycle_seat_focus(-1, keysym="Up"))
+        self.root.bind("<Down>", lambda e: self._on_key_cycle_seat_focus(1, keysym="Down"))
 
-    def _on_key_cycle_seat_focus(self, delta: int):
+    def _on_key_cycle_seat_focus(self, delta: int, keysym: str = ""):
         """
         Cycles betting focus visually across Seat 1, Seat 2, and Seat 3 in multi-seat play:
         - delta < 0 (Left arrow): moves focus visually to the left (Seat 1 -> Seat 2 -> Seat 3 -> Seat 1).
         - delta > 0 (Right arrow): moves focus visually to the right (Seat 3 -> Seat 2 -> Seat 1 -> Seat 3).
         """
+        if getattr(self, "bootcamp_active", False) and getattr(self, "bootcamp_frame", None) is not None:
+            self.bootcamp_frame.handle_key_event(keysym or ("Left" if delta < 0 else "Right"))
+            return "break"
+        if keysym in ("Up", "Down"):
+            return "break"
         if getattr(self, "_dealing", False):
             return "break"
         if getattr(self, "table_seats", 1) != 3 or not getattr(self, "is_betting_phase", False):
@@ -1338,6 +1362,8 @@ class BlackjackApp:
 
     def _on_key_action(self, action_fn, button=None):
         """Invokes an action function if the corresponding button is currently enabled and not dealing."""
+        if getattr(self, "bootcamp_active", False):
+            return "break"
         if getattr(self, "_dealing", False):
             return "break"
         if button is not None:
@@ -1356,8 +1382,14 @@ class BlackjackApp:
         if hasattr(self, "sound_manager"):
             self.sound_manager.play_chip_add()
 
-    def _on_key_chip(self, amount: int):
+    def _on_key_chip(self, amount: int, key_index: str = ""):
         """Adds chip bet in 1-seat mode, or selects denomination & stages on focused seat in 3-seat mode."""
+        if getattr(self, "bootcamp_active", False) and getattr(self, "bootcamp_frame", None) is not None:
+            if not key_index:
+                denom_to_idx = {5: "1", 25: "2", 100: "3", 500: "4", 1000: "5"}
+                key_index = denom_to_idx.get(amount, "1")
+            self.bootcamp_frame.handle_key_event(key_index)
+            return "break"
         if getattr(self, "_dealing", False):
             return "break"
         if getattr(self, "is_betting_phase", False) and self.chips_mode_var.get():
@@ -1377,6 +1409,10 @@ class BlackjackApp:
         3. If player's turn -> hits if Hit is enabled.
         4. If round is over -> deals a new game.
         """
+        if getattr(self, "bootcamp_active", False) and getattr(self, "bootcamp_frame", None) is not None:
+            ks = getattr(event, "keysym", "Return") if event is not None else "Return"
+            self.bootcamp_frame.handle_key_event(ks)
+            return "break"
         if getattr(self, "_dealing", False):
             return "break"
         phase = getattr(self, "round_phase", None)
@@ -1515,6 +1551,8 @@ class BlackjackApp:
 
     def _on_cycle_play_mode_shortcut(self):
         """Cycles play mode between Casual -> Betting -> Training (only when not dealing and betting or round over)."""
+        if getattr(self, "bootcamp_active", False):
+            return "break"
         if getattr(self, "_dealing", False) or getattr(self, "round_phase", None) not in (RoundPhase.BETTING, RoundPhase.ROUND_OVER):
             return "break"
         modes = ["casual", "betting", "training"]
@@ -1523,9 +1561,139 @@ class BlackjackApp:
         except ValueError:
             curr_idx = 1
         next_mode = modes[(curr_idx + 1) % len(modes)]
+        if next_mode == "training":
+            self.activate_training_mode_entry(sync_save=True)
+            return "break"
+        self.set_table_seats(1)
         self.apply_play_mode(next_mode)
         self.set_dealer_speech(f"Table mode changed to {next_mode.capitalize()}.", stream=True)
         return "break"
+
+    def activate_training_mode_entry(self, sync_save: bool = True) -> None:
+        """
+        Transitions the application into Training Mode and mounts the default Counting Bootcamp view:
+        - 'teacher_intro' if the player has not yet seen the 3-card onboarding intro.
+        - 'map' (the 14-node Training Stage Map) otherwise, from which the player can launch stages or escape to 3-Seat Free Play.
+        """
+        self.set_table_seats(3)
+        self.apply_play_mode("training", sync_save=sync_save)
+        intro_seen = (
+            hasattr(self, "save_manager")
+            and self.save_manager is not None
+            and bool(getattr(self.save_manager.data.bootcamp, "intro_seen", False))
+        )
+        self.enter_counting_bootcamp(start_view="map" if intro_seen else "teacher_intro")
+
+    def _unmount_bootcamp_views(self) -> None:
+        """Centralized helper to unmount Counting Bootcamp views and restore standard table widgets."""
+        if not getattr(self, "bootcamp_active", False):
+            return
+        if getattr(self, "bootcamp_frame", None) is not None:
+            try:
+                self.bootcamp_frame.cancel_all_timers()
+                self.bootcamp_frame.grid_remove()
+            except Exception:
+                pass
+        if getattr(self, "bootcamp_dock", None) is not None:
+            try:
+                self.bootcamp_dock.grid_remove()
+            except Exception:
+                pass
+        self.bootcamp_active = False
+        if hasattr(self, "_update_bankroll_display"):
+            self._update_bankroll_display()
+        if hasattr(self, "card_table_frame"):
+            self.card_table_frame.grid(**get_grid_options("root_layout", "card_table"))
+        if hasattr(self, "mahogany_rail"):
+            self.mahogany_rail.grid(**get_grid_options("mahogany_rail"))
+
+    def enter_counting_bootcamp(self, start_view: str = "map") -> None:
+        """
+        Mounts the MIT Hi-Lo Counting Bootcamp at row=3 (CountingBootcampFrame) and
+        row=4 (BootcampControlDock) while keeping DealerStageCanvas (row=1) visible.
+        """
+        if getattr(self, "round_phase", None) not in (RoundPhase.BETTING, RoundPhase.ROUND_OVER):
+            self.result_var.set("Finish the active hand before entering the Counting Bootcamp!")
+            return
+        if getattr(self, "is_insurance_phase", False) or getattr(self, "_dealing", False):
+            self.result_var.set("Finish the active hand before entering the Counting Bootcamp!")
+            return
+        if getattr(self, "haunted", None) is not None and self.haunted.phase == Phase.HELL_TABLE:
+            self.result_var.set("Cannot enter Counting Bootcamp during Hell's Table!")
+            return
+
+        # Refund any uncommitted staged bets only during RoundPhase.BETTING
+        if getattr(self, "round_phase", None) == RoundPhase.BETTING and self.chips_mode_var.get():
+            self._clear_side_bets()
+            self._clear_bet()
+
+        # Cancel active Free Play round/chip timers while preserving dealer stage idle/blink timers
+        if getattr(self, "_dealer_timer_id", None) is not None:
+            try:
+                self.root.after_cancel(self._dealer_timer_id)
+            except Exception:
+                pass
+            self._dealer_timer_id = None
+        if hasattr(self, "chip_visualizer"):
+            self.chip_visualizer.clear_timers()
+
+        # Ensure upper dealer stage (row=1) and horizon rail (row=2) are visible & normalized
+        self.dealer_view_var.set(True)
+        self.dealer_view_status_var.set("👤 Dealer: ON")
+        if hasattr(self, "dealer_stage_frame"):
+            self.dealer_stage_frame.grid(**get_grid_options("root_layout", "dealer_stage"))
+        if hasattr(self, "horizon_rail"):
+            self.horizon_rail.grid(**get_grid_options("root_layout", "horizon_rail"))
+        if hasattr(self, "pumpkin_label"):
+            self.pumpkin_label.pack_forget()
+        self._apply_phase_theme(Phase.NORMAL)
+        self._update_dealer_avatar()
+
+        # Unmap live table felt (row=3), mahogany rail (row=4), overlays, and Free Play HUD
+        if hasattr(self, "card_table_frame"):
+            self.card_table_frame.grid_remove()
+        if hasattr(self, "mahogany_rail"):
+            self.mahogany_rail.grid_remove()
+        if hasattr(self, "insurance_frame"):
+            self.insurance_frame.grid_remove()
+        if hasattr(self, "blessings_tray"):
+            self.blessings_tray.grid_remove()
+        if hasattr(self, "card_counting_hud") and self.card_counting_hud:
+            self.card_counting_hud.set_visible(False)
+
+        # Instantiate and grid Bootcamp views at row=3 and row=4
+        if self.bootcamp_dock is None:
+            self.bootcamp_dock = BootcampControlDock(
+                self.root,
+                height=get_ui_layout("mahogany_rail").get("default_height", 72),
+            )
+        if self.bootcamp_frame is None:
+            self.bootcamp_frame = CountingBootcampFrame(
+                self.root,
+                app=self,
+                dock=self.bootcamp_dock,
+            )
+
+        self.bootcamp_frame.grid(**get_grid_options("root_layout", "card_table"))
+        self.bootcamp_dock.grid(**get_grid_options("mahogany_rail"))
+        self.bootcamp_active = True
+        self._apply_phase_theme(Phase.NORMAL)
+        self._update_dealer_avatar()
+
+        if start_view == "teacher_intro":
+            self.bootcamp_frame.render_teacher_intro_view()
+        else:
+            self.bootcamp_frame.render_dag_map_view()
+
+    def exit_counting_bootcamp_to_free_play(self) -> None:
+        """Exits the Counting Bootcamp and transitions into 3-Seat Strategy & Counting Trainer Free Play."""
+        self._unmount_bootcamp_views()
+        self.set_table_seats(3)
+        self.apply_play_mode("training")
+        self.set_dealer_speech(
+            "Welcome to 3-Seat Practice! Watch the Running & True Count HUD and follow the Strategy Hint!",
+            stream=True,
+        )
 
     def apply_play_mode(self, mode: str, sync_save: bool = True):
         """
@@ -1534,6 +1702,7 @@ class BlackjackApp:
         - 'betting': Chips ON, Card counting HUD hidden, Strategy hints hidden.
         - 'training': Chips ON, Card counting HUD visible, Strategy hints active.
         """
+        self._unmount_bootcamp_views()
         if mode not in ("casual", "betting", "training"):
             return
         self.play_mode = mode
@@ -1574,6 +1743,11 @@ class BlackjackApp:
                 base_bet = self.hand_bets[0] if (hasattr(self, "hand_bets") and self.hand_bets and self.hand_bets[0] > 0) else 25
                 self.card_counting_hud.update_counts(cards_remaining=cards_rem, base_bet=base_bet)
                 self._refresh_strategy_hint()
+
+        if hasattr(self, "haunted"):
+            self._apply_phase_theme(self.haunted.phase)
+            self._update_dealer_avatar()
+            self._sync_cursed_stakes_button()
 
     def _stage_recommended_bet(self, amount: int):
         """Sets the current bet to the recommended count amount if in betting phase."""
@@ -1755,6 +1929,13 @@ class BlackjackApp:
         self.cursed_stakes_var.set(False)
         if hasattr(self, "cursed_stakes_button"):
             self.cursed_stakes_button.grid_remove()
+        if getattr(self, "bootcamp_frame", None) is not None:
+            try:
+                self.bootcamp_frame.cancel_all_timers()
+                self.bootcamp_frame.focused_node_id = "L1"
+                self.bootcamp_frame.render_dag_map_view()
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------------
     # Haunted Halloween & Hell's Table Orchestration
@@ -1769,6 +1950,8 @@ class BlackjackApp:
 
     def _on_toggle_dealer_view(self):
         """Toggles upper dealer portrait / stage view visibility."""
+        if getattr(self, "bootcamp_active", False):
+            return "break"
         if hasattr(self, "haunted") and self.haunted.phase == Phase.HELL_TABLE:
             return "break"
         new_val = not self.dealer_view_var.get()
@@ -1817,10 +2000,71 @@ class BlackjackApp:
 
         self.sound_manager.play_haunted_sound(cue)
 
-    def set_dealer_speech(self, text: str, stream: bool = False):
+    def is_dealer_speaking(self) -> bool:
+        """Returns True if typewriter speech is currently streaming characters into the speech bubble."""
+        return bool(
+            getattr(self, "_typewriter_timer_id", None) is not None
+            and getattr(self, "_typewriter_index", 0) < len(getattr(self, "_current_speech_full", ""))
+        )
+
+    def get_remaining_speech_ms(self, min_read_hold_ms: int = 950) -> int:
+        """
+        Estimates the milliseconds needed for the current speech bubble to finish
+        typewriter streaming plus `min_read_hold_ms` of full-text reading hold time.
+        """
+        full_text = getattr(self, "_current_speech_full", "") or ""
+        if self.is_dealer_speaking():
+            rem_chars = max(0, len(full_text) - getattr(self, "_typewriter_index", 0))
+            step_sz = 2 if len(full_text) > 60 else 1
+            est_stream_ms = max(1, (rem_chars + step_sz - 1) // step_sz) * 20
+            return int(est_stream_ms + min_read_hold_ms)
+        completed_at = getattr(self, "_speech_completed_at", 0.0)
+        if completed_at > 0.0:
+            elapsed_ms = (time.perf_counter() - completed_at) * 1000.0
+            if elapsed_ms < min_read_hold_ms:
+                return int(max(0.0, min_read_hold_ms - elapsed_ms))
+        return 0
+
+    def _cancel_speech_queue_timer(self) -> None:
+        """Cancels any pending queued follow-up speech timer."""
+        if getattr(self, "_speech_queue_timer_id", None):
+            try:
+                self.root.after_cancel(self._speech_queue_timer_id)
+            except Exception:
+                pass
+            self._speech_queue_timer_id = None
+
+    def _flush_queued_speech(self) -> None:
+        """Dispatches the next queued speech bubble after the previous bubble has finished and held."""
+        self._cancel_speech_queue_timer()
+        queued = getattr(self, "_queued_speech", None)
+        self._queued_speech = None
+        if queued:
+            q_text, q_stream = queued
+            self.set_dealer_speech(q_text, stream=q_stream, queue_if_busy=False)
+
+    def set_dealer_speech(self, text: str, stream: bool = False, queue_if_busy: bool = False):
         """Sets dealer dialogue callout bubble text, updates visibility, draws pointer tail, and animates mouth."""
         if not hasattr(self, "dealer_speech_var"):
             self.dealer_speech_var = tkinter.StringVar(value="")
+
+        if queue_if_busy and text:
+            if self.is_dealer_speaking():
+                self._queued_speech = (text, stream)
+                return
+            rem_hold = self.get_remaining_speech_ms(min_read_hold_ms=950)
+            if rem_hold > 0:
+                self._queued_speech = (text, stream)
+                self._cancel_speech_queue_timer()
+                try:
+                    if self.root.winfo_exists():
+                        self._speech_queue_timer_id = self.root.after(rem_hold, self._flush_queued_speech)
+                except Exception:
+                    pass
+                return
+
+        self._cancel_speech_queue_timer()
+        self._queued_speech = None
         self._current_speech_full = text
         if hasattr(self, "_typewriter_timer_id") and self._typewriter_timer_id:
             try:
@@ -1870,21 +2114,24 @@ class BlackjackApp:
             self.dealer_speech_var.set("")
             try:
                 if self.root.winfo_exists():
-                    self._typewriter_timer_id = self.root.after(28, self._stream_typewriter_step)
+                    self._typewriter_timer_id = self.root.after(20, self._stream_typewriter_step)
             except Exception:
                 pass
         else:
             self.dealer_speech_var.set(text)
+            self._speech_completed_at = time.perf_counter()
             if hasattr(self, "dealer_actor") and self.root.winfo_exists() and self.root.state() != "withdrawn":
                 self._animate_speech_mouth(remaining_flaps=min(max(2, len(text) // 8), 8))
 
     def _stream_typewriter_step(self):
-        """Streams one character to the speech balloon at 25-35 ms intervals with conversational cadence."""
+        """Streams characters to the speech balloon at crisp 18-32 ms intervals with conversational cadence."""
         if not hasattr(self, "_current_speech_full") or not self._current_speech_full:
             return
-        if self._typewriter_index < len(self._current_speech_full):
+        total_len = len(self._current_speech_full)
+        if self._typewriter_index < total_len:
             char = self._current_speech_full[self._typewriter_index]
-            self._typewriter_index += 1
+            step_advance = 2 if (self._typewriter_index >= 1 and total_len > 60) else 1
+            self._typewriter_index = min(total_len, self._typewriter_index + step_advance)
             self.dealer_speech_var.set(self._current_speech_full[:self._typewriter_index])
             self._step_speech_mouth(char)
 
@@ -1904,12 +2151,12 @@ class BlackjackApp:
                     cid = getattr(self.dealer_actor, "character_id", "tiffany")
                 self.sound_manager.play_dialogue_blip(cid, char, self._typewriter_index, inflection=inflection)
 
-            # Dynamic 25-35 ms cadence with natural punctuation pauses
-            delay = 28
+            # Snappy 18-32 ms cadence with natural punctuation pauses so long lines finish quickly
+            delay = 18
             if char in (".", "!", "?"):
-                delay = 55
+                delay = 32
             elif char in (",", ";", ":", "—"):
-                delay = 40
+                delay = 24
 
             if hasattr(self, "_typewriter_timer_id") and self._typewriter_timer_id:
                 try:
@@ -1927,7 +2174,7 @@ class BlackjackApp:
             self._complete_typewriter_speech()
 
     def _complete_typewriter_speech(self):
-        """Completes in-flight typewriter speech immediately."""
+        """Completes in-flight typewriter speech immediately and schedules any queued follow-up bubble."""
         if hasattr(self, "_typewriter_timer_id") and self._typewriter_timer_id:
             try:
                 self.root.after_cancel(self._typewriter_timer_id)
@@ -1935,13 +2182,25 @@ class BlackjackApp:
                 pass
             self._typewriter_timer_id = None
         if hasattr(self, "_current_speech_full") and self._current_speech_full:
+            self._typewriter_index = len(self._current_speech_full)
             self.dealer_speech_var.set(self._current_speech_full)
+        self._speech_completed_at = time.perf_counter()
         if hasattr(self, "dealer_actor"):
             self.dealer_actor.set_mouth_state("neutral")
+            self.dealer_actor.set_layer_offsets(head_offset=(0, 0))
             self._refresh_dealer_avatar_image()
+        if getattr(self, "_queued_speech", None):
+            self._cancel_speech_queue_timer()
+            try:
+                if self.root.winfo_exists():
+                    self._speech_queue_timer_id = self.root.after(950, self._flush_queued_speech)
+            except Exception:
+                pass
 
     def clear_dealer_speech(self):
         """Hides dealer dialogue bubble, clears tail, and resets mouth to neutral."""
+        self._cancel_speech_queue_timer()
+        self._queued_speech = None
         if hasattr(self, "_dealer_speech_anim_timer_id") and self._dealer_speech_anim_timer_id:
             try:
                 self.root.after_cancel(self._dealer_speech_anim_timer_id)
@@ -1963,14 +2222,22 @@ class BlackjackApp:
             self.dealer_stage_canvas.clear_speech_tail()
         if hasattr(self, "dealer_actor"):
             self.dealer_actor.set_mouth_state("neutral")
+            self.dealer_actor.set_layer_offsets(head_offset=(0, 0))
             self._refresh_dealer_avatar_image()
 
     def _calculate_breathing_offset(self, step: float) -> int:
-        """Calculates sinusoidal vertical offset in [-2, +2] px for dealer respiration."""
-        return int(round(1.8 * math.sin(step)))
+        """
+        Calculates discrete upward torso respiration offset in [-2, 0] px (2x space)
+        with an asymmetric inhale -> crest -> exhale -> resting pause waveform.
+        """
+        s = math.sin(step)
+        if s <= 0.0:
+            return 0
+        wave = s ** 1.6
+        return -int(round(2.0 * wave))
 
     def _dealer_breathing_tick(self):
-        """25-30 FPS idle ticker oscillating dealer avatar vertically to simulate breathing and stage particles."""
+        """25 FPS idle ticker driving biomechanical torso respiration, subtle idle eye glances, and stage particles."""
         if getattr(self, "_dealer_idle_timer_id", None):
             try:
                 self.root.after_cancel(self._dealer_idle_timer_id)
@@ -1979,23 +2246,51 @@ class BlackjackApp:
             self._dealer_idle_timer_id = None
         if not hasattr(self, "root") or not self.root.winfo_exists():
             return
-        self._dealer_anim_step += 0.15
-        y_off = self._calculate_breathing_offset(self._dealer_anim_step)
+
+        # Advance respiratory phase (~4.8s full breath cycle at 40ms tick interval)
+        self._dealer_anim_step = (self._dealer_anim_step + 0.052) % (2.0 * math.pi)
+        breath_dy = self._calculate_breathing_offset(self._dealer_anim_step)
+
+        # Keep dealer sprite permanently grounded on the horizon rail (anchor="s" at y = h)
         if hasattr(self, "dealer_stage_canvas") and self.dealer_stage_canvas.find_withtag("dealer_sprite"):
             w = max(10, self.dealer_stage_canvas.canvas_width)
             h = max(10, self.dealer_stage_canvas.canvas_height)
-            self.dealer_stage_canvas.coords("dealer_sprite", w // 2, h + y_off)
+            self.dealer_stage_canvas.coords("dealer_sprite", w // 2, h)
+
+        # Drive layered torso/shoulder elevation while keeping head stationary
+        if hasattr(self, "dealer_actor"):
+            cur_tx, cur_ty = self.dealer_actor.torso_offset
+            need_refresh = False
+            if cur_ty != breath_dy:
+                self.dealer_actor.set_layer_offsets(torso_offset=(cur_tx, breath_dy))
+                need_refresh = True
+
+            # Subtle autonomous idle eye glance when not dealing, peeking, or speaking
+            if (
+                not getattr(self, "_dealing", False)
+                and getattr(self, "_typewriter_timer_id", None) is None
+                and self.dealer_actor.arm_state == "rest"
+                and self.dealer_actor.eye_state == "open"
+            ):
+                glance_ticks = getattr(self, "_dealer_idle_glance_ticks", 0)
+                if glance_ticks > 0:
+                    self._dealer_idle_glance_ticks = glance_ticks - 1
+                    if self._dealer_idle_glance_ticks == 0 and self.dealer_actor.eye_gaze_offset != (0, 0):
+                        self.dealer_actor.set_gaze_target(0, 0)
+                        need_refresh = True
+                elif self.dealer_actor.eye_gaze_offset == (0, 0) and random.random() < 0.006:
+                    glance_dx = random.choice((-1, 1))
+                    self.dealer_actor.set_gaze_target(glance_dx, 0)
+                    self._dealer_idle_glance_ticks = random.randint(18, 28)
+                    need_refresh = True
+
+            if need_refresh:
+                self._refresh_dealer_avatar_image()
 
         if hasattr(self, "dealer_stage_canvas"):
             if random.random() < 0.35:
                 self.dealer_stage_canvas.spawn_ambient_particles(count=1)
             self.dealer_stage_canvas.update_particles()
-
-        if hasattr(self, "dealer_avatar_label") and self.dealer_avatar_label.winfo_manager() == "pack":
-            try:
-                self.dealer_avatar_label.pack_configure(pady=(max(0, 2 + y_off), max(0, 2 - y_off)))
-            except Exception:
-                pass
 
         try:
             if self.root.winfo_exists():
@@ -2103,7 +2398,7 @@ class BlackjackApp:
         max_h = max(100, int(stage_h * 0.88))
         target_size = min(int(190 * self.scale_factor), max_h)
         if pil_img.size != (target_size, target_size):
-            resample_mode = getattr(Image, "Resampling", Image).LANCZOS
+            resample_mode = getattr(Image, "Resampling", Image).NEAREST
             pil_img = pil_img.resize((target_size, target_size), resample_mode)
         self._scaled_dealer_photo = ImageTk.PhotoImage(pil_img, master=self.root)
         return self._scaled_dealer_photo
@@ -2132,6 +2427,13 @@ class BlackjackApp:
             curr = self.dealer_actor.mouth_state
             next_state = "talk" if curr == "neutral" else "neutral"
             self.dealer_actor.set_mouth_state(next_state)
+        m_state = self.dealer_actor.mouth_state
+        if m_state in ("a", "o"):
+            self.dealer_actor.set_layer_offsets(head_offset=(0, -2))
+        elif m_state in ("talk", "e"):
+            self.dealer_actor.set_layer_offsets(head_offset=(0, -1))
+        else:
+            self.dealer_actor.set_layer_offsets(head_offset=(0, 0))
         self._refresh_dealer_avatar_image()
 
     def _animate_speech_mouth(self, remaining_flaps: int = 4):
@@ -2261,6 +2563,7 @@ class BlackjackApp:
             self._dealer_mouth_timer_id = None
         if hasattr(self, "dealer_actor"):
             self.dealer_actor.set_mouth_state("neutral")
+            self.dealer_actor.set_layer_offsets(head_offset=(0, 0))
             self._refresh_dealer_avatar_image()
 
     def _update_dealer_speech_for_outcome(self, outcome: str):
@@ -2315,7 +2618,8 @@ class BlackjackApp:
             elif outcome in ('PLAYER_WINS', 'NATURAL_BLACKJACK') and phase == Phase.HELL_TABLE:
                 self._trigger_dealer_gasp()
 
-        self.set_dealer_speech(text, stream=True)
+        queue_outcome = (getattr(self, "play_mode", "betting") == "training") and self.is_dealer_speaking()
+        self.set_dealer_speech(text, stream=True, queue_if_busy=queue_outcome)
 
     def _update_dealer_speech_for_tactical_action(self, trigger: str):
         """Triggers persona-specific dealer reaction to a mid-hand tactical or risky play."""
@@ -2324,6 +2628,22 @@ class BlackjackApp:
         line = self.dealer_actor.get_tactical_dialogue(trigger)
         if line:
             self.set_dealer_speech(line, stream=True)
+
+    def _get_effective_normal_costume(self) -> str:
+        """Returns the active dealer costume ID for Phase.NORMAL, defaulting to 'professor' in Training Mode."""
+        save_data = getattr(getattr(self, "save_manager", None), "data", None) if hasattr(self, "save_manager") else None
+        equipped = getattr(save_data, "equipped_costume", "julian") if save_data else "julian"
+        in_training = getattr(self, "bootcamp_active", False) or getattr(self, "play_mode", "betting") == "training"
+        if in_training:
+            if equipped in ("classic", "julian", "professor", "professor_classic"):
+                return "professor"
+            return equipped
+        if equipped in ("professor", "professor_classic"):
+            unlocked = getattr(save_data, "unlocked_costumes", []) if save_data else []
+            graduated = getattr(getattr(save_data, "bootcamp", None), "graduated", False) if save_data else False
+            if "professor" not in unlocked and not graduated:
+                return "julian"
+        return equipped
 
     def _update_dealer_avatar(self):
         """Updates the dealer avatar image based on toggle state and haunted phase."""
@@ -2364,15 +2684,13 @@ class BlackjackApp:
             if self.haunted.phase == Phase.VICTORY:
                 self.dealer_actor.equip_costume("uriel")
             elif self.haunted.phase == Phase.NORMAL:
-                equipped = getattr(getattr(self, "save_manager", None), "data", None).equipped_costume if hasattr(self, "save_manager") else "julian"
-                self.dealer_actor.equip_costume(equipped)
+                self.dealer_actor.equip_costume(self._get_effective_normal_costume())
 
         bg_col = PANEL_BACKGROUND_COLOR
 
         if self.haunted.phase in (Phase.CREEP, Phase.OMEN, Phase.SNUFFING):
             if hasattr(self, "dealer_actor"):
-                equipped = getattr(getattr(self, "save_manager", None), "data", None).equipped_costume if hasattr(self, "save_manager") else "julian"
-                self.dealer_actor.equip_costume(equipped)
+                self.dealer_actor.equip_costume(self._get_effective_normal_costume())
                 img = self._get_scaled_dealer_photo() or self.dealer_actor.get_photo_image()
                 profile = self.dealer_actor.get_profile()
                 base_title = profile.title if profile else "The Classic Croupier"
@@ -2393,13 +2711,14 @@ class BlackjackApp:
             bg_col = "#0d2b26"
         else:
             if hasattr(self, "dealer_actor"):
-                equipped = getattr(getattr(self, "save_manager", None), "data", None).equipped_costume if hasattr(self, "save_manager") else "julian"
-                self.dealer_actor.equip_costume(equipped)
+                self.dealer_actor.equip_costume(self._get_effective_normal_costume())
                 img = self._get_scaled_dealer_photo() or self.dealer_actor.get_photo_image()
                 profile = self.dealer_actor.get_profile()
                 name_text = profile.title
                 name_col = profile.nameplate_fg
                 bg_col = profile.speech_bg
+                if hasattr(self, "dealer_stage_canvas") and profile and getattr(profile, "theme", None):
+                    self.dealer_stage_canvas.set_theme(profile.theme)
             else:
                 img = self.haunted_assets.get("dealer_classic")
                 name_text = "The Classic Croupier"
@@ -2531,10 +2850,202 @@ class BlackjackApp:
                     self.gravestone_labels.append(lbl)
         self._sync_accessories_frame_visibility()
 
+    def _init_blessing_tooltip(self):
+        """Initializes the in-window celestial hover details card for equipped miracles/relics."""
+        self.blessing_tooltip_title_var = tkinter.StringVar(value="")
+        self.blessing_tooltip_tagline_var = tkinter.StringVar(value="")
+        self.blessing_tooltip_desc_var = tkinter.StringVar(value="")
+        self.blessing_tooltip_status_var = tkinter.StringVar(value="")
+
+        self.blessing_tooltip_frame = tkinter.Frame(
+            self.root,
+            background="#051f38",
+            relief="ridge",
+            borderwidth=2,
+            highlightbackground="#00e5ff",
+            highlightthickness=2,
+            padx=12,
+            pady=8,
+        )
+        header_row = tkinter.Frame(self.blessing_tooltip_frame, background="#051f38")
+        header_row.pack(fill="x", pady=(0, 4))
+
+        self.blessing_tooltip_icon_label = tkinter.Label(header_row, background="#051f38")
+        self.blessing_tooltip_icon_label.pack(side="left", padx=(0, 8))
+
+        title_col = tkinter.Frame(header_row, background="#051f38")
+        title_col.pack(side="left", fill="x", expand=True)
+
+        tkinter.Label(
+            title_col,
+            textvariable=self.blessing_tooltip_title_var,
+            font=get_element_font("angelic_draft_title", scale=self.scale_factor),
+            fg="#ffd700",
+            background="#051f38",
+            anchor="w",
+        ).pack(fill="x")
+
+        tkinter.Label(
+            title_col,
+            textvariable=self.blessing_tooltip_tagline_var,
+            font=get_element_font("angelic_draft_tagline", scale=self.scale_factor),
+            fg="#80cbc4",
+            background="#051f38",
+            anchor="w",
+        ).pack(fill="x")
+
+        tkinter.Frame(self.blessing_tooltip_frame, background="#134b70", height=1).pack(fill="x", pady=(2, 6))
+
+        tkinter.Label(
+            self.blessing_tooltip_frame,
+            textvariable=self.blessing_tooltip_desc_var,
+            font=get_element_font("angelic_draft_description", scale=self.scale_factor),
+            fg="#eceff1",
+            background="#051f38",
+            justify="left",
+            anchor="w",
+            wraplength=280,
+        ).pack(fill="x", pady=(0, 6))
+
+        self.blessing_tooltip_status_label = tkinter.Label(
+            self.blessing_tooltip_frame,
+            textvariable=self.blessing_tooltip_status_var,
+            font=get_badge_font(13),
+            fg="#69f0ae",
+            background="#03101c",
+            padx=6,
+            pady=3,
+            anchor="w",
+            justify="left",
+        )
+        self.blessing_tooltip_status_label.pack(fill="x")
+
+    def _get_blessing_live_status(self, blessing: Blessing) -> tuple[str, str]:
+        """Returns (status_text, fg_color) describing how the equipped miracle currently helps the player."""
+        if blessing == Blessing.MIRACLE:
+            if self.haunted.can_use_miracle_draw():
+                return ("⚡ Status: Ready — Click '🌟 Miracle' (or press M) during your turn", "#69f0ae")
+            return ("⏳ Status: Used this round (recharges next hand)", "#ffb74d")
+        if blessing == Blessing.SERAPH:
+            if not getattr(self.haunted, "seraph_used_this_hand", False):
+                return ("⚡ Status: Ready — Auto-banishes & redraws your first bust card this hand", "#69f0ae")
+            return ("⏳ Status: Triggered this hand (recharges next hand)", "#ffb74d")
+        if blessing == Blessing.SHIELD:
+            return ("🛡 Passive: Busting with a total of 22 is forgiven as a standing 21", "#80cbc4")
+        if blessing == Blessing.EYE:
+            return ("👁 Passive: Dealer's hidden hole card is permanently revealed", "#80cbc4")
+        if blessing == Blessing.SMITE:
+            return ("⚔ Passive: Natural Blackjacks & 21s grant +25% bonus Soul push", "#80cbc4")
+        if blessing == Blessing.TITHE:
+            return ("⚖ Passive: Double/Split incurs no extra Soul loss penalty", "#80cbc4")
+        if blessing == Blessing.STREAK:
+            wins = getattr(self.haunted, "consecutive_wins", 0)
+            bonus_pct = max(0, wins - 1) * 5
+            return (f"🔥 Active Win Streak: {wins} (+{bonus_pct}% bonus Soul push)", "#ffd700")
+        return ("✦ Active Celestial Blessing", "#80cbc4")
+
+    def _on_blessing_badge_enter(self, blessing: Blessing, badge_widget: Optional[tkinter.Widget] = None):
+        """Displays the celestial hover details dialog when mousing over an equipped miracle badge."""
+        if getattr(self, "_blessing_tooltip_hide_id", None) is not None:
+            try:
+                self.root.after_cancel(self._blessing_tooltip_hide_id)
+            except Exception:
+                pass
+            self._blessing_tooltip_hide_id = None
+
+        if badge_widget is not None:
+            try:
+                badge_widget.configure(background="#0b3158", highlightbackground="#00e5ff", highlightthickness=1)
+                for child in badge_widget.winfo_children():
+                    child.configure(background="#0b3158")
+            except Exception:
+                pass
+
+        self._show_blessing_tooltip(blessing, badge_widget)
+
+    def _on_blessing_badge_leave(self, blessing: Blessing, badge_widget: Optional[tkinter.Widget] = None):
+        """Schedules hiding the miracle hover dialog after a short debounce to prevent child-label flicker."""
+        if badge_widget is not None:
+            try:
+                badge_widget.configure(background="#051f38", highlightthickness=0)
+                for child in badge_widget.winfo_children():
+                    child.configure(background="#051f38")
+            except Exception:
+                pass
+
+        if getattr(self, "_blessing_tooltip_hide_id", None) is not None:
+            try:
+                self.root.after_cancel(self._blessing_tooltip_hide_id)
+            except Exception:
+                pass
+        try:
+            self._blessing_tooltip_hide_id = self.root.after(45, self._hide_blessing_tooltip)
+        except Exception:
+            self._hide_blessing_tooltip()
+
+    def _show_blessing_tooltip(self, blessing: Blessing, badge_widget: Optional[tkinter.Widget] = None):
+        """Populates and places the celestial hover details card above the hovered miracle badge."""
+        if not hasattr(self, "blessing_tooltip_frame") or blessing not in BLESSING_REGISTRY:
+            return
+        details = BLESSING_REGISTRY[blessing]
+        self.blessing_tooltip_title_var.set(f"✦ {details.title}")
+        self.blessing_tooltip_tagline_var.set(details.tagline)
+        self.blessing_tooltip_desc_var.set(details.description)
+        status_text, status_fg = self._get_blessing_live_status(blessing)
+        self.blessing_tooltip_status_var.set(status_text)
+        self.blessing_tooltip_status_label.configure(fg=status_fg)
+
+        img = self.haunted_assets.get(f"relic_{blessing.value}") or self.haunted_assets.get(blessing.value)
+        if img:
+            self.blessing_tooltip_icon_label.configure(image=img)
+            self.blessing_tooltip_icon_label.image = img
+        else:
+            self.blessing_tooltip_icon_label.configure(image="")
+
+        try:
+            self.blessing_tooltip_frame.update_idletasks()
+            root_w = max(800, self.root.winfo_width())
+            root_h = max(600, self.root.winfo_height())
+            tip_w = max(290, self.blessing_tooltip_frame.winfo_reqwidth())
+            tip_h = max(120, self.blessing_tooltip_frame.winfo_reqheight())
+
+            if badge_widget is not None and badge_widget.winfo_exists():
+                bx = badge_widget.winfo_rootx() - self.root.winfo_rootx() + (badge_widget.winfo_width() // 2)
+                by = badge_widget.winfo_rooty() - self.root.winfo_rooty() - 6
+            else:
+                bx = root_w // 2
+                by = root_h - 46
+
+            half_w = tip_w // 2
+            clamped_x = max(half_w + 8, min(root_w - half_w - 8, bx))
+            clamped_y = max(tip_h + 8, min(root_h - 36, by))
+            self.blessing_tooltip_frame.place(x=clamped_x, y=clamped_y, anchor="s")
+            self.blessing_tooltip_frame.lift()
+        except Exception:
+            self.blessing_tooltip_frame.place(relx=0.5, rely=0.88, anchor="s")
+            self.blessing_tooltip_frame.lift()
+
+    def _hide_blessing_tooltip(self):
+        """Hides the celestial miracle hover details dialog."""
+        if getattr(self, "_blessing_tooltip_hide_id", None) is not None:
+            try:
+                self.root.after_cancel(self._blessing_tooltip_hide_id)
+            except Exception:
+                pass
+            self._blessing_tooltip_hide_id = None
+        if hasattr(self, "blessing_tooltip_frame"):
+            try:
+                self.blessing_tooltip_frame.place_forget()
+            except Exception:
+                pass
+
     def _update_blessings_tray(self):
         """Renders equipped relic badges in the blessings tray."""
         if not hasattr(self, "blessings_tray"):
             return
+        self._hide_blessing_tooltip()
+        if hasattr(self, "blessing_badge_widgets"):
+            self.blessing_badge_widgets.clear()
         for child in self.blessings_tray.winfo_children():
             child.destroy()
 
@@ -2542,6 +3053,7 @@ class BlackjackApp:
             self.blessings_tray.grid_remove()
             if hasattr(self, "miracle_button"):
                 self.miracle_button.grid_remove()
+            self._reposition_rail_buttons()
             return
 
         bg_col = self.root["background"]
@@ -2552,23 +3064,41 @@ class BlackjackApp:
         relic_item_padx = tray_cfg.get("relic_item_padx", 3)
         icon_padx = tray_cfg.get("icon_padx", 2)
         tkinter.Label(
-            self.blessings_tray, text="✦ RELICS: ", font=get_badge_font(11),
+            self.blessings_tray, text="✦ RELICS: ", font=get_badge_font(14),
             fg="#ffd700", background=bg_col
         ).pack(side="left", padx=header_padx)
 
         for b in sorted(self.haunted.equipped_blessings, key=lambda x: x.value):
             details = BLESSING_REGISTRY[b]
             img = self.haunted_assets.get(f"relic_{b.value}") or self.haunted_assets.get(b.value)
-            f = tkinter.Frame(self.blessings_tray, background="#051f38", relief="ridge", borderwidth=1, padx=4, pady=2)
+            f = tkinter.Frame(
+                self.blessings_tray,
+                background="#051f38",
+                relief="ridge",
+                borderwidth=1,
+                padx=4,
+                pady=2,
+                cursor="hand2",
+            )
             f.pack(side="left", padx=relic_item_padx)
+            hover_targets = [f]
             if img:
-                ilbl = tkinter.Label(f, image=img, background="#051f38")
+                ilbl = tkinter.Label(f, image=img, background="#051f38", cursor="hand2")
                 ilbl.image = img
                 ilbl.pack(side="left", padx=icon_padx)
-            tkinter.Label(
-                f, text=details.title, font=get_badge_font(10),
-                fg="#80cbc4", background="#051f38"
-            ).pack(side="left")
+                hover_targets.append(ilbl)
+            tlbl = tkinter.Label(
+                f, text=details.title, font=get_badge_font(14),
+                fg="#80cbc4", background="#051f38", cursor="hand2"
+            )
+            tlbl.pack(side="left")
+            hover_targets.append(tlbl)
+
+            for w_target in hover_targets:
+                w_target.bind("<Enter>", lambda _e, bl=b, bf=f: self._on_blessing_badge_enter(bl, bf))
+                w_target.bind("<Leave>", lambda _e, bl=b, bf=f: self._on_blessing_badge_leave(bl, bf))
+
+            self.blessing_badge_widgets[b] = f
 
         if Blessing.MIRACLE in self.haunted.equipped_blessings and hasattr(self, "miracle_button"):
             action_btn_pad = int(6 * self.scale_factor)
@@ -2576,6 +3106,9 @@ class BlackjackApp:
             self.miracle_button.grid(row=0, column=6, padx=action_btn_pad, pady=btn_pady)
             can_miracle = self.haunted.can_use_miracle_draw()
             self.miracle_button.configure(state="normal" if can_miracle else "disabled")
+        elif hasattr(self, "miracle_button"):
+            self.miracle_button.grid_remove()
+        self._reposition_rail_buttons()
 
     def _apply_phase_theme(self, phase: Phase):
         """Applies atmospheric table felt darkening and infernal/celestial colors via ThemePalette."""
@@ -2639,10 +3172,6 @@ class BlackjackApp:
             if widget is not None:
                 widget.configure(background=stage_bg)
 
-        if hasattr(self, "dealer_stage_canvas"):
-            self.dealer_stage_canvas.configure(background=stage_bg)
-            self.dealer_stage_canvas.set_theme(palette.felt_theme)
-
         # Dealer costume selection by phase
         if hasattr(self, "dealer_actor"):
             if phase == Phase.HELL_TABLE:
@@ -2650,8 +3179,16 @@ class BlackjackApp:
             elif phase == Phase.VICTORY:
                 self.dealer_actor.equip_costume("uriel")
             elif phase == Phase.NORMAL:
-                equipped = getattr(getattr(self, "save_manager", None), "data", None).equipped_costume if hasattr(self, "save_manager") else "julian"
-                self.dealer_actor.equip_costume(equipped)
+                self.dealer_actor.equip_costume(self._get_effective_normal_costume())
+
+        if hasattr(self, "dealer_stage_canvas"):
+            self.dealer_stage_canvas.configure(background=stage_bg)
+            stage_theme = palette.felt_theme
+            if phase == Phase.NORMAL and hasattr(self, "dealer_actor"):
+                prof = self.dealer_actor.get_profile()
+                if prof and getattr(prof, "theme", None) in self.dealer_stage_canvas.backdrop_images:
+                    stage_theme = prof.theme
+            self.dealer_stage_canvas.set_theme(stage_theme)
 
         # Theatrical Dealer Dialogue Frame
         if hasattr(self, "dealer_dialogue_frame"):
@@ -2713,7 +3250,7 @@ class BlackjackApp:
 
         # 1. Flickering Pumpkin
         if hasattr(self, "pumpkin_label"):
-            if self.haunted.phase in (Phase.CREEP, Phase.OMEN, Phase.SNUFFING, Phase.HELL_TABLE):
+            if not getattr(self, "bootcamp_active", False) and self.haunted.phase in (Phase.CREEP, Phase.OMEN, Phase.SNUFFING, Phase.HELL_TABLE):
                 pack_kw = {"before": self.dealer_avatar_label} if hasattr(self, "dealer_avatar_label") and self.dealer_avatar_label.winfo_manager() == "pack" else {}
                 pack_opts = get_pack_options("dealer_stage", "pumpkin", scale=self.scale_factor)
                 self.pumpkin_label.pack(**pack_opts, **pack_kw)
@@ -2731,11 +3268,15 @@ class BlackjackApp:
         except Exception:
             pass
 
-    def _trigger_hell_table(self):
+    def _trigger_hell_table(self, manual: bool = False):
         """Transitions into Hell's Table mode with bell audio, dialogs, and draft."""
         if getattr(self, "table_seats", 1) == 3:
             return
-        self.haunted.start_hell_table()
+        if manual:
+            self.haunted.unlocked_cursed_stakes = True
+        self.haunted.start_hell_table(manual=manual)
+        self.cursed_stakes_var.set(bool(manual or self.haunted.unlocked_cursed_stakes))
+        self._sync_cursed_stakes_button()
         self.sound_manager.play_haunted_sound("hell_bell")
         self._apply_phase_theme(Phase.HELL_TABLE)
         self._update_candles_display()
@@ -2859,6 +3400,8 @@ class BlackjackApp:
 
         def on_victory_close():
             self.haunted.reset_after_victory()
+            self.cursed_stakes_var.set(False)
+            self._sync_cursed_stakes_button()
             self._candles_manifested = False
             self._last_gravestones_risen = 0
             self._update_candles_display()
@@ -2871,6 +3414,7 @@ class BlackjackApp:
             if hasattr(self, "chip_visualizer") and self.chips_mode_var.get():
                 self.chip_visualizer.grid()
             self._apply_phase_theme(Phase.NORMAL)
+            self._cleanup_haunted_table_overlays()
             if hasattr(self, "card_table_frame") and isinstance(self.card_table_frame, TableFeltCanvas):
                 try:
                     self.card_table_frame.sync_children_felt()
@@ -2970,11 +3514,131 @@ class BlackjackApp:
         if hasattr(self, "miracle_button"):
             self.miracle_button.configure(state="disabled")
 
+    def _sync_cursed_stakes_button(self):
+        """Synchronizes Cursed Stakes button label, theme, and visibility with active Haunted state."""
+        if not hasattr(self, "cursed_stakes_button"):
+            return
+        if getattr(self, "table_seats", 1) == 3:
+            self.cursed_stakes_button.grid_remove()
+            return
+        if (
+            hasattr(self, "save_manager")
+            and getattr(self, "save_manager", None) is not None
+            and (
+                self.save_manager.data.achievements.exorcist
+                or self.save_manager.data.highscores.hell_table_clears > 0
+                or "seraph" in self.save_manager.data.unlocked_costumes
+            )
+        ):
+            self.haunted.unlocked_cursed_stakes = True
+            self.haunted.unlocked_exorcist = True
+
+        is_unlocked = bool(self.haunted.unlocked_cursed_stakes or self.haunted.unlocked_exorcist)
+        is_haunted_active = self.haunted.phase != Phase.NORMAL
+        cursed_opts = get_grid_options("mahogany_rail", "cursed_stakes")
+        if "padx" in cursed_opts and isinstance(cursed_opts["padx"], (list, tuple)):
+            cursed_opts["padx"] = tuple(int(p * self.scale_factor) for p in cursed_opts["padx"])
+        if "pady" in cursed_opts and isinstance(cursed_opts["pady"], (int, float)):
+            cursed_opts["pady"] = int(cursed_opts["pady"] * self.scale_factor)
+
+        if is_haunted_active and (is_unlocked or self.haunted.manual_cursed_active):
+            if not bool(self.cursed_stakes_button.grid_info()):
+                self.cursed_stakes_button.grid(**cursed_opts)
+            self.cursed_stakes_button.configure(text="✦ Exit Cursed", theme="gold", state="normal")
+        elif is_unlocked:
+            if not bool(self.cursed_stakes_button.grid_info()):
+                self.cursed_stakes_button.grid(**cursed_opts)
+            self.cursed_stakes_button.configure(text="🔥 Cursed", theme="red", state="normal")
+        else:
+            self.cursed_stakes_button.grid_remove()
+        self._reposition_rail_buttons()
+
+    def _cleanup_haunted_table_overlays(self):
+        """Restores normal card sprites on the felt and clears Hell's Table canvas decorations."""
+        self._hide_blessing_tooltip()
+        normal_map = {
+            (getattr(c, "rank", ""), getattr(c, "suit", "")): c.image
+            for c in getattr(self, "all_cards", [])
+        }
+        if hasattr(self, "dealer_hand") and self.dealer_hand:
+            d_cards = self.dealer_hand.cards if hasattr(self.dealer_hand, "cards") else self.dealer_hand
+            for i, card in enumerate(d_cards):
+                key = (getattr(card, "rank", ""), getattr(card, "suit", ""))
+                if key in normal_map and card.image != normal_map[key]:
+                    d_cards[i] = Card(card.value, normal_map[key], rank=key[0], suit=key[1])
+        if getattr(self, "dealer_hole_card", None) is not None:
+            hc = self.dealer_hole_card
+            key = (getattr(hc, "rank", ""), getattr(hc, "suit", ""))
+            if key in normal_map and hc.image != normal_map[key]:
+                self.dealer_hole_card = Card(hc.value, normal_map[key], rank=key[0], suit=key[1])
+        if hasattr(self, "player_hands") and self.player_hands:
+            for hand in self.player_hands:
+                p_cards = hand.cards if hasattr(hand, "cards") else hand
+                for i, card in enumerate(p_cards):
+                    key = (getattr(card, "rank", ""), getattr(card, "suit", ""))
+                    if key in normal_map and card.image != normal_map[key]:
+                        p_cards[i] = Card(card.value, normal_map[key], rank=key[0], suit=key[1])
+        if hasattr(self, "card_table_frame") and hasattr(self.card_table_frame, "delete"):
+            self.card_table_frame.delete("dealer_card_decor")
+            self.card_table_frame.delete("player_card_decor")
+        if hasattr(self, "dealer_hand") and len(self.dealer_hand) > 0:
+            self._render_dealer_cards(animate_new_card=False)
+        if hasattr(self, "player_hands") and any(len(h) > 0 for h in self.player_hands):
+            self._render_player_cards(animate_new_card=False)
+
+    def _exit_haunted_mode(self):
+        """Exits Haunted / Hell's Table mode immediately at any time and restores normal mortal play."""
+        if getattr(self, "_haunted_round_timer_id", None) is not None:
+            try:
+                self.root.after_cancel(self._haunted_round_timer_id)
+            except Exception:
+                pass
+            self._haunted_round_timer_id = None
+        if hasattr(self, "_cancel_deal_timers"):
+            self._cancel_deal_timers()
+        for dlg_attr in ("_active_story_dialog", "_active_draft_dialog"):
+            dlg = getattr(self, dlg_attr, None)
+            if dlg is not None:
+                try:
+                    if dlg.winfo_exists():
+                        dlg.destroy()
+                except Exception:
+                    pass
+                setattr(self, dlg_attr, None)
+
+        self.haunted.reset_to_mortal()
+        self.cursed_stakes_var.set(False)
+        self._candles_manifested = False
+        self._last_gravestones_risen = 0
+        self._update_candles_display()
+        self._update_gravestones_display()
+        self._update_blessings_tray()
+        if hasattr(self, "pumpkin_label"):
+            self.pumpkin_label.pack_forget()
+        if hasattr(self, "soul_meter_canvas"):
+            self.soul_meter_canvas.grid_remove()
+        if hasattr(self, "chip_visualizer") and self.chips_mode_var.get() and getattr(self, "table_seats", 1) == 1:
+            self.chip_visualizer.grid()
+        self._apply_phase_theme(Phase.NORMAL)
+        self._cleanup_haunted_table_overlays()
+        if hasattr(self, "card_table_frame") and isinstance(self.card_table_frame, TableFeltCanvas):
+            try:
+                self.card_table_frame.sync_children_felt()
+            except Exception:
+                pass
+        self._sync_cursed_stakes_button()
+        self._update_dealer_avatar()
+        self.set_dealer_speech("Returned to the mortal casino table.", stream=True)
+        self.new_game()
+
     def _on_toggle_cursed_stakes(self):
-        """Manually launches Hell's Table mode for replayability."""
+        """Toggles between manually entering Hell's Table mode and exiting back to normal play at any time."""
         if getattr(self, "table_seats", 1) == 3:
             return
-        self._trigger_hell_table()
+        if self.haunted.phase != Phase.NORMAL:
+            self._exit_haunted_mode()
+            return
+        self._trigger_hell_table(manual=True)
         self.new_game()
 
     # ------------------------------------------------------------------------
@@ -3167,6 +3831,7 @@ class BlackjackApp:
             self._update_candles_display()
             self._update_gravestones_display()
             self._update_blessings_tray()
+            self._sync_cursed_stakes_button()
 
         if self.haunted.phase == Phase.HELL_TABLE:
             if hasattr(self, "chip_visualizer"):
@@ -3596,6 +4261,7 @@ class BlackjackApp:
 
     def set_table_seats(self, count: int):
         """Switches table layout between 1-Seat and 3-Seat Wagering modes."""
+        self._unmount_bootcamp_views()
         new_count = 3 if count >= 3 else 1
         if getattr(self, "table_seats", 1) != new_count and hasattr(self, "engine"):
             self.engine.clear_all_bets()
@@ -3635,6 +4301,7 @@ class BlackjackApp:
         else:
             if self.chips_mode_var.get() and hasattr(self, "chip_visualizer"):
                 self.chip_visualizer.grid(**get_grid_options("chip_visualizer"))
+            self._sync_cursed_stakes_button()
 
         self._sync_betting_spots_from_engine()
         self.new_game()
@@ -3660,6 +4327,8 @@ class BlackjackApp:
 
     def _add_side_bet(self, bet_type: str, amount: int = 5):
         """Adds chip amount to specified staged side bet: requires main bet >= $5 and targets focused seat in multi-seat."""
+        if getattr(self, "bootcamp_active", False):
+            return "break"
         if getattr(self, "_dealing", False) or not getattr(self, "is_betting_phase", False) or not hasattr(self, "engine"):
             return "break"
         if not self.chips_mode_var.get():
@@ -3927,6 +4596,9 @@ class BlackjackApp:
         cur_x = cx - (total_play_w // 2)
 
         # Cursed Stakes Button: Left anchor on mahogany rail (1-seat mode only)
+        anchor_cfgs = dock_cfg.get("anchor_buttons", {})
+        m_w = int(anchor_cfgs.get("miracle", {}).get("width", 100) * s)
+        m_x = (m_w // 2) + side_margin
         if hasattr(self, "cursed_stakes_button") and isinstance(self.cursed_stakes_button, CanvasPixelButton):
             if getattr(self, "table_seats", 1) == 3:
                 self.cursed_stakes_button.grid_remove()
@@ -3935,22 +4607,23 @@ class BlackjackApp:
                 cs_x = side_margin + (cs_w // 2)
                 self.cursed_stakes_button.resize(cs_x, cy, cs_w, btn_h, scale=btn_scale)
                 if bool(self.cursed_stakes_button.grid_info()):
+                    m_x = cs_x + (cs_w // 2) + gap + (m_w // 2)
                     cur_x = max(cur_x, cs_x + (cs_w // 2) + int(24 * s))
+
+        # Miracle: Placed to the right of Cursed Stakes when Cursed Stakes is visible
+        if hasattr(self, "miracle_button"):
+            self.miracle_button.resize(m_x, cy, m_w, btn_h, scale=btn_scale)
+            if bool(self.miracle_button.grid_info()):
+                cur_x = max(cur_x, m_x + (m_w // 2) + gap)
 
         for btn, bw in play_btns:
             btn.resize(cur_x + bw // 2, cy, bw, btn_h, scale=btn_scale)
             cur_x += bw + gap
 
         # 3. Side Anchors
-        anchor_cfgs = dock_cfg.get("anchor_buttons", {})
         ng_w = int(anchor_cfgs.get("new_game", {}).get("width", 118) * s)
         ng_x = rail_w - (ng_w // 2) - side_margin
         self.new_game_button.resize(ng_x, cy, ng_w, btn_h, scale=btn_scale)
-
-        # Miracle: Left anchor
-        m_w = int(anchor_cfgs.get("miracle", {}).get("width", 100) * s)
-        m_x = (m_w // 2) + side_margin
-        self.miracle_button.resize(m_x, cy, m_w, btn_h, scale=btn_scale)
 
     def _prompt_insurance(self):
         """Offers the insurance side bet when the dealer shows an Ace in Chips Mode."""
@@ -4527,7 +5200,7 @@ class BlackjackApp:
                 )
                 canvas.create_text(
                     current_x + 2, hand_y - (badge_h // 2) - 2,
-                    text=title, fill=fg_color, font=get_badge_font(max(9, int(11 * s))),
+                    text=title, fill=fg_color, font=get_badge_font(max(12, int(14 * s))),
                     anchor="w", tags="player_card_decor"
                 )
 
@@ -4677,7 +5350,7 @@ class BlackjackApp:
 
     def _toggle_card_counting_hud(self):
         """Toggles the display of the Card Counting Trainer HUD."""
-        if getattr(self, "_dealing", False):
+        if getattr(self, "bootcamp_active", False) or getattr(self, "_dealing", False):
             return "break"
         if hasattr(self, "card_counting_hud") and self.card_counting_hud:
             is_vis = self.card_counting_hud.toggle_visibility()
@@ -4721,6 +5394,8 @@ class BlackjackApp:
     def _reveal_dealer_hole_card(self):
         """Flips the dealer's hole card face-up and displays the full dealer score."""
         self.is_hole_card_hidden = False
+        if hasattr(self, "card_table_frame") and hasattr(self.card_table_frame, "delete"):
+            self.card_table_frame.delete("dealer_card_decor")
         if not getattr(self, "_hole_card_observed", False) and len(self.dealer_hand) > 1:
             self._observe_card_face_up(self.dealer_hand[1])
             self._hole_card_observed = True
@@ -5822,6 +6497,9 @@ class BlackjackApp:
         if getattr(self, "_shortcuts_dialog", None) is not None:
             self._close_shortcuts_overlay()
             return "break"
+        if getattr(self, "bootcamp_active", False) and getattr(self, "bootcamp_frame", None) is not None:
+            self.bootcamp_frame.handle_key_event("Escape")
+            return "break"
         if getattr(self, "is_insurance_phase", False) and getattr(self, "decline_insurance_button", None):
             try:
                 if str(self.decline_insurance_button.cget("state")) == "normal":
@@ -5858,6 +6536,11 @@ class BlackjackApp:
     def _cancel_all_active_timers(self):
         """Safely cancels all registered background and animation timers across subsystems."""
         self._cancel_blink_timers()
+        if getattr(self, "bootcamp_frame", None) is not None:
+            try:
+                self.bootcamp_frame.cancel_all_timers()
+            except Exception:
+                pass
         if hasattr(self, "card_table_frame") and hasattr(self.card_table_frame, "cancel_card_animations"):
             self.card_table_frame.cancel_card_animations()
         self._dealing = False
@@ -5872,6 +6555,7 @@ class BlackjackApp:
             "_haunted_round_timer_id",
             "_ambient_timer_id",
             "_dealer_timer_id",
+            "_blessing_tooltip_hide_id",
         ):
             timer_id = getattr(self, attr, None)
             if timer_id:

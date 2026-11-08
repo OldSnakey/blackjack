@@ -64,7 +64,7 @@ HUD_OUTCOME_FONT_SIZE = 16
 HUD_OUTCOME_FONT_WEIGHT = "bold"
 
 HUD_LORE_FONT_FAMILY = "m5x7"
-HUD_LORE_FONT_SIZE = 14
+HUD_LORE_FONT_SIZE = 16
 HUD_LORE_FONT_SLANT = "roman"
 HUD_DEFAULT_WRAPLENGTH = 600
 
@@ -238,14 +238,14 @@ class ChipVisualizer(tkinter.Canvas):
         pp_wm_x, pp_wm_y = resolve_offset(pp_wm, (pp_cx, pp_cy), sx, sy)
         self.create_text(
             pp_wm_x, pp_wm_y, text="PAIRS", fill="#8a6d1b",
-            font=get_element_font("betting_spot_watermark", scale=s_font * 0.85),
+            font=get_element_font("betting_spot_watermark", scale=s_font),
             tags=("pp_watermark", "pp_spot_interactive")
         )
         pp_bdg = pp_cfg.get("bet_badge", {"offset_x": 0, "offset_y": -26})
         pp_bdg_x, pp_bdg_y = resolve_offset(pp_bdg, (pp_cx, pp_cy), sx, sy)
         self.create_text(
             pp_bdg_x, max(int(6 * sy), pp_bdg_y), text="", fill="#ffd700",
-            font=get_element_font("chip_bet_badge", scale=s_font * 0.85), tags=("pp_badge", "pp_spot_interactive")
+            font=get_element_font("chip_bet_badge", scale=s_font), tags=("pp_badge", "pp_spot_interactive")
         )
 
         # 2. Center Main Betting Spot
@@ -305,14 +305,14 @@ class ChipVisualizer(tkinter.Canvas):
         t13_wm_x, t13_wm_y = resolve_offset(t13_wm, (t13_cx, t13_cy), sx, sy)
         self.create_text(
             t13_wm_x, t13_wm_y, text="21+3", fill="#8a6d1b",
-            font=get_element_font("betting_spot_watermark", scale=s_font * 0.85),
+            font=get_element_font("betting_spot_watermark", scale=s_font),
             tags=("t13_watermark", "t13_spot_interactive")
         )
         t13_bdg = t13_cfg.get("bet_badge", {"offset_x": 0, "offset_y": -26})
         t13_bdg_x, t13_bdg_y = resolve_offset(t13_bdg, (t13_cx, t13_cy), sx, sy)
         self.create_text(
             t13_bdg_x, max(int(6 * sy), t13_bdg_y), text="", fill="#ffd700",
-            font=get_element_font("chip_bet_badge", scale=s_font * 0.85), tags=("t13_badge", "t13_spot_interactive")
+            font=get_element_font("chip_bet_badge", scale=s_font), tags=("t13_badge", "t13_spot_interactive")
         )
 
         # 4. Divider (strictly above reserve chip piles)
@@ -328,7 +328,7 @@ class ChipVisualizer(tkinter.Canvas):
         badge_font = get_element_font("chip_bankroll_badge", scale=s_font)
         f_sz_bdg = abs(badge_font[1]) if isinstance(badge_font, tuple) and len(badge_font) > 1 else int(10 * s_font)
         bdg_x, bdg_y = resolve_origin(bankroll_badge_cfg, w, h, sx, sy, content_offset=content_offset)
-        badge_y = min(h - int(f_sz_bdg / 2) - 3, bdg_y)
+        badge_y = min(h - int(f_sz_bdg / 2) - 1, bdg_y)
         self.create_text(
             bdg_x, badge_y, text="", fill="#ffd54f",
             font=badge_font, tags="bankroll_badge"
@@ -533,7 +533,7 @@ class ChipVisualizer(tkinter.Canvas):
         _, base_y = resolve_origin(piles_cfg, w, h, sx, sy, content_offset=content_offset)
         lbl_font = get_element_font("chip_denomination_label", scale=s_font)
         f_sz = abs(lbl_font[1]) if isinstance(lbl_font, tuple) and len(lbl_font) > 1 else int(11 * s_font)
-        denom_lbl_cfg = piles_cfg.get("denomination_label", {"offset_x": 0, "offset_y": 15})
+        denom_lbl_cfg = piles_cfg.get("denomination_label", {"offset_x": 0, "offset_y": 17})
         _, lbl_y = resolve_offset(denom_lbl_cfg, (0, base_y), sx, sy)
         step_y = int(piles_cfg.get("chip_vertical_step", 3) * sy)
 
@@ -618,14 +618,40 @@ class ChipVisualizer(tkinter.Canvas):
         self._active_timers.add(timer_id)
         return timer_id
 
+    def _clear_transient_spot_items(self):
+        """Removes any in-flight or leftover main-spot chip, payout, or floating text items and restores ring color."""
+        self.delete("chip")
+        self.delete("anim_chip")
+        self.delete("payout_stack")
+        self.delete("floating_text")
+        self.itemconfigure("spot_base", outline="#d4af37")
+
     def clear_timers(self):
-        """Cancels all active animation callbacks."""
+        """Cancels all active animation callbacks and cleans up any interrupted transient animation items."""
         for tid in list(self._active_timers):
             try:
                 self.after_cancel(tid)
             except Exception:
                 pass
         self._active_timers.clear()
+        try:
+            if not self.winfo_exists():
+                return
+            self.delete("anim_chip")
+            self.delete("payout_stack")
+            self.delete("floating_text")
+            self.itemconfigure("spot_base", outline="#d4af37")
+            if getattr(self, "current_bet", 0) <= 0:
+                self.delete("chip")
+                self.itemconfigure("badge", text="")
+            for b_type, badge_tag in (("perfect_pairs", "pp_badge"), ("21_plus_3", "t13_badge")):
+                if self.side_bets.get(b_type, 0) <= 0:
+                    self.delete(f"sb_chip_{b_type}")
+                    self.delete(f"anim_sb_chip_{b_type}")
+                    self.delete(f"floating_sb_{b_type}")
+                    self.itemconfigure(badge_tag, text="")
+        except Exception:
+            pass
 
     def set_bet(self, amount: int, animate: bool = True):
         """Updates the visualized bet amount."""
@@ -742,9 +768,8 @@ class ChipVisualizer(tkinter.Canvas):
 
     def render_stacks(self, amount: int):
         """Procedurally draws 2.5D chip stacks representing the specified amount."""
-        self.delete("chip")
-        self.delete("anim_chip")
-        self.delete("floating_text")
+        self.clear_timers()
+        self._clear_transient_spot_items()
 
         if amount <= 0:
             self.itemconfigure("badge", text="")
@@ -871,18 +896,17 @@ class ChipVisualizer(tkinter.Canvas):
         """Animates chips sliding downwards off the table when main bet is cleared."""
         self.current_bet = 0
         self.clear_timers()
+        self.delete("payout_stack")
+        self.delete("floating_text")
+        self.itemconfigure("spot_base", outline="#d4af37")
         self.itemconfigure("badge", text="")
         if not animated or not self._is_animation_enabled():
-            self.delete("chip")
-            self.delete("anim_chip")
-            self.delete("floating_text")
+            self._clear_transient_spot_items()
             return
 
         def step(count=0):
             if count >= 4:
-                self.delete("chip")
-                self.delete("anim_chip")
-                self.delete("floating_text")
+                self._clear_transient_spot_items()
             else:
                 self.move("chip", 0, 14)
                 self.move("anim_chip", 0, 14)
@@ -892,13 +916,18 @@ class ChipVisualizer(tkinter.Canvas):
 
     def animate_win(self, profit: int, animated: bool = True):
         """Animates dealer payout sliding in from top, glowing +$XX text, and chip collection."""
-        if not animated or not self._is_animation_enabled():
-            return
-
+        self.current_bet = 0
+        self.clear_timers()
         payout_tag = "payout_stack"
         text_tag = "floating_text"
+        self.delete("anim_chip")
         self.delete(payout_tag)
         self.delete(text_tag)
+
+        if not animated or not self._is_animation_enabled():
+            self._clear_transient_spot_items()
+            self.itemconfigure("badge", text="")
+            return
 
         breakdown = breakdown_chips(max(profit, 5))
         top_denom = breakdown[0][0] if breakdown else 25
@@ -931,9 +960,7 @@ class ChipVisualizer(tkinter.Canvas):
 
         def collect_chips(frame=0):
             if frame >= 5:
-                self.delete(payout_tag)
-                self.delete("chip")
-                self.delete(text_tag)
+                self._clear_transient_spot_items()
                 self.itemconfigure("badge", text="")
             else:
                 self.move(payout_tag, -12, 16)
@@ -945,21 +972,19 @@ class ChipVisualizer(tkinter.Canvas):
 
     def animate_loss(self, animated: bool = True):
         """Animates dealer sweeping the chips upward toward the dealer tray."""
+        self.current_bet = 0
+        self.clear_timers()
+        text_tag = "floating_text"
+        self.delete("payout_stack")
+        self.delete(text_tag)
         if not animated or not self._is_animation_enabled():
-            self.delete("chip")
-            self.delete("anim_chip")
-            self.delete("floating_text")
+            self._clear_transient_spot_items()
             self.itemconfigure("badge", text="")
             return
 
-        text_tag = "floating_text"
-        self.delete(text_tag)
-
         def sweep_chips(frame=0):
             if frame >= 5:
-                self.delete("chip")
-                self.delete("anim_chip")
-                self.delete(text_tag)
+                self._clear_transient_spot_items()
                 self.itemconfigure("badge", text="")
             else:
                 self.move("chip", 0, -18)
@@ -970,11 +995,17 @@ class ChipVisualizer(tkinter.Canvas):
 
     def animate_push(self, animated: bool = True):
         """Highlights the betting spot on push and returns chips to player."""
+        self.current_bet = 0
+        self.clear_timers()
+        text_tag = "floating_text"
+        self.delete("payout_stack")
+        self.delete("anim_chip")
+        self.delete(text_tag)
         if not animated or not self._is_animation_enabled():
+            self._clear_transient_spot_items()
+            self.itemconfigure("badge", text="")
             return
 
-        text_tag = "floating_text"
-        self.delete(text_tag)
         self.create_text(
             self.cx, self.cy - 16, text="PUSH", fill="#ffffff",
             font=get_element_font("chip_push_banner"), tags=text_tag
@@ -1421,8 +1452,8 @@ class TableAnnouncementHUD(tkinter.Frame):
         """Scales outcome/lore typography and wraplength proportionally."""
         self.scale = scale
         self.set_typography(
-            outcome_size=int(14 * scale),
-            lore_size=int(11 * scale),
+            outcome_size=int(HUD_OUTCOME_FONT_SIZE * scale),
+            lore_size=int(HUD_LORE_FONT_SIZE * scale),
             wraplength=int(600 * scale),
         )
         if hasattr(self, "badge"):
@@ -2096,6 +2127,8 @@ class DealerStageCanvas(tkinter.Canvas):
             "hell": ("backdrop_hell.png", "backdrop_hell_2x.png"),
             "celestial": ("backdrop_celestial.png", "backdrop_celestial_2x.png"),
             "crypt": ("backdrop_crypt.png", "backdrop_crypt_2x.png"),
+            "cyber": ("backdrop_cyber.png", "backdrop_cyber_2x.png"),
+            "academy": ("backdrop_academy.png", "backdrop_academy_2x.png"),
         }
 
         for theme, (f1x, f2x) in theme_files.items():
@@ -2144,7 +2177,7 @@ class DealerStageCanvas(tkinter.Canvas):
             raw_img, _ = theme_data.get(active_scale, (None, None))
             if raw_img:
                 try:
-                    resample_mode = getattr(Image, "Resampling", Image).BILINEAR
+                    resample_mode = getattr(Image, "Resampling", Image).NEAREST
                     resized = raw_img.resize((w, h), resample_mode)
                     self._active_backdrop_photo = ImageTk.PhotoImage(resized, master=self)
                     self.create_image(0, 0, image=self._active_backdrop_photo, anchor="nw", tags="backdrop")
@@ -3226,20 +3259,20 @@ class TableFeltCanvas(tkinter.Canvas):
 
             # Denomination label below
             short_lbl = "$1K" if denom == 1000 else f"${denom}"
-            lbl_y = base_y + int(16 * s)
+            lbl_y = base_y + int(19 * s)
             self.create_text(
                 col_x, lbl_y, text=short_lbl, fill="#ffd700",
-                font=get_element_font("chip_denomination_label", scale=s * 0.9),
+                font=get_element_font("chip_denomination_label", scale=s),
                 tags=("felt_chip_tray", pile_tag)
             )
 
         # Bankroll and instruction badge below denomination labels
-        badge_y = base_y + int(32 * s)
+        badge_y = base_y + int(34 * s)
         self.create_text(
             cx, badge_y,
             text=f"CHIPS: ${avail:,}  (L-Click: Bet on active seat | R-Click: Deduct)",
             fill="#ffd700",
-            font=get_element_font("chip_bet_badge", scale=s * 0.9),
+            font=get_element_font("chip_bet_badge", scale=s),
             tags=("felt_chip_tray", "felt_tray_badge")
         )
 
