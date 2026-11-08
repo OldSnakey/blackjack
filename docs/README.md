@@ -23,6 +23,9 @@ The `docs` directory contains authoritative system architecture blueprints, Clas
 - **[`DEALER_COSTUME_AUTHORING_GUIDE.md`](DEALER_COSTUME_AUTHORING_GUIDE.md)**:
   - Authoritative engineering and pixel-art pipeline reference for the **19-Layer Universal Chunky Pixel-Art Puppet Engine** (`dealer_actor.py`, `tools/deocclude_dealer_faceplates.py`, `tools/dealer_imaginative_costumes.py`, `tools/convert_selene_prof_vlad_costumes.py`).
   - Covers per-dealer `128x128` $\to$ `112x112` coordinate alignment tables, frame headroom & horizon rail grounding invariants, 3-stage white background / armpit pocket / outer-halo stripping, the 6 facial & jawline grafting modes, and dealing-arm pixel anatomy (`C` / `H` / `W` / `S`).
+- **[`STAGE_BACKDROP_AUTHORING_GUIDE.md`](STAGE_BACKDROP_AUTHORING_GUIDE.md)**:
+  - Authoritative engineering and pixel-art pipeline reference for **Horizon Stage Panoramic Backdrops** (`ui_canvases.py:DealerStageCanvas`, `tools/build_stage_backdrops.py`, `assets/haunted/backdrops/`).
+  - Covers the locked `500x110` $\to$ `1000x220` (`1x`) & `2000x440` (`2x`) `NEAREST` crunchy pixel grid, architectural wall-band cropping, optical archway centering, the 4 UI clearance & contrast framing zones, 64-color 16-bit palette quantization, and the 4-file registration checklist.
 
 ### 2. Packaging, Distribution & Storefront Publishing
 - **[`ITCH_IO_GUIDE.md`](ITCH_IO_GUIDE.md)**:
