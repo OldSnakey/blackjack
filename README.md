@@ -1,11 +1,11 @@
-# Blackjack v1.6.0 (Python & Tkinter)
+# Blackjack v2.0.0 (Python & Tkinter)
 
 > 🎮 **Play the Game**: Download the standalone, zero-install Windows release on itch.io:  
 > 👉 **[https://wrehman.itch.io/blackjack-classic](https://wrehman.itch.io/blackjack-classic)** *(No Python setup required!)*
 
 ## System Overview
 
-An interactive, graphical desktop implementation of the classic casino card game **Blackjack**, built with standard Python and Tkinter, featuring an **animated living dealer**, a supernatural **Haunted Halloween & Hell's Table expansion**, **2x HiDPI scaling**, and persistent **Hall of Fame & Achievements**.
+An interactive, graphical desktop implementation of the classic casino card game **Blackjack**, built with standard Python and Tkinter, featuring an **animated 19-layer living dealer puppet roster** (9 dealers, 35 bespoke pixel-art costumes, 7 crunchy 16-bit stage backdrops), the **MIT Hi-Lo Card Counting Academy & Bootcamp**, a supernatural **Haunted Halloween & Hell's Table expansion**, and persistent **Hall of Fame & Achievements**.
 
 Designed as an educational project for Python learners and junior developers, this codebase demonstrates how to transition from basic procedural scripting to clean, production-quality Python: eliminating global variables with Object-Oriented Programming (OOP), managing non-blocking animations without freezing the GUI event loop, decoupling stage canvas rendering from table felt geometry, separating pure mathematical game rules into zero-GUI modules, and authoring exhaustive automated regression tests (300+ unit tests).
 
@@ -111,8 +111,8 @@ For casual players and non-engineers who want to play without installing Python 
 **[https://wrehman.itch.io/blackjack-classic](https://wrehman.itch.io/blackjack-classic)**
 
 - **Platform**: Windows 64-bit (Standalone portable release)
-- **Zero Installation**: Extract `Blackjack-Windows-v1.6.0.zip` and double-click `Blackjack.exe` to play.
-- **Features Included**: Complete game with Living Dealer, Hell's Table, 2x scaling, sound effects, and persistent achievements.
+- **Zero Installation**: Extract `Blackjack-Windows-v2.0.0.zip` and double-click `Blackjack.exe` to play.
+- **Features Included**: Complete game with Living Dealer, MIT Hi-Lo Card Counting Academy, Hell's Table, sound effects, and persistent achievements.
 
 ---
 
@@ -144,7 +144,7 @@ To compile the standalone Windows release uploaded to [itch.io](https://wrehman.
 1. Double-click `build_itch_release.bat` (or run `./build_itch_release.ps1` in PowerShell).
 2. The automated pipeline runs regression tests, invokes PyInstaller, bundles documentation, and outputs:
    - `dist/Blackjack-Windows/`: Unpacked folder containing `Blackjack.exe` and bundled assets.
-   - `dist/Blackjack-Windows-v1.6.0.zip`: Optimized ZIP archive ready to upload to [itch.io](https://wrehman.itch.io/blackjack-classic).
+   - `dist/Blackjack-Windows-v2.0.0.zip`: Optimized ZIP archive ready to upload to [itch.io](https://wrehman.itch.io/blackjack-classic).
 
 For complete store page copy, metadata, and upload instructions, see [docs/ITCH_IO_GUIDE.md](docs/ITCH_IO_GUIDE.md).
 
@@ -593,7 +593,7 @@ Blackjack/
 - **Declarative Layout & Geometry (`ui_layout.py`)**: `[ui_layout.py:DEFAULT_UI_CONFIG]`, `[ui_layout.py:UI_CONFIG_FILE]`, `[ui_layout.py:load_ui_config]`, `[ui_layout.py:reload_ui_config]`, `[ui_layout.py:get_ui_layout]`, `[ui_layout.py:get_table_layout]`, `[ui_layout.py:get_rail_button_layout]`, `[ui_layout.py:get_card_layout]`, `[ui_layout.py:get_seat_origin]`, `[ui_layout.py:get_grid_options]`, `[ui_layout.py:get_pack_options]`, `[ui_layout.py:resolve_origin]`, `[ui_layout.py:resolve_offset]`, `[ui_layout.py:get_theme_color]`, `[ui_layout.py:get_widget_style]`, `[ui_layout.py:apply_style]`, `[ui_layout.py:get_image_scaling_config]`, `[ui_layout.py:resolve_pil_resample]`
 
 ### Local Invariants
-- `[blackjack.py:__version__]`: Single source of truth for application semantic version (`"1.6.0"`), aliased as `APP_VERSION`.
+- `[blackjack.py:__version__]`: Single source of truth for application semantic version (`"2.0.0"`), aliased as `APP_VERSION`.
 - `[rules.py:score_hand]`: Sums card values with Aces counted as `1` and promotes at most one Ace by `+10` iff `1 in values and score + 10 <= BLACKJACK_TARGET`.
 - `[rules.py:determine_outcome]` and `[rules.py:calculate_payout]`: Split hands (`is_split=True`) with 2-card 21 evaluate as `PLAYER_WINS` (`1:1`), never `NATURAL_BLACKJACK` (`3:2`); `[rules.py:calculate_insurance_payout]` rounds odd-bet insurance profit via `max(main_bet, insurance_bet * INSURANCE_PAYOUT_RATIO)` when `insurance_bet == main_bet // 2`.
 - `[state_machine.py:GameStateMachine.transition_to]`: Enforces `VALID_TRANSITIONS` across `RoundPhase` and raises `InvalidStateTransitionError` on illegal jumps unless `force=True`.

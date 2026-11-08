@@ -13,7 +13,7 @@ Before creating your itch.io page, compile the release bundle:
    - Run the automated unit test suite to ensure zero bugs are shipped.
    - Compile a standalone executable with PyInstaller.
    - Bundle all cards, organic sound effects, and `README_PLAYERS.txt`.
-   - Generate `dist/Blackjack-Windows-v1.6.0.zip`.
+   - Generate `dist/Blackjack-Windows-v2.0.0.zip`.
 
 ---
 
@@ -50,7 +50,7 @@ Before creating your itch.io page, compile the release bundle:
 
 Under the **Uploads** section:
 
-1. Click **Upload files** and select `dist/Blackjack-Windows-v1.6.0.zip`.
+1. Click **Upload files** and select `dist/Blackjack-Windows-v2.0.0.zip`.
 2. Check the **Windows** platform checkbox (the Windows logo icon).
 3. Under **Display name**, type: `Blackjack (Windows 64-bit)`.
 4. Check the box: **"This file will be seen by everyone"**.
@@ -71,8 +71,9 @@ Paste the following formatted description into the itch.io description editor:
 Experience authentic casino Blackjack with zero setup or installation required! Step up to the green felt table, place your wagers with realistic 3D stacked chips, and test your strategy against the dealer.
 
 ### Key Features
+- 🎓 **MIT Hi-Lo Card Counting Academy (`v2.0.0`)**: Interactive 14-node DAG curriculum (`L1`–`L5` Show & Tell Lectures + `C1`–`C5` Graded Tabletop Drills) coached by Professor Edward, with 2.5D Casino Chip Medallions (`S`/`A`/`B`/`C`/`F`) and 3-Seat Free Play practice.
 - 🎰 **Casino, Casual & Training Modes**: Play with an authentic \$1,000 bankroll and 5 casino chip denominations (\$5, \$25, \$100, \$500, \$1,000 Platinum), practice with the real-time Hi-Lo Card Counting & Basic Strategy Trainer, or switch to Casual Mode for instant zero-stress play.
-- 🎩 **Living Dealer & Animalese Voice Engine**: 8 unlockable multi-layer puppet dealers with autonomous breathing, blinking, phonetic lip-sync visemes, and procedural Animalese dialogue voices.
+- 🎩 **Living Dealer & Animalese Voice Engine**: 9 unlockable multi-layer puppet dealers (35 bespoke 16-bit pixel-art costumes and 7 panoramic backdrops) with autonomous breathing, blinking, phonetic lip-sync visemes, and procedural Animalese dialogue voices.
 - 🕯️ **Haunted Halloween & Hell's Table Mode**: Survive Hand 13 and the 5 altar candles to face The Pit Fiend in a 2.5D Tug-of-War Soul Meter battle with 7 roguelike Celestial Blessings.
 - 🃏 **Authentic Casino Rules**: Dealer Hole Card (face-down) peeks, 3:2 Natural Blackjack payouts, Double Down, Pair Splitting, Late Surrender, and 2:1 Insurance side bets.
 - 🔊 **Tactile Casino Sound Effects**: 42 organic audio variations including card slides, hole card placement, chip clicks, all-in thuds, and shoe shuffles.
@@ -107,7 +108,7 @@ Experience authentic casino Blackjack with zero setup or installation required! 
 Paste the following in the **Download & Install Instructions** section on itch.io:
 
 ```text
-1. Download the ZIP file: "Blackjack-Windows-v1.5.0.zip".
+1. Download the ZIP file: "Blackjack-Windows-v2.0.0.zip".
 2. Right-click the downloaded file and select "Extract All...".
 3. Open the extracted folder and double-click "Blackjack.exe" to play!
 

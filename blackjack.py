@@ -67,7 +67,7 @@ from config import (
 )
 
 # Application Version (Single Source of Truth)
-__version__ = "1.6.0"
+__version__ = "2.0.0"
 APP_VERSION = __version__
 
 # Re-exported domain rules & card models (pure Python, zero GUI dependencies)

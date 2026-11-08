@@ -107,9 +107,12 @@ GAME MODES
   Zero-stress play with no bankroll overhead and instant deals. Perfect for 
   quick practice.
 
-- TRAINING MODE (Hi-Lo Counter & Strategy Hints):
-  Combines full betting mechanics with the real-time Hi-Lo Card Counting 
-  Trainer HUD and dynamic Basic Strategy hints to master optimal play.
+- TRAINING MODE (MIT Hi-Lo Card Counting Academy & 3-Seat Practice Table):
+  Step into the interactive 14-node MIT Hi-Lo Counting Bootcamp coached by 
+  Professor Edward! Master 5 tiers of Show & Tell Lectures (L1..L5) and timed 
+  Tabletop Drills (C1..C5) graded with 2.5D Casino Chip Medallions (S/A/B/C/F), 
+  or switch to the 3-Seat Free Play practice table with the real-time Hi-Lo 
+  Card Counting HUD and dynamic Basic Strategy hints.
 
 - MULTI-SEAT WAGERING (1-Seat vs. 3-Seat Wagering):
   Switch between Single-Seat and 3-Seat play in the Settings menu or rail dock. 
