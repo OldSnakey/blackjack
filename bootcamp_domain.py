@@ -53,6 +53,7 @@ class BootcampLectureSlide:
     practice_choices: Tuple[str, ...] = ()
     practice_correct: str = ""
     practice_explanation: str = ""
+    card_groups: Tuple[Tuple[str, Tuple[int, ...]], ...] = ()  # ((group_label, (card_idx, ...)), ...)
 
 
 @dataclass(frozen=True)
@@ -269,13 +270,15 @@ class BootcampCurriculumDAG:
                     caption="Look at King (-1) + 5 (+1): they cancel to ZERO instantly. No mental addition required!",
                     cards=(("king", "hearts", "-1"), ("5", "clubs", "+1")),
                     formula_banner="CANCELLED PAIR: (-1) + (+1) = 0 NET CHANGE",
+                    card_groups=(("PLAYER HAND (NET 0)", (0, 1)),),
                 ),
                 BootcampLectureSlide(
                     title="L2A (2/3) — Same-Sign Double Stacks",
                     dealer_line="When two cards belong to the same bucket, they double up to +2 or -2.",
-                    caption="Two low cards (3, 6) = +2. Two high cards (10, Ace) = -2. A low card + neutral 8 = +1.",
-                    cards=(("3", "spades", "+1"), ("6", "diamonds", "+1"), ("8", "clubs", "0")),
+                    caption="Two low cards [3, 6] stack to +2. Two high cards [10, Ace] stack to -2!",
+                    cards=(("3", "spades", "+1"), ("6", "diamonds", "+1"), ("10", "clubs", "-1"), ("ace", "hearts", "-1")),
                     formula_banner="DOUBLE LOW: (+1) + (+1) = +2   |   DOUBLE HIGH: (-1) + (-1) = -2",
+                    card_groups=(("DOUBLE LOW (+2)", (0, 1)), ("DOUBLE HIGH (-2)", (2, 3))),
                 ),
                 BootcampLectureSlide(
                     title="L2A (3/3) — Interactive Practice Check",
@@ -287,6 +290,7 @@ class BootcampCurriculumDAG:
                     practice_choices=STAGE_FIXED_CHOICES["C2A"],
                     practice_correct="0",
                     practice_explanation="Spot on! Ace (-1) and 4 (+1) cancel directly to 0.",
+                    card_groups=(("PLAYER HAND [A, 4]", (0, 1)),),
                 ),
             ],
             "L2B": [
@@ -323,6 +327,7 @@ class BootcampCurriculumDAG:
                     caption="Seat 1 has [10, K] (-2) and Seat 2 has [3, 5] (+2). Those two seats completely cancel each other to 0!",
                     cards=(("10", "spades", "-1"), ("king", "hearts", "-1"), ("3", "clubs", "+1"), ("5", "diamonds", "+1")),
                     formula_banner="SEAT 1 (-2) + SEAT 2 (+2) = 0",
+                    card_groups=(("SEAT 1 HAND (-2)", (0, 1)), ("SEAT 2 HAND (+2)", (2, 3))),
                 ),
                 BootcampLectureSlide(
                     title="L3A (2/3) — Including the Dealer's Upcard Last",
@@ -330,17 +335,29 @@ class BootcampCurriculumDAG:
                     caption="Never guess the hole card. Only count visible faces on the green baize.",
                     cards=(("queen", "diamonds", "-1"), ("4", "spades", "+1"), ("6", "hearts", "+1")),
                     formula_banner="QUEEN (-1) + 4 (+1) = 0, PLUS DEALER 6 (+1) = +1",
+                    card_groups=(("SEAT 1 HAND (0)", (0, 1)), ("DEALER UPCARD (+1)", (2,))),
                 ),
                 BootcampLectureSlide(
                     title="L3A (3/3) — Interactive Practice Check",
                     dealer_line="Sweep this mini table: Seat 1 [J, 6], Seat 2 [8, 9], Dealer Upcard [5]. What is the table delta?",
                     caption="J (-1) cancels 6 (+1); 8 and 9 are 0; Dealer 5 is +1!",
-                    cards=(("jack", "clubs", "-1"), ("6", "spades", "+1"), ("8", "hearts", "0"), ("5", "diamonds", "+1")),
-                    formula_banner="Cancel [J, 6] -> 0, skip [8], add [5] (+1)",
+                    cards=(
+                        ("jack", "clubs", "-1"),
+                        ("6", "spades", "+1"),
+                        ("8", "hearts", "0"),
+                        ("9", "clubs", "0"),
+                        ("5", "diamonds", "+1"),
+                    ),
+                    formula_banner="Cancel Seat 1 [J, 6] -> 0, skip Seat 2 [8, 9] -> 0, add Dealer [5] (+1)",
                     practice_question="Net Table Delta:",
                     practice_choices=STAGE_FIXED_CHOICES["C3A"],
                     practice_correct="+1",
-                    practice_explanation="Bravo! [J, 6] cancels to 0, [8] is neutral, leaving Dealer [5] = +1.",
+                    practice_explanation="Bravo! [J, 6] cancels to 0, [8, 9] are neutral (0), leaving Dealer [5] = +1.",
+                    card_groups=(
+                        ("SEAT 1 HAND", (0, 1)),
+                        ("SEAT 2 HAND", (2, 3)),
+                        ("DEALER UPCARD", (4,)),
+                    ),
                 ),
             ],
             "L3B": [
@@ -350,13 +367,24 @@ class BootcampCurriculumDAG:
                     caption="When the dealer turns over their hidden card and draws to 17, rapid-fire hits test your composure.",
                     cards=(("10", "clubs", "UP: -1"), ("4", "hearts", "HOLE: +1"), ("3", "spades", "HIT: +1")),
                     formula_banner="UPCARD (-1) + HOLE FLIP (+1) + HIT (+1) = +1",
+                    card_groups=(("DEALER HAND RUNOUT", (0, 1, 2)),),
                 ),
                 BootcampLectureSlide(
                     title="L3B (2/3) — Tracking Multi-Card Dealer Runouts",
                     dealer_line="When a dealer pulls 3 or 4 small cards to make 21, the Running Count surges upward!",
                     caption="Example: Dealer has [5 up, 2 hole] and pulls [4, 3, 6] = five low cards in a row (+5 to RC)!",
-                    cards=(("5", "spades", "+1"), ("2", "hearts", "+1"), ("4", "clubs", "+1"), ("6", "diamonds", "+1")),
+                    cards=(
+                        ("5", "spades", "+1"),
+                        ("2", "hearts", "+1"),
+                        ("4", "clubs", "+1"),
+                        ("3", "spades", "+1"),
+                        ("6", "diamonds", "+1"),
+                    ),
                     formula_banner="DEALER LOW RUNOUT = MASSIVE +RC SURGE",
+                    card_groups=(
+                        ("DEALER [5 UP, 2 HOLE]", (0, 1)),
+                        ("DEALER HITS [4, 3, 6]", (2, 3, 4)),
+                    ),
                 ),
                 BootcampLectureSlide(
                     title="L3B (3/3) — Interactive Practice Check",
@@ -368,6 +396,7 @@ class BootcampCurriculumDAG:
                     practice_choices=STAGE_FIXED_CHOICES["C3B"],
                     practice_correct="+2",
                     practice_explanation="King (-1) and 6 (+1) cancel to 0, so Prior RC +2 stays +2!",
+                    card_groups=(("DEALER FLIP + HIT", (0, 1)),),
                 ),
             ],
             "L4": [

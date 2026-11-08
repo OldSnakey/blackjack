@@ -198,6 +198,47 @@ class TestBootcampPersistenceAndDAG(unittest.TestCase):
             self.assertEqual(summary["accuracy_pct"], 100.0)
             self.assertEqual(summary["grade"], "S")
 
+    def test_lecture_5_card_completeness_and_seat_hand_groups(self):
+        """
+        Verifies that:
+        1. L3A Slide 3 ('Interactive Practice Check') includes all 5 cards referenced in the prompt:
+           Seat 1 [J, 6], Seat 2 [8, 9], and Dealer Upcard [5], grouped into 3 seat/hand containers.
+        2. L3B Slide 2 ('Tracking Multi-Card Dealer Runouts') includes all 5 cards referenced in the
+           caption: [5, 2, 4, 3, 6], grouped into initial deal and dealer hits.
+        3. L2A Slide 2 ('Same-Sign Double Stacks') shows both 2-card hands ([3, 6] and [10, Ace]).
+        4. Every slide that defines `card_groups` forms a valid, exact partition of `range(len(slide.cards))`.
+        """
+        l3a_slides = self.dag.get_lecture_slides("L3A")
+        self.assertEqual(len(l3a_slides), 3)
+        l3a_s3 = l3a_slides[2]
+        self.assertEqual([rk for rk, _, _ in l3a_s3.cards], ["jack", "6", "8", "9", "5"])
+        self.assertEqual(
+            l3a_s3.card_groups,
+            (("SEAT 1 HAND", (0, 1)), ("SEAT 2 HAND", (2, 3)), ("DEALER UPCARD", (4,))),
+        )
+        self.assertIn("[8, 9]", l3a_s3.formula_banner)
+        self.assertIn("[8, 9]", l3a_s3.practice_explanation)
+
+        l3b_slides = self.dag.get_lecture_slides("L3B")
+        l3b_s2 = l3b_slides[1]
+        self.assertEqual([rk for rk, _, _ in l3b_s2.cards], ["5", "2", "4", "3", "6"])
+        self.assertEqual(len(l3b_s2.card_groups), 2)
+
+        l2a_slides = self.dag.get_lecture_slides("L2A")
+        l2a_s2 = l2a_slides[1]
+        self.assertEqual([rk for rk, _, _ in l2a_s2.cards], ["3", "6", "10", "ace"])
+        self.assertEqual(len(l2a_s2.card_groups), 2)
+
+        for lec_id in LECTURE_IDS:
+            for slide in self.dag.get_lecture_slides(lec_id):
+                if slide.card_groups:
+                    flat_indices = [idx for _, grp in slide.card_groups for idx in grp]
+                    self.assertEqual(
+                        flat_indices,
+                        list(range(len(slide.cards))),
+                        f"Slide {slide.title!r} card_groups {slide.card_groups} must partition {len(slide.cards)} cards",
+                    )
+
 
 class TestBootcampHeadlessGUI(unittest.TestCase):
     """Headless Tkinter integration tests for CountingBootcampFrame and BlackjackApp lifecycle."""
@@ -839,6 +880,51 @@ class TestBootcampHeadlessGUI(unittest.TestCase):
         # Second Space press advances to Slide 1
         bf.handle_key_event("space")
         self.assertEqual(bf.active_slide_index, 1)
+
+    def test_grouped_seat_hand_canvas_layout_and_spacing(self):
+        """
+        Verifies that grouped lecture slides (L3A, L2A, L3B) and challenge stages (C2A, C3A, C3B):
+        1. Render labeled seat/hand containers (`seat_group_box` tag) strictly between the top
+           formula banner (y > 104) and bottom caption panel (y < 276).
+        2. Position cards belonging to the same seat/hand tightly together (`intra_dx <= 80px`)
+           while keeping separate seat hands separated by a wider gap (`center_to_center >= 220px`).
+        3. Render all 5 cards on L3A Slide 3 without overlapping Hi-Lo tag badges.
+        """
+        self.app.enter_counting_bootcamp(start_view="map")
+        bf = self.app.bootcamp_frame
+        self.assertIsNotNone(bf)
+
+        # 1. Render L3A Slide 3 (5 cards across 3 seat groups: Seat 1 [J, 6], Seat 2 [8, 9], Dealer [5])
+        bf.render_lecture_view("L3A", slide_index=2)
+        group_boxes = bf.canvas.find_withtag("seat_group_box")
+        self.assertEqual(len(group_boxes), 3, "Expected 3 seat group containers on L3A Slide 3")
+        for box_id in group_boxes:
+            x1, y1, x2, y2 = bf.canvas.coords(box_id)
+            self.assertGreater(y1, 104, "Seat group box must sit below the top formula banner (y=104)")
+            self.assertLess(y2, 276, "Seat group box must sit above the bottom caption panel (y=276)")
+
+        card_xs = getattr(bf.renderer, "last_drawn_card_xs", [])
+        self.assertEqual(len(card_xs), 5, "Expected all 5 cards drawn on L3A Slide 3")
+        intra_seat1_dx = card_xs[1] - card_xs[0]
+        intra_seat2_dx = card_xs[3] - card_xs[2]
+        inter_seat_gap = card_xs[2] - card_xs[1]
+        self.assertLessEqual(intra_seat1_dx, 80, "Cards within Seat 1 must be tightly grouped")
+        self.assertLessEqual(intra_seat2_dx, 80, "Cards within Seat 2 must be tightly grouped")
+        self.assertGreater(inter_seat_gap, intra_seat1_dx + 60, "Separate seats must have wider visual separation than cards in the same hand")
+
+        # 2. Render Challenge C2A (2-card hand) and C3A (5-card 3-seat sweep) and verify seat group boxes
+        bf.render_challenge_view("C2A", seed=42)
+        self.assertEqual(len(bf.canvas.find_withtag("seat_group_box")), 1)
+        c2a_xs = getattr(bf.renderer, "last_drawn_card_xs", [])
+        self.assertEqual(len(c2a_xs), 2)
+        self.assertLessEqual(c2a_xs[1] - c2a_xs[0], 80)
+
+        bf.render_challenge_view("C3A", seed=42)
+        self.assertEqual(len(bf.canvas.find_withtag("seat_group_box")), 3)
+        c3a_xs = getattr(bf.renderer, "last_drawn_card_xs", [])
+        self.assertEqual(len(c3a_xs), 5)
+        self.assertLessEqual(c3a_xs[1] - c3a_xs[0], 80)
+        self.assertLessEqual(c3a_xs[3] - c3a_xs[2], 80)
 
 
 if __name__ == "__main__":

@@ -188,6 +188,7 @@ class BootcampCanvasRenderer:
         self.node_hit_boxes: Dict[str, Tuple[int, int, int, int]] = {}
         self.action_hit_boxes: Dict[str, Tuple[int, int, int, int]] = {}
         self._card_photo_refs: List[Any] = []
+        self.last_drawn_card_xs: List[int] = []
 
     def _make_panel(
         self,
@@ -452,6 +453,7 @@ class BootcampCanvasRenderer:
 
     def _draw_card_sprite(self, cx: int, cy: int, rank: str, suit: str) -> None:
         """Draws a card face sprite (or high-contrast fallback plaque) centered at `(cx, cy)`."""
+        self.last_drawn_card_xs.append(cx)
         img = self._get_card_image(rank, suit)
         if img is not None:
             self._card_photo_refs.append(img)
@@ -466,6 +468,7 @@ class BootcampCanvasRenderer:
         self.node_hit_boxes.clear()
         self.action_hit_boxes.clear()
         self._card_photo_refs.clear()
+        self.last_drawn_card_xs.clear()
         if self._banner_sync_fn is not None:
             self._banner_sync_fn()
 
@@ -738,16 +741,20 @@ class BootcampCanvasRenderer:
 
         cards = slide.cards
         if cards:
-            spacing = min(160, 680 // max(1, len(cards)))
-            start_x = 440 - ((len(cards) - 1) * spacing) // 2
-            cy = 180
-            for idx, (rk, st, badge_txt) in enumerate(cards):
-                cx = start_x + idx * spacing
-                self._draw_card_sprite(cx, cy, rk, st)
-                badge_col = "#00e676" if "+" in badge_txt else ("#ff6b6b" if "-" in badge_txt else "#ffd700")
-                pill_bg = "#0d2b1a" if "+" in badge_txt else ("#331414" if "-" in badge_txt else "#1c2826")
-                self.canvas.create_rectangle(cx - 56, cy + 58, cx + 56, cy + 84, fill=pill_bg, outline=badge_col, width=2)
-                self._draw_shadow_text(cx, cy + 71, text=badge_txt, fill=badge_col, font=get_header_font(16))
+            card_groups = getattr(slide, "card_groups", ())
+            if card_groups:
+                self._draw_lecture_card_groups(cards, card_groups)
+            else:
+                spacing = min(160, 680 // max(1, len(cards)))
+                start_x = 440 - ((len(cards) - 1) * spacing) // 2
+                cy = 180
+                for idx, (rk, st, badge_txt) in enumerate(cards):
+                    cx = start_x + idx * spacing
+                    self._draw_card_sprite(cx, cy, rk, st)
+                    badge_col = "#00e676" if "+" in badge_txt else ("#ff6b6b" if "-" in badge_txt else "#ffd700")
+                    pill_bg = "#0d2b1a" if "+" in badge_txt else ("#331414" if "-" in badge_txt else "#1c2826")
+                    self.canvas.create_rectangle(cx - 56, cy + 58, cx + 56, cy + 84, fill=pill_bg, outline=badge_col, width=2)
+                    self._draw_shadow_text(cx, cy + 71, text=badge_txt, fill=badge_col, font=get_header_font(16))
 
         self._make_panel(
             x=36, y=276, width=808, height=98,
@@ -774,6 +781,45 @@ class BootcampCanvasRenderer:
                 width=760,
                 font=get_header_font(16),
             )
+
+    def _draw_lecture_card_groups(
+        self,
+        cards: Tuple[Tuple[str, str, str], ...],
+        card_groups: Tuple[Tuple[str, Tuple[int, ...]], ...],
+    ) -> None:
+        """
+        Renders lecture cards grouped by seat/hand inside recessed baize seat wells (`seat_group_box`),
+        keeping cards from the same hand tightly paired (`c_spacing = 78px`) and distinct seats
+        widely separated across the felt (`group_gap = 68px..76px`).
+        """
+        c_spacing = 78
+        box_ws = [max(124, len(g_indices) * c_spacing + 24) for _, g_indices in card_groups]
+        group_gap = 68 if len(card_groups) >= 3 else 76
+        total_w = sum(box_ws) + group_gap * max(0, len(card_groups) - 1)
+        cur_x = 440 - total_w // 2
+        cy = 185
+
+        for (g_label, g_indices), box_w in zip(card_groups, box_ws):
+            gx = cur_x + box_w // 2
+            self.canvas.create_rectangle(
+                gx - box_w // 2, 108, gx + box_w // 2, 270,
+                fill="#0c3b20", outline="#2e7d32", width=1, dash=(3, 3),
+                tags="seat_group_box",
+            )
+            self._draw_shadow_text(gx, 121, text=g_label, fill="#80cbc4", font=get_header_font(15))
+            c_start = gx - ((len(g_indices) - 1) * c_spacing) // 2
+            for pos_idx, card_idx in enumerate(g_indices):
+                rk, st, badge_txt = cards[card_idx]
+                cx = c_start + pos_idx * c_spacing
+                self._draw_card_sprite(cx, cy, rk, st)
+                badge_col = "#00e676" if "+" in badge_txt else ("#ff6b6b" if "-" in badge_txt else "#ffd700")
+                pill_bg = "#0d2b1a" if "+" in badge_txt else ("#331414" if "-" in badge_txt else "#1c2826")
+                self.canvas.create_rectangle(
+                    cx - 36, 242, cx + 36, 265,
+                    fill=pill_bg, outline=badge_col, width=2,
+                )
+                self._draw_shadow_text(cx, 253, text=badge_txt, fill=badge_col, font=get_header_font(15))
+            cur_x += box_w + group_gap
 
     def draw_challenge_prompt(
         self,
@@ -805,6 +851,10 @@ class BootcampCanvasRenderer:
         cards = prompt.cards
         if spec.node_id == "C3A" and len(cards) == 5:
             self._draw_c3a_table_sweep_groups(cards)
+        elif spec.node_id == "C2A" and len(cards) == 2:
+            self._draw_c2a_hand_group(cards)
+        elif spec.node_id == "C3B" and len(cards) == 3:
+            self._draw_c3b_dealer_runout_group(cards)
         elif spec.node_id == "C4":
             self._draw_c4_shoe_calibration_dashboard(prompt)
         elif spec.node_id == "C5":
@@ -831,6 +881,20 @@ class BootcampCanvasRenderer:
             font=get_body_font(18),
         )
 
+    def _draw_c2a_hand_group(self, cards: Tuple[Tuple[str, str], ...]) -> None:
+        gx = 440
+        box_w = 180
+        self.canvas.create_rectangle(
+            gx - box_w // 2, 124, gx + box_w // 2, 274,
+            fill="#0c3b20", outline="#2e7d32", width=1, dash=(3, 3),
+            tags="seat_group_box",
+        )
+        self._draw_shadow_text(gx, 138, text="PLAYER HAND", fill="#80cbc4", font=get_header_font(15))
+        c_spacing = 78
+        c_start = gx - ((len(cards) - 1) * c_spacing) // 2
+        for c_idx, (rk, st) in enumerate(cards):
+            self._draw_card_sprite(c_start + c_idx * c_spacing, 210, rk, st)
+
     def _draw_c3a_table_sweep_groups(self, cards: Tuple[Tuple[str, str], ...]) -> None:
         group_specs = [
             ("SEAT 1 HAND", [cards[0], cards[1]], 190),
@@ -838,16 +902,31 @@ class BootcampCanvasRenderer:
             ("DEALER UPCARD", [cards[4]], 700),
         ]
         for g_label, g_cards, gx in group_specs:
-            box_w = 188 if len(g_cards) == 2 else 118
+            box_w = 180 if len(g_cards) == 2 else 118
             self.canvas.create_rectangle(
-                gx - box_w // 2, 126, gx + box_w // 2, 276,
+                gx - box_w // 2, 124, gx + box_w // 2, 274,
                 fill="#0c3b20", outline="#2e7d32", width=1, dash=(3, 3),
+                tags="seat_group_box",
             )
-            self._draw_shadow_text(gx, 140, text=g_label, fill="#80cbc4", font=get_header_font(15))
-            c_spacing = 82
+            self._draw_shadow_text(gx, 138, text=g_label, fill="#80cbc4", font=get_header_font(15))
+            c_spacing = 78
             c_start = gx - ((len(g_cards) - 1) * c_spacing) // 2
             for c_idx, (rk, st) in enumerate(g_cards):
-                self._draw_card_sprite(c_start + c_idx * c_spacing, 212, rk, st)
+                self._draw_card_sprite(c_start + c_idx * c_spacing, 210, rk, st)
+
+    def _draw_c3b_dealer_runout_group(self, cards: Tuple[Tuple[str, str], ...]) -> None:
+        gx = 440
+        box_w = 264
+        self.canvas.create_rectangle(
+            gx - box_w // 2, 124, gx + box_w // 2, 274,
+            fill="#0c3b20", outline="#2e7d32", width=1, dash=(3, 3),
+            tags="seat_group_box",
+        )
+        self._draw_shadow_text(gx, 138, text="DEALER RUNOUT (UPCARD + HOLE + HIT)", fill="#80cbc4", font=get_header_font(15))
+        c_spacing = 78
+        c_start = gx - ((len(cards) - 1) * c_spacing) // 2
+        for c_idx, (rk, st) in enumerate(cards):
+            self._draw_card_sprite(c_start + c_idx * c_spacing, 210, rk, st)
 
     def _draw_c4_shoe_calibration_dashboard(self, prompt: BootcampPrompt) -> None:
         self._make_panel(
