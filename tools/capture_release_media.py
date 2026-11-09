@@ -1,13 +1,21 @@
 """
-Release Media Capture Tool for itch.io Release 1.6.0.
+Release Media Capture Tool for itch.io Release 2.0.0.
 Captures:
-- 01_3seat_training_mode.png
-- 02_3seat_in_play.png
-- 03_single_seat_casino.png
-- 04_wardrobe_hall_of_fame.png
-- 05_hells_table_pit_fiend.png
-- 06_keyboard_shortcuts_help.png
-- gameplay_3seat_card_counting.gif
+- Screenshots in docs/release/screenshots/:
+  - 01_bootcamp_curriculum_map.png
+  - 02_bootcamp_lecture_table_sweep.png
+  - 03_bootcamp_challenge_drill.png
+  - 04_bootcamp_report_card.png
+  - 05_dealer_wardrobe_costumes.png
+  - 06_3seat_training_mode.png (also saved as 01_3seat_training_mode.png)
+  - 07_3seat_in_play.png (also saved as 02_3seat_in_play.png)
+  - 08_single_seat_casino.png (also saved as 03_single_seat_casino.png)
+  - 09_wardrobe_hall_of_fame.png (also saved as 04_wardrobe_hall_of_fame.png)
+  - 10_hells_table_pit_fiend.png (also saved as 05_hells_table_pit_fiend.png)
+  - 06_keyboard_shortcuts_help.png
+- Animated GIFs in docs/release/:
+  - gameplay_card_counting_bootcamp.gif
+  - gameplay_3seat_card_counting.gif
 """
 
 from __future__ import annotations
@@ -25,19 +33,10 @@ from PIL import Image
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
-from blackjack import BlackjackApp, StoryDialogueDialog
+from blackjack import BlackjackApp, __version__
 from rules import Card
 from haunted_manager import Phase
 from save_manager import SaveManager
-from ui_dialogs import (
-    StoryDialogueDialog,
-    AngelicDraftDialog,
-    SettingsDialog,
-    ShortcutsDialog,
-    WelcomeSplashDialog,
-)
-from dealer_wardrobe_dialog import WardrobeDialog
-from card_counting_hud import CardCountingHud
 
 
 def capture_hwnd_to_image(hwnd: int) -> Image.Image:
@@ -61,7 +60,15 @@ def capture_hwnd_to_image(hwnd: int) -> Image.Image:
     gdi32.SelectObject.restype = wintypes.HGDIOBJ
     gdi32.DeleteObject.argtypes = [wintypes.HGDIOBJ]
     gdi32.DeleteDC.argtypes = [wintypes.HDC]
-    gdi32.GetDIBits.argtypes = [wintypes.HDC, wintypes.HBITMAP, wintypes.UINT, wintypes.UINT, ctypes.c_void_p, ctypes.c_char_p, wintypes.UINT]
+    gdi32.GetDIBits.argtypes = [
+        wintypes.HDC,
+        wintypes.HBITMAP,
+        wintypes.UINT,
+        wintypes.UINT,
+        ctypes.c_void_p,
+        ctypes.c_char_p,
+        wintypes.UINT,
+    ]
 
     ga_root = user32.GetAncestor(hwnd, 2)
     if ga_root:
@@ -73,7 +80,7 @@ def capture_hwnd_to_image(hwnd: int) -> Image.Image:
     h = rect.bottom - rect.top
 
     if w <= 0 or h <= 0:
-        w, h = 900, 800
+        w, h = 1000, 740
 
     hwnd_dc = user32.GetWindowDC(hwnd)
     mem_dc = gdi32.CreateCompatibleDC(hwnd_dc)
@@ -97,7 +104,7 @@ def capture_hwnd_to_image(hwnd: int) -> Image.Image:
     return img
 
 
-def pump(root: tkinter.Tk, iterations: int = 5, delay: float = 0.02):
+def pump(root: tkinter.Tk, iterations: int = 6, delay: float = 0.02) -> None:
     for _ in range(iterations):
         root.update_idletasks()
         root.update()
@@ -114,38 +121,254 @@ def build_card_helper(app: BlackjackApp, rank: str, suit: str) -> Card:
     raise ValueError(f"Card not found: {rank} of {suit}")
 
 
-def capture_all():
+def equip_dealer_and_variant(app: BlackjackApp, character_id: str, variant_id: str, theme: str) -> None:
+    app.save_manager.data.equipped_costume = variant_id
+    app.dealer_actor.equip_costume(character_id, costume_id=variant_id)
+    app.dealer_stage_canvas.set_theme(theme)
+    img = app._get_scaled_dealer_photo() or app.dealer_actor.get_photo_image()
+    if img:
+        app.dealer_stage_canvas.set_dealer_image(img)
+    profile = app.dealer_actor.get_profile()
+    if hasattr(app, "dealer_nameplate_label"):
+        app.dealer_nameplate_label.configure(text=profile.title, fg=profile.nameplate_fg)
+    app._sync_dealer_stage_colors(profile.speech_bg)
+
+
+def save_animated_gif(frames: list[Image.Image], out_path: Path, target_w: int = 760, duration_ms: int = 260) -> None:
+    resized_frames: list[Image.Image] = []
+    for f in frames:
+        scale = target_w / f.width
+        target_h = int(f.height * scale)
+        rf = f.resize((target_w, target_h), Image.Resampling.LANCZOS).convert(
+            "P", palette=Image.Palette.ADAPTIVE
+        )
+        resized_frames.append(rf)
+
+    resized_frames[0].save(
+        out_path,
+        save_all=True,
+        append_images=resized_frames[1:],
+        duration=duration_ms,
+        loop=0,
+        optimize=True,
+    )
+    print(f"Saved {out_path} ({out_path.stat().st_size / 1024 / 1024:.2f} MB)")
+
+
+def capture_all() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
     out_dir = BASE_DIR / "docs" / "release" / "screenshots"
     out_dir.mkdir(parents=True, exist_ok=True)
-    gif_path = BASE_DIR / "docs" / "release" / "gameplay_3seat_card_counting.gif"
+    bootcamp_gif_path = BASE_DIR / "docs" / "release" / "gameplay_card_counting_bootcamp.gif"
+    table_gif_path = BASE_DIR / "docs" / "release" / "gameplay_3seat_card_counting.gif"
 
     temp_dir = tempfile.TemporaryDirectory()
-    save_file = Path(temp_dir.name) / "release_save.json"
+    save_file = Path(temp_dir.name) / "release_save_v2.json"
 
     root = tkinter.Tk()
-    root.title("Blackjack v1.6.0")
-    root.geometry("1100x820+50+50")
+    root.title(f"Blackjack v{__version__}")
+    root.geometry("1000x740+50+40")
     root.update_idletasks()
     root.deiconify()
     root.lift()
     root.focus_force()
 
-    app = BlackjackApp(root, chips_mode=True, sound_enabled=False)
-    app.save_manager = SaveManager(save_path=save_file)
-    app.save_manager.data.highscores.peak_bankroll = 15500
-    app.save_manager.data.highscores.total_hands_played = 142
-    app.save_manager.data.highscores.total_hands_won = 78
-    app.save_manager.data.highscores.total_blackjacks = 22
-    app.save_manager.data.highscores.best_counting_streak = 16
-    app.save_manager.data.highscores.counting_streak = 9
-    app.save_manager.data.achievements.exorcist = True
-    app.save_manager.data.achievements.celestial = True
-    app.save_manager.data.achievements.high_roller = True
-    app.save_manager.data.achievements.apprentice_counter = True
-    app.save_manager.data.achievements.master_counter = True
+    app = BlackjackApp(root, chips_mode=True, sound_enabled=False, save_path=save_file, skip_splash=True)
+    sm = app.save_manager
+    sm.data.unlocked_costumes = [
+        "classic", "julian", "tiffany", "mortimer", "malphas",
+        "uriel", "selene", "vladimir", "professor", "pit_fiend",
+    ]
+    sm.data.highscores.peak_bankroll = 24500
+    sm.data.highscores.total_hands_played = 186
+    sm.data.highscores.total_hands_won = 104
+    sm.data.highscores.total_blackjacks = 29
+    sm.data.highscores.best_counting_streak = 24
+    sm.data.highscores.counting_streak = 14
+    sm.data.achievements.exorcist = True
+    sm.data.achievements.celestial = True
+    sm.data.achievements.high_roller = True
+    sm.data.achievements.apprentice_counter = True
+    sm.data.achievements.master_counter = True
+    sm.data.achievements.pair_perfectionist = True
+    sm.data.achievements.poker_face = True
 
-    print("[1/7] Capturing 01_3seat_training_mode.png...")
+    # Populate realistic Bootcamp progress for the Curriculum Map
+    sm.mark_bootcamp_intro_seen()
+    sm.record_bootcamp_lecture("L1")
+    sm.record_bootcamp_stage("C1", "S", 100.0, 10120)
+    sm.record_bootcamp_lecture("L2A")
+    sm.record_bootcamp_stage("C2A", "A", 92.0, 9240)
+    sm.record_bootcamp_lecture("L2B")
+    sm.record_bootcamp_stage("C2B", "S", 100.0, 10080)
+    sm.record_bootcamp_lecture("L3A")
+    sm.record_bootcamp_stage("C3A", "A", 90.0, 9050)
+    sm.record_bootcamp_lecture("L4")
+    sm.record_bootcamp_stage("C4", "B", 83.3, 8330)
+    sm.record_bootcamp_lecture("L5")
+
+    bootcamp_frames: list[Image.Image] = []
+
+    # =========================================================================
+    # 1. MIT Hi-Lo Curriculum Map (01_bootcamp_curriculum_map.png)
+    # =========================================================================
+    print("[1/10] Capturing 01_bootcamp_curriculum_map.png...")
+    app.enter_counting_bootcamp(start_view="map")
+    bf = app.bootcamp_frame
+    assert bf is not None
+    bf.focused_node_id = "L3A"
+    bf.render_dag_map_view()
+    equip_dealer_and_variant(app, "professor", "professor", "academy")
+    app.set_dealer_speech(
+        "Welcome to the MIT Hi-Lo Curriculum Map! Complete Show & Tell Lectures and earn S-Rank Casino Chip Medallions.",
+        stream=False,
+    )
+    pump(root, 10)
+    img_map = capture_hwnd_to_image(root.winfo_id())
+    img_map.save(out_dir / "01_bootcamp_curriculum_map.png")
+    for _ in range(5):
+        bootcamp_frames.append(img_map)
+
+    # =========================================================================
+    # 2. Interactive Show & Tell Lecture — 5-Card Seat Grouping (02_bootcamp_lecture_table_sweep.png)
+    # =========================================================================
+    print("[2/10] Capturing 02_bootcamp_lecture_table_sweep.png...")
+    bf.render_lecture_view("L3A", slide_index=2)
+    equip_dealer_and_variant(app, "mortimer", "mortimer_pirate", "crypt")
+    app.set_dealer_speech(
+        "Sweep this mini table: Seat 1 [J, 6], Seat 2 [8, 9], Dealer Upcard [5]. What is the table delta?",
+        stream=False,
+    )
+    pump(root, 10)
+    img_lec = capture_hwnd_to_image(root.winfo_id())
+    img_lec.save(out_dir / "02_bootcamp_lecture_table_sweep.png")
+    for _ in range(5):
+        bootcamp_frames.append(img_lec)
+
+    # Submit practice answer on L3A Slide 3 for the animated GIF
+    bf.submit_lecture_practice("+1")
+    app.set_dealer_speech(
+        "Bravo! Seat 1 [J, 6] cancels to 0, Seat 2 [8, 9] are neutral (0), leaving Dealer [5] = +1!",
+        stream=False,
+    )
+    pump(root, 8)
+    img_lec_ok = capture_hwnd_to_image(root.winfo_id())
+    for _ in range(4):
+        bootcamp_frames.append(img_lec_ok)
+
+    # =========================================================================
+    # 3. Timed Challenge Drill — C3A Table Sweep & C4 Shoe Calibration (03_bootcamp_challenge_drill.png)
+    # =========================================================================
+    print("[3/10] Capturing 03_bootcamp_challenge_drill.png...")
+    bf.render_challenge_view("C3A", seed=7)
+    equip_dealer_and_variant(app, "professor", "professor_vegas_disguise", "academy")
+    app.set_dealer_speech(
+        "Scan right-to-left across Seat 1, Seat 2, and the Dealer Upcard — cancel opposing pairs!",
+        stream=False,
+    )
+    pump(root, 10)
+    img_c3a = capture_hwnd_to_image(root.winfo_id())
+    img_c3a.save(out_dir / "03_bootcamp_challenge_drill.png")
+    for _ in range(5):
+        bootcamp_frames.append(img_c3a)
+
+    # Answer C3A prompt for animated GIF feedback plaque
+    p_c3a = bf.active_session.get_current_prompt()
+    bf.submit_challenge_answer(p_c3a.correct_answer)
+    bf.cancel_all_timers()
+    app.set_dealer_speech(f"Sharp! {p_c3a.explanation}", stream=False)
+    pump(root, 8)
+    img_c3a_ok = capture_hwnd_to_image(root.winfo_id())
+    for _ in range(4):
+        bootcamp_frames.append(img_c3a_ok)
+
+    # Also capture C4 Shoe Calibration & C5 Final Exam frames for the Bootcamp GIF
+    bf.render_challenge_view("C4", seed=42)
+    equip_dealer_and_variant(app, "professor", "professor_sherlock", "academy")
+    app.set_dealer_speech(
+        "6-Deck Shoe Calibration: divide your Running Count (+6) by 3.0 Decks Remaining for True Count +2.0!",
+        stream=False,
+    )
+    pump(root, 8)
+    img_c4 = capture_hwnd_to_image(root.winfo_id())
+    for _ in range(5):
+        bootcamp_frames.append(img_c4)
+
+    bf.render_challenge_view("C5", seed=42)
+    bf.active_session.current_index = 4  # RC +8, 2.0 Decks -> TC +4.0 -> 8 Units ($200)
+    bf.active_session.streak = 9
+    bf.active_session.correct_count = 4
+    bf._render_current_challenge_prompt()
+    equip_dealer_and_variant(app, "professor", "professor_dean", "academy")
+    app.set_dealer_speech(
+        "Final Exam! Running Count is +8 with 2.0 decks left (TC +4.0). Fire the 8-Unit ($200) MIT attack bet!",
+        stream=False,
+    )
+    pump(root, 8)
+    img_c5 = capture_hwnd_to_image(root.winfo_id())
+    for _ in range(5):
+        bootcamp_frames.append(img_c5)
+
+    # =========================================================================
+    # 4. Pit Boss Evaluation Report Card — S-Rank Medallion (04_bootcamp_report_card.png)
+    # =========================================================================
+    print("[4/10] Capturing 04_bootcamp_report_card.png...")
+    bf.render_report_card_view(
+        summary={
+            "stage_id": "C5",
+            "title": "C5: Final Exam",
+            "grade": "S",
+            "passed": True,
+            "correct_count": 10,
+            "total_prompts": 10,
+            "accuracy_pct": 100.0,
+            "avg_response_ms": 1840.0,
+            "par_ms": 5000.0,
+            "best_streak": 10,
+            "score": 10316,
+        },
+        unlock_res={"newly_unlocked": ["professor"]},
+    )
+    equip_dealer_and_variant(app, "professor", "professor", "academy")
+    app.set_dealer_speech(
+        "Grade S — 100% accuracy! You've graduated from the MIT Hi-Lo Card Counting Academy!",
+        stream=False,
+    )
+    pump(root, 10)
+    img_rc = capture_hwnd_to_image(root.winfo_id())
+    img_rc.save(out_dir / "04_bootcamp_report_card.png")
+    for _ in range(6):
+        bootcamp_frames.append(img_rc)
+
+    # Exit Bootcamp to 3-Seat Training Free Play
+    app.exit_counting_bootcamp_to_free_play()
+    pump(root, 6)
+
+    # =========================================================================
+    # 5. Dealer Wardrobe & 35 Bespoke Costumes (05_dealer_wardrobe_costumes.png)
+    # =========================================================================
+    print("[5/10] Capturing 05_dealer_wardrobe_costumes.png...")
+    app._open_wardrobe_dialog(initial_tab=0)
+    pump(root, 10)
+    wardrobe_dlg = app._wardrobe_dialog
+    # Select bespoke variants on dealers in the wardrobe so the screenshot highlights the new costumes
+    for cid, target_idx in (("julian", 1), ("tiffany", 8), ("mortimer", 4), ("malphas", 4), ("uriel", 4), ("selene", 5)):
+        if cid in wardrobe_dlg.cards:
+            pnl = wardrobe_dlg.cards[cid].get("panel")
+            if pnl is not None and hasattr(pnl, "_update_costume_display"):
+                pnl.costume_idx = min(target_idx, max(0, len(pnl.costumes) - 1))
+                pnl._update_costume_display()
+    pump(root, 10)
+    img_wardrobe_t1 = capture_hwnd_to_image(wardrobe_dlg.winfo_id())
+    img_wardrobe_t1.save(out_dir / "05_dealer_wardrobe_costumes.png")
+    wardrobe_dlg.destroy()
+    app._wardrobe_dialog = None
+    pump(root, 5)
+
+    # =========================================================================
+    # 6. 3-Seat Training Mode with Selene (Cyber Kunoichi) & Cyber Backdrop
+    # =========================================================================
+    print("[6/10] Capturing 06_3seat_training_mode.png...")
     app.set_table_seats(3)
     if not app.card_counting_hud.is_visible:
         app._toggle_card_counting_hud()
@@ -158,90 +381,101 @@ def capture_all():
     app._on_key_cycle_seat_focus(1)
     app._on_key_chip(25)
     app._on_key_cycle_seat_focus(-1)
-    app.card_counting_hud.update_counts(cards_remaining=284, base_bet=50)
-    app.set_dealer_speech("Welcome to the 3-seat training table. Keep your count sharp!", stream=False)
+    app.card_counter.running_count = 6
+    app.card_counting_hud.update_counts(cards_remaining=156, base_bet=25)
+    equip_dealer_and_variant(app, "selene", "selene_kunoichi", "cyber")
+    app.set_dealer_speech(
+        "True Count is +2.0 on the 3-seat training table. Scale your wagers or click [Bootcamp] to drill!",
+        stream=False,
+    )
     pump(root, 10)
-    img_01 = capture_hwnd_to_image(root.winfo_id())
-    img_01.save(out_dir / "01_3seat_training_mode.png")
+    img_3seat_train = capture_hwnd_to_image(root.winfo_id())
+    img_3seat_train.save(out_dir / "06_3seat_training_mode.png")
+    img_3seat_train.save(out_dir / "01_3seat_training_mode.png")
+    for _ in range(5):
+        bootcamp_frames.append(img_3seat_train)
 
-    print("[2/7] Capturing 02_3seat_in_play.png...")
-    # Setup rigged deck for clean 3-seat play:
-    # Clockwise order deal:
-    # Round 1: Seat 1, Seat 2, Seat 3, Dealer Upcard
-    # Round 2: Seat 1, Seat 2, Seat 3, Dealer Hole
+    # Save the Bootcamp animated GIF!
+    print(f"Saving {bootcamp_gif_path.name} ({len(bootcamp_frames)} frames)...")
+    save_animated_gif(bootcamp_frames, bootcamp_gif_path, target_w=760, duration_ms=280)
+
+    # =========================================================================
+    # 7. 3-Seat In-Play with Tiffany (Femme Fatale Noir) & Casino Backdrop
+    # =========================================================================
+    print("[7/10] Capturing 07_3seat_in_play.png...")
+    equip_dealer_and_variant(app, "tiffany", "tiffany_noir", "casino")
     c_s1_1 = build_card_helper(app, "10", "spades")
     c_s2_1 = build_card_helper(app, "6", "hearts")
     c_s3_1 = build_card_helper(app, "9", "diamonds")
-    c_dl_1 = build_card_helper(app, "6", "clubs")  # dealer upcard: 6
+    c_dl_1 = build_card_helper(app, "6", "clubs")
+    c_s1_2 = build_card_helper(app, "8", "clubs")
+    c_s2_2 = build_card_helper(app, "5", "diamonds")
+    c_s3_2 = build_card_helper(app, "10", "hearts")
+    c_dl_2 = build_card_helper(app, "10", "spades")
+    c_s2_hit = build_card_helper(app, "10", "clubs")
+    c_dl_bust = build_card_helper(app, "10", "diamonds")
 
-    c_s1_2 = build_card_helper(app, "8", "clubs")     # seat 1 total: 18
-    c_s2_2 = build_card_helper(app, "5", "diamonds")  # seat 2 total: 11
-    c_s3_2 = build_card_helper(app, "10", "hearts")   # seat 3 total: 19
-    c_dl_2 = build_card_helper(app, "10", "spades")   # dealer hole: 10 (total 16)
-
-    # Subsequent hit card for seat 2
-    c_s2_hit = build_card_helper(app, "10", "clubs")  # seat 2 hit -> 21!
-    c_dl_bust = build_card_helper(app, "10", "diamonds") # dealer hit -> 26 bust!
-
-    # Rig shoe (pop from end)
     app.deck = [c_dl_bust, c_s2_hit, c_dl_2, c_s3_2, c_s2_2, c_s1_2, c_dl_1, c_s3_1, c_s2_1, c_s1_1]
-    
     app._deal_hand_with_bet()
     while getattr(app, "_dealing", False):
         pump(root, 2, delay=0.01)
     pump(root, 5)
-
-    # Advance Seat 1 by standing (Seat 1 stands on 18)
     app.on_stand()
     pump(root, 10)
-
-    # Now Seat 2 is active with 11!
-    app.card_counting_hud.update_counts(cards_remaining=276, base_bet=50)
-    app.set_dealer_speech("Seat 2, you have 11 against my 6. Double down or Hit?", stream=False)
+    app.card_counting_hud.update_counts(cards_remaining=148, base_bet=25)
+    app.set_dealer_speech("Seat 2 shows 11 against my 6, darling. Textbook Double Down!", stream=False)
     pump(root, 10)
-    img_02 = capture_hwnd_to_image(root.winfo_id())
-    img_02.save(out_dir / "02_3seat_in_play.png")
+    img_3seat_play = capture_hwnd_to_image(root.winfo_id())
+    img_3seat_play.save(out_dir / "07_3seat_in_play.png")
+    img_3seat_play.save(out_dir / "02_3seat_in_play.png")
 
-    print("[3/7] Capturing 03_single_seat_casino.png...")
-    # Switch back to 1-seat casino mode
+    # =========================================================================
+    # 8. Single-Seat Casino with Count Vladimir (Alucard) & Creep Backdrop
+    # =========================================================================
+    print("[8/10] Capturing 08_single_seat_casino.png...")
     app.set_table_seats(1)
     if app.card_counting_hud.is_visible:
         app._toggle_card_counting_hud()
     app._clear_bet()
     app._add_chip_bet(100)
+    equip_dealer_and_variant(app, "vladimir", "vladimir_alucard", "creep")
 
-    c1 = build_card_helper(app, "king", "spades")
-    c2 = build_card_helper(app, "queen", "hearts")
-    d1 = build_card_helper(app, "6", "diamonds")
-    d2 = build_card_helper(app, "jack", "clubs")
+    c1 = build_card_helper(app, "ace", "spades")
+    c2 = build_card_helper(app, "king", "hearts")
+    d1 = build_card_helper(app, "9", "diamonds")
+    d2 = build_card_helper(app, "7", "clubs")
     app.deck = [d2, c2, d1, c1]
-
     app._deal_hand_with_bet()
     while getattr(app, "_dealing", False):
         pump(root, 2, delay=0.01)
-    app.set_dealer_speech("A pristine 20! Dealer shows a 6. Standing is the textbook play.", stream=False)
+    equip_dealer_and_variant(app, "vladimir", "vladimir_alucard", "creep")
+    app.set_dealer_speech("A Soft 20 under the blood moon! Standing against my King is the wise play.", stream=False)
     pump(root, 10)
-    img_03 = capture_hwnd_to_image(root.winfo_id())
-    img_03.save(out_dir / "03_single_seat_casino.png")
+    img_1seat = capture_hwnd_to_image(root.winfo_id())
+    img_1seat.save(out_dir / "08_single_seat_casino.png")
+    img_1seat.save(out_dir / "03_single_seat_casino.png")
 
-    print("[4/7] Capturing 04_wardrobe_hall_of_fame.png...")
-    app._open_wardrobe_dialog(initial_tab=2)
+    # =========================================================================
+    # 9. Wardrobe Hall of Fame & Career Telemetry (09_wardrobe_hall_of_fame.png)
+    # =========================================================================
+    print("[9/10] Capturing 09_wardrobe_hall_of_fame.png...")
+    app._open_wardrobe_dialog(initial_tab=1)
     pump(root, 10)
     wardrobe_dlg = app._wardrobe_dialog
-    img_04 = capture_hwnd_to_image(wardrobe_dlg.winfo_id())
-    img_04.save(out_dir / "04_wardrobe_hall_of_fame.png")
+    img_hof = capture_hwnd_to_image(wardrobe_dlg.winfo_id())
+    img_hof.save(out_dir / "09_wardrobe_hall_of_fame.png")
+    img_hof.save(out_dir / "04_wardrobe_hall_of_fame.png")
     wardrobe_dlg.destroy()
     app._wardrobe_dialog = None
     pump(root, 5)
 
-    print("[5/7] Capturing 05_hells_table_pit_fiend.png...")
-    # Set up Hell's Table showdown
+    # =========================================================================
+    # 10. Hell's Table Showdown with Malphas (Cinder-Lord) & Hell Backdrop
+    # =========================================================================
+    print("[10/10] Capturing 10_hells_table_pit_fiend.png & 06_keyboard_shortcuts_help.png...")
     app.set_table_seats(1)
     app.suppress_mode_dialog = True
     app._trigger_hell_table()
-    app.set_dealer_speech("Welcome to the Abyssal Wager! Your petty chips mean nothing—only your Soul remains.", stream=False)
-    
-    # Place infernal cards on table
     c_inf1 = build_card_helper(app, "ace", "spades")
     c_inf2 = build_card_helper(app, "king", "hearts")
     d_inf1 = build_card_helper(app, "ace", "clubs")
@@ -250,172 +484,34 @@ def capture_all():
     app._deal_hand_with_bet()
     while getattr(app, "_dealing", False):
         pump(root, 2, delay=0.01)
+    equip_dealer_and_variant(app, "malphas", "malphas_warlord", "hell")
+    app.set_dealer_speech(
+        "Welcome to the Abyssal Wager! Your petty chips mean nothing—only your Soul remains.",
+        stream=False,
+    )
     pump(root, 10)
-    img_05 = capture_hwnd_to_image(root.winfo_id())
-    img_05.save(out_dir / "05_hells_table_pit_fiend.png")
+    img_hell = capture_hwnd_to_image(root.winfo_id())
+    img_hell.save(out_dir / "10_hells_table_pit_fiend.png")
+    img_hell.save(out_dir / "05_hells_table_pit_fiend.png")
 
-    print("[6/7] Capturing 06_keyboard_shortcuts_help.png...")
-    # Revert back to normal theme for shortcuts screenshot
+    # Keyboard Shortcuts overlay
     app.haunted.phase = Phase.NORMAL
     app._apply_phase_theme(Phase.NORMAL)
     app._show_shortcuts_overlay()
     pump(root, 10)
     shortcuts_dlg = app._shortcuts_dialog
-    img_06 = capture_hwnd_to_image(shortcuts_dlg.winfo_id())
-    img_06.save(out_dir / "06_keyboard_shortcuts_help.png")
+    img_shortcuts = capture_hwnd_to_image(shortcuts_dlg.winfo_id())
+    img_shortcuts.save(out_dir / "06_keyboard_shortcuts_help.png")
     shortcuts_dlg.destroy()
     app._shortcuts_dialog = None
     pump(root, 5)
 
-    print("[7/7] Generating animated GIF gameplay_3seat_card_counting.gif...")
-    # Prepare animated GIF sequence of 3-seat card counting round
-    frames: list[Image.Image] = []
-    
-    # Re-init fresh 3-seat mode
-    app.haunted.phase = Phase.NORMAL
-    app._apply_phase_theme(Phase.NORMAL)
-    app.set_table_seats(3)
-    if not app.card_counting_hud.is_visible:
-        app._toggle_card_counting_hud()
-    app._clear_bet()
-    app.card_counter.running_count = 2
-    app.card_counter.deck_count = 6
-    app.card_counting_hud.update_counts(cards_remaining=288, base_bet=50)
-
-    # Frame sequence 1: Betting focus on Seat 2, place $50 bet
-    app.focused_betting_seat = 2
-    app._on_key_chip(50)
-    app.set_dealer_speech("Place your bets across all three seats.", stream=False)
-    pump(root, 5)
-    for _ in range(3):
-        frames.append(capture_hwnd_to_image(root.winfo_id()))
-
-    # Frame sequence 2: Shift to Seat 1, place $25 bet
-    app._on_key_cycle_seat_focus(-1)
-    app._on_key_chip(25)
-    pump(root, 5)
-    for _ in range(3):
-        frames.append(capture_hwnd_to_image(root.winfo_id()))
-
-    # Frame sequence 3: Shift to Seat 3, place $25 bet
-    app._on_key_cycle_seat_focus(1)
-    app._on_key_cycle_seat_focus(1)
-    app._on_key_chip(25)
-    pump(root, 5)
-    for _ in range(3):
-        frames.append(capture_hwnd_to_image(root.winfo_id()))
-
-    # Return focus to Seat 1
-    app._on_key_cycle_seat_focus(-1)
-    pump(root, 5)
-
-    # Setup rigged deck for full 3-seat round drama:
-    # Clockwise initial deal:
-    # Pass 1: S1 (10), S2 (6), S3 (9), Dealer Upcard (6)
-    # Pass 2: S1 (8 -> 18), S2 (5 -> 11), S3 (10 -> 19), Dealer Hole (10 -> 16)
-    # Player hits: S2 hits (10 -> 21!)
-    # Dealer hits: Dealer hits (Queen -> 26 BUST!)
-    c_s1_1 = build_card_helper(app, "10", "spades")
-    c_s2_1 = build_card_helper(app, "6", "hearts")
-    c_s3_1 = build_card_helper(app, "9", "diamonds")
-    c_dl_1 = build_card_helper(app, "6", "clubs")
-
-    c_s1_2 = build_card_helper(app, "8", "clubs")
-    c_s2_2 = build_card_helper(app, "5", "diamonds")
-    c_s3_2 = build_card_helper(app, "10", "hearts")
-    c_dl_2 = build_card_helper(app, "10", "spades")
-
-    c_s2_hit = build_card_helper(app, "10", "clubs")
-    c_dl_bust = build_card_helper(app, "queen", "diamonds")
-
-    app.deck = [c_dl_bust, c_s2_hit, c_dl_2, c_s3_2, c_s2_2, c_s1_2, c_dl_1, c_s3_1, c_s2_1, c_s1_1]
-
-    # Deal hand
-    app.set_dealer_speech("Dealing clockwise across all 3 active seats...", stream=False)
-    app._deal_hand_with_bet()
-    
-    # Capture deal progression frames
-    deal_step = 0
-    while getattr(app, "_dealing", False):
-        pump(root, 2, delay=0.01)
-        deal_step += 1
-        if deal_step % 2 == 0:
-            frames.append(capture_hwnd_to_image(root.winfo_id()))
-
-    pump(root, 5)
-    # Cards dealt! Seat 1 active (18 points)
-    app.set_dealer_speech("Seat 1: 18 points. Standing.", stream=False)
-    pump(root, 5)
-    for _ in range(4):
-        frames.append(capture_hwnd_to_image(root.winfo_id()))
-
-    # Seat 1 stands -> moves to Seat 2 (11 points)
-    app.on_stand()
-    while getattr(app, "_dealing", False):
-        pump(root, 2, delay=0.01)
-    pump(root, 5)
-    app.set_dealer_speech("Seat 2: 11 points against Dealer 6. Hit!", stream=False)
-    pump(root, 5)
-    for _ in range(4):
-        frames.append(capture_hwnd_to_image(root.winfo_id()))
-
-    # Seat 2 hits -> receives 10 -> 21!
-    app.on_hit()
-    while getattr(app, "_dealing", False):
-        pump(root, 2, delay=0.01)
-    pump(root, 5)
-    app.set_dealer_speech("21 on Seat 2! Outstanding!", stream=False)
-    pump(root, 5)
-    for _ in range(4):
-        frames.append(capture_hwnd_to_image(root.winfo_id()))
-
-    # Seat 2 stands -> moves to Seat 3 (19 points)
-    app.on_stand()
-    while getattr(app, "_dealing", False):
-        pump(root, 2, delay=0.01)
-    pump(root, 5)
-    app.set_dealer_speech("Seat 3: 19 points. Standing.", stream=False)
-    pump(root, 5)
-    for _ in range(4):
-        frames.append(capture_hwnd_to_image(root.winfo_id()))
-
-    # Seat 3 stands -> Dealer turn
-    app.on_stand()
-    while getattr(app, "_dealing", False) or getattr(app, "_dealer_timer_id", None):
-        pump(root, 2, delay=0.02)
-        frames.append(capture_hwnd_to_image(root.winfo_id()))
-
-    pump(root, 10)
-    # Dealer busts with 26, win banners on all 3 seats
-    app.set_dealer_speech("Dealer busts with 26! All 3 seats win!", stream=False)
-    pump(root, 10)
-    for _ in range(8):
-        frames.append(capture_hwnd_to_image(root.winfo_id()))
-
-    print(f"Captured {len(frames)} frames for animated GIF.")
-    
-    # Optimize and resize slightly for smooth loading (width: 720, height: proportional)
-    resized_frames = []
-    target_w = 720
-    for f in frames:
-        scale = target_w / f.width
-        target_h = int(f.height * scale)
-        rf = f.resize((target_w, target_h), Image.Resampling.LANCZOS).convert("P", palette=Image.Palette.ADAPTIVE)
-        resized_frames.append(rf)
-
-    resized_frames[0].save(
-        gif_path,
-        save_all=True,
-        append_images=resized_frames[1:],
-        duration=220,
-        loop=0,
-        optimize=True,
-    )
-    print(f"Saved {gif_path} ({gif_path.stat().st_size / 1024 / 1024:.2f} MB)")
+    # Also update gameplay_3seat_card_counting.gif with the new v2.0.0 Bootcamp + 3-Seat sequence
+    save_animated_gif(bootcamp_frames, table_gif_path, target_w=760, duration_ms=280)
 
     app._on_close()
     temp_dir.cleanup()
-    print("Done! All media captured successfully.")
+    print("Done! All v2.0.0 release screenshots and animated GIFs captured successfully.")
 
 
 if __name__ == "__main__":
