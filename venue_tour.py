@@ -512,7 +512,13 @@ class VenueTourCanvasRenderer:
             self._draw_shadow_text(cx, cy + 32, text=title_txt, fill=title_fg, font=get_header_font(13))
             self._draw_shadow_text(cx, cy + 46, text=sub_txt, fill=sub_fg, font=get_body_font(12))
 
-    def _draw_inspector_plaque(self, progress: VenueTourProgress, focused_idx: int, st: SalonVisualState) -> None:
+    def _draw_inspector_plaque(
+        self,
+        progress: VenueTourProgress,
+        focused_idx: int,
+        st: SalonVisualState,
+        prev_discovered: bool = True,
+    ) -> None:
         """Draws the bottom 2.5D Selected Salon Dossier plaque (`y = 318..384`)."""
         salon = get_salon_spec(focused_idx)
         CanvasPixelPanel(
@@ -532,6 +538,16 @@ class VenueTourCanvasRenderer:
 
         if not st.discovered:
             prev_salon = get_salon_spec(max(0, salon.index - 1))
+            if prev_discovered:
+                sub_line = (
+                    f"Reach ${salon.entry_bankroll:,} inside Salon {prev_salon.index + 1} "
+                    f"({prev_salon.name}) to part the velvet rope and unveil this venue!"
+                )
+            else:
+                sub_line = (
+                    f"Unveil Salon {prev_salon.index + 1} (???) and reach ${salon.entry_bankroll:,} "
+                    f"there to part the velvet rope and unlock this venue!"
+                )
             self._draw_shadow_text(
                 440,
                 338,
@@ -542,7 +558,7 @@ class VenueTourCanvasRenderer:
             self._draw_shadow_text(
                 440,
                 362,
-                text=f"Reach ${salon.entry_bankroll:,} inside Salon {prev_salon.index + 1} ({prev_salon.name}) to part the velvet rope and unveil this venue!",
+                text=sub_line,
                 fill="#cfd8dc",
                 font=get_body_font(14),
             )
@@ -619,7 +635,13 @@ class VenueTourCanvasRenderer:
         self._draw_winding_road(states)
         self._draw_salon_nodes(progress, states)
         clamped_focus = max(0, min(len(SALON_SPECS) - 1, int(focused_salon_idx)))
-        self._draw_inspector_plaque(progress, clamped_focus, states[clamped_focus])
+        prev_idx = max(0, clamped_focus - 1)
+        self._draw_inspector_plaque(
+            progress,
+            clamped_focus,
+            states[clamped_focus],
+            prev_discovered=states[prev_idx].discovered,
+        )
         return states
 
 
@@ -713,11 +735,18 @@ class VenueTourFrame(tkinter.Frame):
             self._coordinator_say(speech_override)
         else:
             if not focused_state.discovered:
-                prev = get_salon_spec(max(0, salon.index - 1))
-                self._coordinator_say(
-                    f"Shrouded in mystery! Reach ${salon.entry_bankroll:,} at {prev.name} "
-                    f"to unveil Salon {salon.index + 1}."
-                )
+                prev_idx = max(0, salon.index - 1)
+                prev = get_salon_spec(prev_idx)
+                if states[prev_idx].discovered:
+                    self._coordinator_say(
+                        f"Shrouded in mystery! Reach ${salon.entry_bankroll:,} at {prev.name} "
+                        f"to unveil Salon {salon.index + 1}."
+                    )
+                else:
+                    self._coordinator_say(
+                        f"Shrouded in mystery! Unveil Salon {prev.index + 1} and build "
+                        f"${salon.entry_bankroll:,} there to unlock Salon {salon.index + 1}."
+                    )
             elif focused_state.velvet_rope_promoted:
                 active_s = get_salon_spec(get_active_salon_index(vt))
                 if vt.active_mode == "ironman":

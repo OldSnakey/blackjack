@@ -285,6 +285,70 @@ class TestVenueTourGui(unittest.TestCase):
         finally:
             dlg.destroy()
 
+    def test_undiscovered_mystery_messages_never_spoil_unrevealed_prior_salon_name(self) -> None:
+        """
+        Inspecting an undiscovered salon adapts both Coordinator speech and the Dossier plaque:
+        - If the immediately preceding salon IS discovered, its name is shown (e.g., 'Training Pit' for Salon 2).
+        - If the immediately preceding salon is NOT yet discovered (e.g., inspecting Salon 3..8 when only
+          Salon 1 is unveiled), neither Coordinator speech nor the Dossier plaque spoils the unrevealed name!
+        """
+        from tour_domain import SALON_SPECS
+
+        self.app.save_manager.unlock_achievement("exorcist")
+        self.app.enter_venue_tour()
+        tf = self.app.tour_frame
+        canvas = tf.canvas
+
+        def _canvas_text() -> str:
+            return "\n".join(
+                canvas.itemcget(i, "text")
+                for i in canvas.find_all()
+                if canvas.type(i) == "text"
+            )
+
+        # Initial state: ONLY Salon 1 (Training Pit, idx 0) is discovered.
+        # 1. Inspecting Salon 2 (idx 1): prior Salon 1 IS discovered -> mentions 'Training Pit', hides 'Golden Floor'
+        tf.focused_salon_idx = 1
+        tf.refresh_map()
+        speech_s2 = getattr(self.app, "_current_speech_full", "")
+        dossier_s2 = _canvas_text()
+        self.assertIn("Training Pit", speech_s2)
+        self.assertIn("Training Pit", dossier_s2)
+        self.assertNotIn("Golden Floor", speech_s2)
+        self.assertNotIn("Golden Floor", dossier_s2)
+
+        # 2. Inspecting Salons 3..8 (idx 2..7): prior salon (idx 1..6) is NOT discovered -> MUST NOT leak any hidden salon name!
+        unrevealed_names = [s.name for s in SALON_SPECS[1:]] + [s.short_name for s in SALON_SPECS[1:]]
+        for target_idx in range(2, len(SALON_SPECS)):
+            tf.focused_salon_idx = target_idx
+            tf.refresh_map()
+            speech = getattr(self.app, "_current_speech_full", "")
+            dossier = _canvas_text()
+            for secret_name in unrevealed_names:
+                self.assertNotIn(
+                    secret_name,
+                    speech,
+                    f"Coordinator speech for undiscovered Salon {target_idx + 1} spoiled '{secret_name}': {speech}",
+                )
+                self.assertNotIn(
+                    secret_name,
+                    dossier,
+                    f"Map Dossier for undiscovered Salon {target_idx + 1} spoiled '{secret_name}': {dossier}",
+                )
+
+        # 3. Once Salon 1 is cleared, Salon 2 ('Golden Floor') becomes discovered -> inspecting Salon 3 now names 'Golden Floor'
+        vt = self.app.save_manager.data.venue_tour
+        vt.forgiving_salons_cleared = 1
+        vt.forgiving_bankroll = 1500
+        tf.focused_salon_idx = 2
+        tf.refresh_map()
+        speech_s3 = getattr(self.app, "_current_speech_full", "")
+        dossier_s3 = _canvas_text()
+        self.assertIn("Golden Floor", speech_s3)
+        self.assertIn("Golden Floor", dossier_s3)
+        self.assertNotIn("Downtown", speech_s3)
+        self.assertNotIn("Downtown", dossier_s3)
+
 
 if __name__ == "__main__":
     unittest.main()
