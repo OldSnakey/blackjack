@@ -252,6 +252,8 @@ class SoundManager:
         char: str,
         char_index: int = 0,
         inflection: str = "normal",
+        full_text: str | None = None,
+        step_end_index: int | None = None,
     ) -> bool:
         """Plays character-specific procedural Animalese voice blip for typewriter speech."""
         if not self.enabled or not self.is_available:
@@ -262,6 +264,8 @@ class SoundManager:
                 char=char,
                 char_index=char_index,
                 inflection=inflection,
+                full_text=full_text,
+                step_end_index=step_end_index,
             )
         return False
 

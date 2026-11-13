@@ -227,7 +227,7 @@ class TestTypewriterAndAudioAccents(unittest.TestCase):
         self.assertEqual(self.app.dealer_nameplate_label.cget("text"), "☠ The Pit Fiend")
 
     def test_typewriter_animalese_voice_blip_dispatched(self):
-        """Typewriter character step dispatches play_dialogue_blip to SoundManager using active character_id."""
+        """Typewriter character step dispatches play_dialogue_blip with full_text syllable context."""
         self.app.sound_manager.play_dialogue_blip = MagicMock()
         self.app.dealer_actor.equip_costume("malphas")
         self.app.set_dealer_speech("Hit me!", stream=True)
@@ -235,8 +235,32 @@ class TestTypewriterAndAudioAccents(unittest.TestCase):
             self.app._stream_typewriter_step()
             self.app.sound_manager.play_dialogue_blip.assert_called()
             call_kwargs = self.app.sound_manager.play_dialogue_blip.call_args
-            # First positional arg is character_id
+            # First positional arg is character_id, third positional arg is start_idx (0 on first step)
             self.assertEqual(call_kwargs[0][0], "malphas")
+            self.assertEqual(call_kwargs[0][2], 0)
+            self.assertEqual(call_kwargs[1].get("full_text"), "Hit me!")
+            self.assertEqual(call_kwargs[1].get("step_end_index"), 1)
+
+    def test_typewriter_streams_syllable_count_not_character_count(self):
+        """Full typewriter playback triggers only 1 blip per syllable instead of every character."""
+        mock_sound = MagicMock()
+        voice = self.app.sound_manager.voice_engine
+        self.app.sound_manager.enabled = True
+        self.app.sound_manager.is_available = True
+        voice.enabled = True
+        voice.is_available = True
+        voice.min_interval_ms = 0.0
+        voice._sound_cache["julian"] = {
+            v: mock_sound for v in ("a", "o", "e", "f", "talk", "smirk", "gasp")
+        }
+
+        self.app.dealer_actor.equip_costume("julian")
+        line = "Place your bet, please!"  # 4 syllables: Place (1) + your (1) + bet (1) + please (1)
+        self.app.set_dealer_speech(line, stream=True)
+        while self.app._typewriter_index < len(line):
+            self.app._stream_typewriter_step()
+
+        self.assertEqual(mock_sound.play.call_count, 4)
 
 
 if __name__ == "__main__":

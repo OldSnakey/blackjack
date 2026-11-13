@@ -14,9 +14,11 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock
 from dialogue_voice_engine import (
     AnimaleseVoiceEngine,
     VOICE_PROFILES,
+    extract_syllable_indices,
     synthesize_viseme_pcm,
 )
 
@@ -147,6 +149,131 @@ class TestDialogueVoiceEngine(unittest.TestCase):
 
         self.engine.set_volume(0.5)
         self.assertEqual(self.engine.volume, 0.5)
+
+    def test_extract_syllable_indices_handles_diphthongs_silent_e_and_numbers(self):
+        """Syllable nucleus extractor emits ~1 blip per spoken syllable instead of per character."""
+        one_syllable_words = [
+            "please",
+            "place",
+            "game",
+            "house",
+            "stakes",
+            "played",
+            "your",
+            "reach",
+            "good",
+            "tour",
+            "style",
+            "rules",
+            "shoes",
+            "don't",
+            "you're",
+        ]
+        for word in one_syllable_words:
+            with self.subTest(word=word):
+                syllables = extract_syllable_indices(word)
+                self.assertEqual(
+                    len(syllables),
+                    1,
+                    f"Expected 1 syllable nucleus for {word!r}, got {syllables}",
+                )
+
+        multi_syllable_expectations = {
+            "welcome": 2,
+            "table": 2,
+            "double": 2,
+            "candles": 2,
+            "shuffled": 2,
+            "busted": 2,
+            "aces": 2,
+            "wishes": 2,
+            "player": 2,
+            "lucky": 2,
+            "casino": 3,
+            "mystery": 3,
+        }
+        for word, expected_count in multi_syllable_expectations.items():
+            with self.subTest(word=word):
+                syllables = extract_syllable_indices(word)
+                self.assertEqual(
+                    len(syllables),
+                    expected_count,
+                    f"Expected {expected_count} syllable nuclei for {word!r}, got {syllables}",
+                )
+
+        numeric_and_code_tokens = ["$150,000", "3:2", "S17", "+$666"]
+        for token in numeric_and_code_tokens:
+            with self.subTest(token=token):
+                syllables = extract_syllable_indices(token)
+                self.assertEqual(
+                    len(syllables),
+                    1,
+                    f"Expected 1 tap for numeric/code token {token!r}, got {syllables}",
+                )
+
+        self.assertEqual(len(extract_syllable_indices("Place your bet!")), 3)
+        self.assertEqual(len(extract_syllable_indices("Welcome to the Grand Casino Tour!")), 9)
+
+    def test_play_speech_blip_with_full_text_and_stride_emits_once_per_syllable(self):
+        """Streaming a >60-char line with step_advance=2 emits 1 blip per syllable and respects cooldown."""
+        engine = AnimaleseVoiceEngine(enabled=True, volume=0.8)
+        engine.is_available = True
+
+        mock_sound = MagicMock()
+        engine._sound_cache["tiffany"] = {
+            v: mock_sound for v in ("a", "o", "e", "f", "talk", "smirk", "gasp")
+        }
+
+        long_line = (
+            "Welcome to the Grand Casino Tour! Place your stakes please and beat the house."
+        )
+        self.assertGreater(len(long_line), 60)
+        expected_syllables = extract_syllable_indices(long_line)
+
+        played_count = 0
+        idx = 0
+        total_len = len(long_line)
+        while idx < total_len:
+            ch = long_line[idx]
+            step = 2 if (idx >= 1 and total_len > 60) else 1
+            next_idx = min(total_len, idx + step)
+            if engine.play_speech_blip(
+                "tiffany",
+                ch,
+                char_index=idx,
+                inflection="normal",
+                full_text=long_line,
+                step_end_index=next_idx,
+                min_interval_ms=0.0,
+            ):
+                played_count += 1
+            idx = next_idx
+
+        self.assertEqual(played_count, len(expected_syllables))
+        self.assertEqual(mock_sound.play.call_count, len(expected_syllables))
+
+        # Verify acoustic cooldown suppresses back-to-back sub-frame blips when active
+        mock_sound.reset_mock()
+        short_two_syllables = "A I"
+        first_ok = engine.play_speech_blip(
+            "tiffany",
+            "A",
+            char_index=0,
+            full_text=short_two_syllables,
+            step_end_index=1,
+            min_interval_ms=50.0,
+        )
+        second_suppressed = engine.play_speech_blip(
+            "tiffany",
+            "I",
+            char_index=2,
+            full_text=short_two_syllables,
+            step_end_index=3,
+            min_interval_ms=50.0,
+        )
+        self.assertTrue(first_ok)
+        self.assertFalse(second_suppressed)
+        self.assertEqual(mock_sound.play.call_count, 1)
 
 
 if __name__ == "__main__":

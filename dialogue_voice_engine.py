@@ -21,9 +21,11 @@ from __future__ import annotations
 import io
 import math
 import os
+import re
 import struct
+import time
 import wave
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 # Silence pygame greeting message on import to ensure clean stdout in CLI pipelines
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
@@ -224,6 +226,130 @@ def synthesize_viseme_pcm(
 
 
 # ============================================================================
+# Lightweight Syllable-Nucleus Extractor
+# ============================================================================
+
+_SYLLABLE_TOKEN_RE = re.compile(
+    r"\d+(?:[.,:]\d+)*|[A-Za-z]+(?:'[A-Za-z]+)*\d*|[A-Za-z0-9]+"
+)
+
+
+def _ends_with_consonant_l(stem: str) -> bool:
+    """Returns True if `stem` ends with a syllabic consonant + 'l' (e.g. 'tabl', 'doubl')."""
+    if len(stem) < 2 or stem[-1] != "l":
+        return False
+    prev = stem[-2]
+    return prev.isalpha() and prev not in "aeiouy"
+
+
+def extract_syllable_indices(text: str) -> Dict[int, str]:
+    """
+    Identifies ~1 character index per spoken syllable nucleus in `text` and maps
+    each nucleus index to its deterministic Animalese viseme ('a', 'o', 'e', 'f', 'talk').
+
+    Rules:
+    - Contiguous vowel runs ('ea', 'ou', 'oo', 'ai') collapse into 1 nucleus at the lead vowel.
+    - 'y' acts as a vowel when not word-initial and not adjacent to 'a', 'e', 'i', 'o', 'u'.
+    - Multi-cluster words drop silent trailing '-e', '-ed', and '-es' while preserving
+      syllabic '-le'/'-les'/'-led', voiced '-ted'/'-ded', and sibilant '-ces'/'-ses'/'-shes'.
+    - Numeric or vowel-less tokens ('$150,000', '3:2', 'S17') emit 1 crisp tap at token start.
+    """
+    if not text:
+        return {}
+
+    from dealer_actor import map_char_to_viseme
+
+    syllables: Dict[int, str] = {}
+    for match in _SYLLABLE_TOKEN_RE.finditer(text):
+        token = match.group(0)
+        token_start = match.start()
+        word_lower = token.lower()
+        n = len(word_lower)
+
+        has_alpha = any(ch.isalpha() for ch in word_lower)
+        if not has_alpha:
+            syllables[token_start] = "talk"
+            continue
+
+        clusters: List[Tuple[int, int]] = []
+        i = 0
+        while i < n:
+            ch = word_lower[i]
+            is_v = ch in "aeiou" or (
+                ch == "y"
+                and i > 0
+                and word_lower[i - 1] not in "aeiou"
+                and (i + 1 >= n or word_lower[i + 1] not in "aeiou")
+            )
+            if is_v:
+                c_start = i
+                i += 1
+                while i < n:
+                    nch = word_lower[i]
+                    nv = nch in "aeiou" or (
+                        nch == "y"
+                        and word_lower[i - 1] not in "aeiou"
+                        and (i + 1 >= n or word_lower[i + 1] not in "aeiou")
+                    )
+                    if not nv:
+                        break
+                    i += 1
+                clusters.append((c_start, i))
+            else:
+                i += 1
+
+        if len(clusters) >= 2:
+            last_start, last_end = clusters[-1]
+            # Silent trailing '-e' (e.g. 'please', 'game', 'house', 'style', 'you're')
+            if (
+                last_end == n
+                and last_end - last_start == 1
+                and word_lower[last_start] == "e"
+            ):
+                stem = word_lower[:last_start]
+                if not _ends_with_consonant_l(stem):
+                    clusters.pop()
+            # Silent trailing '-ed' (e.g. 'played', 'staked', keeping 'busted', 'shuffled')
+            elif (
+                word_lower.endswith("ed")
+                and last_start == n - 2
+                and last_end == n - 1
+            ):
+                stem = word_lower[:-2]
+                if not stem.endswith(("t", "d")) and not _ends_with_consonant_l(stem):
+                    clusters.pop()
+            # Silent trailing '-es' (e.g. 'stakes', 'games', 'rules', keeping 'aces', 'wishes', 'candles')
+            elif (
+                word_lower.endswith("es")
+                and last_start == n - 2
+                and last_end == n - 1
+            ):
+                stem = word_lower[:-2]
+                if (
+                    not stem.endswith(("s", "z", "x", "c", "g", "sh", "ch"))
+                    and not _ends_with_consonant_l(stem)
+                ):
+                    clusters.pop()
+
+        if not clusters:
+            v = map_char_to_viseme(token[0])
+            syllables[token_start] = "talk" if v == "neutral" else v
+            continue
+
+        for c_start, c_end in clusters:
+            lead_ch = word_lower[c_start]
+            if lead_ch == "y" and c_end == n:
+                viseme = "e"
+            else:
+                viseme = map_char_to_viseme(lead_ch)
+                if viseme == "neutral":
+                    viseme = "talk"
+            syllables[token_start + c_start] = viseme
+
+    return syllables
+
+
+# ============================================================================
 # Animalese Voice Engine
 # ============================================================================
 
@@ -233,10 +359,14 @@ class AnimaleseVoiceEngine:
     Pre-renders and caches 1:1 viseme sound buffers in memory for zero-latency streaming.
     """
 
-    def __init__(self, enabled: bool = True, volume: float = 0.8):
+    def __init__(self, enabled: bool = True, volume: float = 0.8, min_interval_ms: float = 28.0):
         self.enabled = enabled
         self.volume = max(0.0, min(1.0, volume))
+        self.min_interval_ms = max(0.0, float(min_interval_ms))
         self._sound_cache: Dict[str, Dict[str, Any]] = {}
+        self._cached_text: Optional[str] = None
+        self._cached_syllables: Dict[int, str] = {}
+        self._last_blip_time: float = 0.0
         self.is_available = PYGAME_AVAILABLE and (pygame_mixer is not None)
 
         if self.is_available:
@@ -289,21 +419,35 @@ class AnimaleseVoiceEngine:
         self._sound_cache[cid] = character_dict
         return character_dict
 
+    def _get_syllables_for_text(self, full_text: str) -> Dict[int, str]:
+        """Returns cached `{char_index: viseme}` map for the active dialogue string."""
+        if full_text != self._cached_text:
+            self._cached_text = full_text
+            self._cached_syllables = extract_syllable_indices(full_text)
+            self._last_blip_time = 0.0
+        return self._cached_syllables
+
     def play_speech_blip(
         self,
         character_id: str,
         char: str,
         char_index: int = 0,
         inflection: str = "normal",
+        full_text: Optional[str] = None,
+        step_end_index: Optional[int] = None,
+        min_interval_ms: Optional[float] = None,
     ) -> bool:
         """
-        Plays a single procedural speech blip corresponding to the streamed character.
+        Plays a single procedural speech blip when the typewriter reaches a syllable nucleus.
 
         Args:
             character_id: Character ID (e.g. 'tiffany', 'malphas').
             char: The individual character being streamed by typewriter.
-            char_index: Index in dialogue string (used for cadence rhythm).
+            char_index: Start index in dialogue string for this typewriter step.
             inflection: "normal", "question", "period", or "exclamation".
+            full_text: Full dialogue line for deterministic syllable-nucleus filtering.
+            step_end_index: Exclusive end index for multi-char typewriter strides (`step_advance=2`).
+            min_interval_ms: Optional override for minimum acoustic gap between blips.
 
         Returns:
             bool: True if sound was played, False if skipped, muted, or silent.
@@ -311,20 +455,32 @@ class AnimaleseVoiceEngine:
         if not self.enabled or self.volume <= 0.0 or not char:
             return False
 
-        # Whitespace and punctuation produce clean silence / breathing pause
-        if char in (" ", "\t", "\n", "\r", ".", ",", "!", "?", "-", "—", ";", ":", "'", '"', "(", ")", "…"):
-            return False
+        viseme: Optional[str] = None
+        if full_text is not None:
+            syllables = self._get_syllables_for_text(full_text)
+            end_idx = max(char_index + 1, step_end_index if step_end_index is not None else (char_index + 1))
+            for idx in range(char_index, end_idx):
+                if idx in syllables:
+                    viseme = syllables[idx]
+                    break
+            if viseme is None:
+                return False
+        else:
+            # Standalone single-character fallback (when full_text is not supplied)
+            if char in (" ", "\t", "\n", "\r", ".", ",", "!", "?", "-", "—", ";", ":", "'", '"', "(", ")", "…"):
+                return False
+            from dealer_actor import map_char_to_viseme
+            viseme = map_char_to_viseme(char)
+            if viseme == "neutral":
+                return False
+            if char_index % 3 != 0 and char.lower() not in ("a", "e", "i", "o", "u"):
+                return False
 
-        # Map character to mouth viseme
-        from dealer_actor import map_char_to_viseme
-        viseme = map_char_to_viseme(char)
-        if viseme == "neutral":
-            return False
-
-        # Play cadence filtering: Play every 2nd alphanumeric character or consonants
-        # to ensure speech sounds natural and rhythmic rather than machine-gun flutter
-        if char_index % 2 == 1 and char.lower() not in ("a", "e", "i", "o", "u"):
-            return False
+        effective_min_ms = self.min_interval_ms if min_interval_ms is None else max(0.0, float(min_interval_ms))
+        now = time.perf_counter()
+        if effective_min_ms > 0.0 and self._last_blip_time > 0.0:
+            if (now - self._last_blip_time) * 1000.0 < effective_min_ms:
+                return False
 
         sounds = self.get_character_sounds(character_id)
         norm_inf = "exclamation" if inflection == "exclaim" else inflection
@@ -333,9 +489,10 @@ class AnimaleseVoiceEngine:
         if not sound_entry:
             return False
 
-        if self.is_available and pygame_mixer is not None and hasattr(sound_entry, "play"):
+        if self.is_available and hasattr(sound_entry, "play"):
             try:
                 sound_entry.play()
+                self._last_blip_time = now
                 return True
             except Exception:
                 return False

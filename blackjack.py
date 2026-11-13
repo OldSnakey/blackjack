@@ -3115,13 +3115,14 @@ class BlackjackApp:
             return
         total_len = len(self._current_speech_full)
         if self._typewriter_index < total_len:
-            char = self._current_speech_full[self._typewriter_index]
-            step_advance = 2 if (self._typewriter_index >= 1 and total_len > 60) else 1
-            self._typewriter_index = min(total_len, self._typewriter_index + step_advance)
+            start_idx = self._typewriter_index
+            char = self._current_speech_full[start_idx]
+            step_advance = 2 if (start_idx >= 1 and total_len > 60) else 1
+            self._typewriter_index = min(total_len, start_idx + step_advance)
             self.dealer_speech_var.set(self._current_speech_full[:self._typewriter_index])
             self._step_speech_mouth(char)
 
-            # Procedural Animalese dialogue voice synthesis
+            # Procedural Animalese dialogue voice synthesis (1 blip per syllable nucleus)
             if hasattr(self, "sound_manager") and self.sound_manager:
                 inflection = "normal"
                 if self._current_speech_full:
@@ -3135,7 +3136,14 @@ class BlackjackApp:
                 cid = "tiffany"
                 if hasattr(self, "dealer_actor") and self.dealer_actor:
                     cid = getattr(self.dealer_actor, "character_id", "tiffany")
-                self.sound_manager.play_dialogue_blip(cid, char, self._typewriter_index, inflection=inflection)
+                self.sound_manager.play_dialogue_blip(
+                    cid,
+                    char,
+                    start_idx,
+                    inflection=inflection,
+                    full_text=self._current_speech_full,
+                    step_end_index=self._typewriter_index,
+                )
 
             # Snappy 18-32 ms cadence with natural punctuation pauses so long lines finish quickly
             delay = 18
