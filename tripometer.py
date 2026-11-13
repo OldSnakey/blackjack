@@ -344,6 +344,7 @@ class TripometerTracker:
         round_bankroll: int,
         chips_mode: bool = True,
         ungraded_reason: Optional[str] = None,
+        rules_badge_prefix: str = "",
     ) -> None:
         """Snapshots active HouseRules and stages Kelly bet-sizing evaluation in memory."""
         norm_rules = rules.normalized()
@@ -400,6 +401,7 @@ class TripometerTracker:
             "kelly_status_by_seat": kelly_status_by_seat,
             "chips_mode": bool(chips_mode),
             "ungraded_reason": ungraded_reason,
+            "rules_badge_prefix": str(rules_badge_prefix).strip(),
             "bs_opt": 0,
             "bs_tot": 0,
             "i18_opt": 0,
@@ -578,7 +580,9 @@ class TripometerTracker:
 
         effective_reason: Optional[str] = ungraded_reason or buf.get("ungraded_reason")
         rules_snap: HouseRules = buf["rules"]
-        rules_badge = rules_snap.short_badge()
+        prefix = str(buf.get("rules_badge_prefix", "")).strip()
+        base_badge = rules_snap.short_badge()
+        rules_badge = f"{prefix} · {base_badge}" if prefix else base_badge
         rules_dict = rules_snap.to_dict()
         d_tokens = tuple(format_card_token(c) for c in dealer_cards)
         kelly_map: dict[int, str] = buf["kelly_status_by_seat"]

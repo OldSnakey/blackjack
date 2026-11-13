@@ -5,7 +5,7 @@
 
 ## System Overview
 
-An interactive, graphical desktop implementation of the classic casino card game **Blackjack**, built with standard Python and Tkinter, featuring an **animated 19-layer living dealer puppet roster** (9 dealers, 35 bespoke pixel-art costumes, 7 crunchy 16-bit stage backdrops), the **MIT Hi-Lo Card Counting Academy & Bootcamp**, a supernatural **Haunted Halloween & Hell's Table expansion**, and persistent **Hall of Fame & Achievements**.
+An interactive, graphical desktop implementation of the classic casino card game **Blackjack**, built with standard Python and Tkinter, featuring an **animated 19-layer living dealer puppet roster** (9 dealers, 35 bespoke pixel-art costumes, 7 crunchy 16-bit stage backdrops), a **Bankroll-Gated 2.5D Casino Venue Tour & Super Mario World Overworld Map**, the **MIT Hi-Lo Card Counting Academy & Bootcamp**, a supernatural **Haunted Halloween & Hell's Table expansion**, and persistent **Hall of Fame & Achievements**.
 
 Designed as an educational project for Python learners and junior developers, this codebase demonstrates how to transition from basic procedural scripting to clean, production-quality Python: eliminating global variables with Object-Oriented Programming (OOP), managing non-blocking animations without freezing the GUI event loop, decoupling stage canvas rendering from table felt geometry, separating pure mathematical game rules into zero-GUI modules, and authoring exhaustive automated regression tests (300+ unit tests).
 
@@ -67,10 +67,14 @@ Designed as an educational project for Python learners and junior developers, th
   - Progressive supernatural narrative phases: `NORMAL` → `CREEP` → `OMEN` → `SNUFFING` → `HELL_TABLE`.
   - Authentic custom **13 of Skulls** cursed card with authentic host deck geometry and typography.
   - Haunted Altar with 5 candles that snuff out on player busts/losses, summoning 2.5D rising gravestones.
-  - Showdown against **The Pit Fiend** with a 2.5D Animated Tug-of-War Soul Meter and 7 Celestial Blessings (*Seraph's Grace* bust-redraw protection, *Eye of Providence*, *Archangel's Smite*, *Cherub's Shield*, *Heavenly Tithe*, *Miracle Draw*, and *Hallowed Run*).
+  - Showdown against **The Pit Fiend** with a 2.5D Animated Tug-of-War Soul Meter and 7 Celestial Blessings (*Seraph's Grace* bust-redraw protection, *Eye of Providence*, *Archangel's Smite*, *Cherub's Shield*, *Heavenly Tithe*, *Miracle Draw*, and *Hallowed Run*). Clearing `HELL_TABLE` once awards a `+\$666` Exorcist bounty, permanently retires automatic Haunted slow-burn ambushes (`🔥 Cursed` remains opt-in), and unlocks the **2.5D Casino Venue Tour**.
+- **Bankroll-Gated 2.5D Casino Venue Tour & Overworld Map (`tour_domain.py`, `venue_tour.py`)**:
+  - Unlocked upon clearing `HELL_TABLE` (*The Exorcist*), accessible via the top-bar `🗺 Tour` button or `Shift + T` shortcut.
+  - **8 Pure-Math Mortal Dealer Salons (\$500 $\to$ \$150,000)**: Climbs from *Puppet Dummy*'s *Training Pit* (\$500) through *Julian*'s *Golden Floor*, *Tiffany*'s *Downtown Lounge*, *Professor Edward*'s *MIT Faculty Club*, *Mortimer*'s *Bone Vault*, *Selene*'s *Neon Cyber-Deck*, and *Count Vladimir*'s *Crimson Salon* up to *Uriel*'s single-deck *Sanctum of Light* (\$75,000 entry / \$150,000 target), allowing players to face locked dealers and custom room backdrops over authentic green felt without supernatural rule twists.
+  - **2.5D Super Mario World Overworld Map & Dual Medallions**: Hosted by Tour Coordinator *Julian* (`julian_monte_carlo`) with 2.5D pixel-art landmarks, darkened `'???'` mystery silhouettes, anti-Wonging shoe caching, **Standard Mode** (`★` Gold Star Medallions with `<= 80%` Checkpoint Top-Ups), and **Ironman Gauntlet Mode** (`♦` permanent Obsidian Medallions with zero re-buys and velvet-roped prior salons), strictly isolated from Free-Play career financials.
 - **Hall of Fame & Save Persistence (`save_manager.py`)**:
-  - Persistent career metrics (`blackjack_save.json`): Session-persistent bankroll (`current_bankroll`), Lifetime Wagered, Bankruptcies & Bailouts, Net Profit, Peak Bankroll, Longest Win Streak, Total Blackjacks, Hell's Table Clears, and Counting Streaks.
-  - 12 unlockable gameplay achievements (*Exorcist*, *High Roller*, *Natural Streak*, *Cursed Survivor*, *Split Maestro*, *Big Spender*, *Apprentice Counter*, *Master Counter*, *Shoe Whisperer*, *Count Capitalist*, *Pair Perfectionist*, *Poker Face*).
+  - Persistent career metrics (`blackjack_save.json`): Session-persistent bankroll (`current_bankroll`), Lifetime Wagered, Bankruptcies & Bailouts, Net Profit, Peak Bankroll, Longest Win Streak, Total Blackjacks, Hell's Table Clears, Counting Streaks, and `VenueTourProgress` (`★ X/8 • ♦ Y/8`).
+  - 14 unlockable gameplay achievements (*Exorcist*, *High Roller*, *Natural Streak*, *Cursed Survivor*, *Split Maestro*, *Big Spender*, *Apprentice Counter*, *Master Counter*, *Shoe Whisperer*, *Count Capitalist*, *Pair Perfectionist*, *Poker Face*, *Grand Tour Champion*, *Ironman Legend*).
 - **Three Table Play Modes (Betting Mode Default)**:
   - **Betting Mode (Default)**: Authentic wagering system with a persistent bankroll, 5 authentic casino chip denominations (\$5, \$25, \$100, \$500, and \$1,000 Platinum), interactive bottom-right bankroll chip piles, staged betting, an **"All In"** button, 3:2 Natural Blackjack payouts, and a \$1,000 rebuy feature.
   - **Casual Mode**: Instant deals, zero-stress casual play with win/loss tracking and no bankroll overhead.
@@ -231,6 +235,7 @@ The game supports complete hands-free keyboard navigation with context-sensitive
 | `Shift + M` | Any Time (Betting/Over) | Cycle Table Play Mode (`Casual` $\to$ `Betting` $\to$ `Training`) |
 | `V` | Any Time | Toggle **Dealer Horizon Stage View** (Show / Hide) |
 | `T` | Any Time | Open **Strategy Tripometer & 50-Hand Audit Log** (`📊 Trip`) |
+| `Shift + T` | Exorcist Unlocked | Enter / Toggle **2.5D Casino Venue Tour Overworld Map** (`🗺 Tour`) |
 | `O` / `F2` | Any Time | Open **Casino Settings & House Rules** |
 | `F11` | Any Time | Toggle **Borderless Fullscreen** |
 | `K` / `Shift + C` | Any Time | Toggle **Card Counter Trainer HUD** (Hi-Lo Running & True Count) |
@@ -470,6 +475,8 @@ Blackjack/
 ├── card_counting_hud.py            # 2.5D felt HUD pill, Drill Mode toggle, floating count badges, and quiz drill modal
 ├── bootcamp_domain.py              # Pure domain Model for MIT Hi-Lo Counting Bootcamp (14-node DAG, drills, grading)
 ├── counting_bootcamp.py            # Bootcamp View (BootcampCanvasRenderer, BootcampControlDock) & Controller (CountingBootcampFrame)
+├── tour_domain.py                  # Pure domain Model for 8-Salon Casino Venue Tour (SalonSpecs, Standard/Ironman gates)
+├── venue_tour.py                   # 2.5D Super Mario World Overworld Map View & Controller (VenueTourFrame, TourControlDock)
 ├── config.py                       # Game constants, ThemePalette dataclasses, and path resolution
 ├── dealer_actor.py                 # Living Dealer 7-layer puppet engine: kinematics, breathing, blinking, visemes
 ├── dealer_wardrobe_dialog.py       # Modal dialog for previewing and equipping dealer costumes
@@ -588,6 +595,9 @@ Blackjack/
     ├── test_ui_geometry_and_rendering.py
     ├── test_ui_layout.py
     ├── test_universal_puppet_faceplates.py
+    ├── test_venue_tour_domain.py
+    ├── test_venue_tour_gui.py
+    ├── test_venue_tour_integration.py
     ├── test_version.py
     └── test_welcome_splash_dialog.py
 ```

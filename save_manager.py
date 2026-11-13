@@ -62,6 +62,8 @@ class Achievements:
     count_capitalist: bool = False   # Won a $1,000+ wager when True Count >= +3.0
     pair_perfectionist: bool = False # Hit a 25:1 Perfect Pair
     poker_face: bool = False         # Hit Three of a Kind, Straight Flush, or Suited Trips on 21+3
+    tour_champion: bool = False      # Conquered all 8 Salons ($150,000) in the Grand Casino Venue Tour
+    ironman_legend: bool = False     # Conquered all 8 Salons ($150,000) on the Ironman Gauntlet with zero re-buys
 
 
 GRADE_RANK_ORDER: Dict[str, int] = {"": 0, "F": 1, "C": 2, "B": 3, "A": 4, "S": 5}
@@ -118,6 +120,72 @@ def create_default_bootcamp_progress() -> BootcampProgress:
 
 
 @dataclass
+class VenueTourProgress:
+    """
+    Persistent isolated progress for Track 6: Bankroll-Gated 2.5D Casino Venue Tour.
+    Stores two independent run slots ('forgiving' vs 'ironman') so toggling modes
+    never destroys progress or requires a reset confirmation prompt.
+    """
+
+    active_mode: str = "forgiving"        # "forgiving" | "ironman"
+    intro_seen: bool = False
+    forgiving_bankroll: int = 500
+    forgiving_salons_cleared: int = 0     # 0..8 (frontier salon = min(7, forgiving_salons_cleared))
+    forgiving_selected_idx: int = 0       # 0..7
+    forgiving_rebuys: int = 0
+    forgiving_completed: bool = False
+    ironman_bankroll: int = 500
+    ironman_stage_idx: int = 0            # 0..8 (active linear gauntlet stop; 8 = Grand Slam cleared)
+    ironman_salons_cleared: int = 0       # 0..8 permanent high-water Ironman chip stamps
+    ironman_runs_attempted: int = 0
+    ironman_completed: bool = False
+
+    def normalized(self) -> VenueTourProgress:
+        mode = self.active_mode if self.active_mode in ("forgiving", "ironman") else "forgiving"
+        f_cleared = max(0, min(8, int(self.forgiving_salons_cleared)))
+        f_max_sel = min(7, f_cleared)
+        f_sel = max(0, min(f_max_sel, int(self.forgiving_selected_idx)))
+        i_stage = max(0, min(8, int(self.ironman_stage_idx)))
+        i_cleared = max(0, min(8, int(self.ironman_salons_cleared)))
+        self.active_mode = mode
+        self.intro_seen = bool(self.intro_seen)
+        self.forgiving_bankroll = max(0, int(self.forgiving_bankroll))
+        self.forgiving_salons_cleared = f_cleared
+        self.forgiving_selected_idx = f_sel
+        self.forgiving_rebuys = max(0, int(self.forgiving_rebuys))
+        self.forgiving_completed = bool(self.forgiving_completed) or (f_cleared >= 8)
+        self.ironman_bankroll = max(0, int(self.ironman_bankroll))
+        self.ironman_stage_idx = i_stage
+        self.ironman_salons_cleared = i_cleared
+        self.ironman_runs_attempted = max(0, int(self.ironman_runs_attempted))
+        self.ironman_completed = bool(self.ironman_completed) or (i_cleared >= 8)
+        return self
+
+    @classmethod
+    def from_dict(cls, raw: Optional[Dict[str, Any]]) -> VenueTourProgress:
+        if not isinstance(raw, dict):
+            return cls()
+        try:
+            obj = cls(
+                active_mode=str(raw.get("active_mode", "forgiving")),
+                intro_seen=bool(raw.get("intro_seen", False)),
+                forgiving_bankroll=int(raw.get("forgiving_bankroll", 500)),
+                forgiving_salons_cleared=int(raw.get("forgiving_salons_cleared", 0)),
+                forgiving_selected_idx=int(raw.get("forgiving_selected_idx", 0)),
+                forgiving_rebuys=int(raw.get("forgiving_rebuys", 0)),
+                forgiving_completed=bool(raw.get("forgiving_completed", False)),
+                ironman_bankroll=int(raw.get("ironman_bankroll", 500)),
+                ironman_stage_idx=int(raw.get("ironman_stage_idx", 0)),
+                ironman_salons_cleared=int(raw.get("ironman_salons_cleared", 0)),
+                ironman_runs_attempted=int(raw.get("ironman_runs_attempted", 0)),
+                ironman_completed=bool(raw.get("ironman_completed", False)),
+            )
+            return obj.normalized()
+        except Exception:
+            return cls()
+
+
+@dataclass
 class SaveData:
     version: str = "1.1"
     current_bankroll: int = DEFAULT_STARTING_BANKROLL
@@ -131,6 +199,7 @@ class SaveData:
     bootcamp: BootcampProgress = field(default_factory=create_default_bootcamp_progress)
     house_rules: Dict[str, Any] = field(default_factory=lambda: HouseRules().to_dict())
     tripometer: Dict[str, Any] = field(default_factory=lambda: TripometerData().to_dict())
+    venue_tour: VenueTourProgress = field(default_factory=VenueTourProgress)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -146,6 +215,7 @@ class SaveData:
             "bootcamp": asdict(self.bootcamp),
             "house_rules": HouseRules.from_dict(self.house_rules).to_dict(),
             "tripometer": TripometerData.from_dict(self.tripometer).to_dict(),
+            "venue_tour": asdict(self.venue_tour.normalized()),
         }
 
     @classmethod
@@ -224,6 +294,8 @@ class SaveData:
                 count_capitalist=ach_data.get("count_capitalist", False),
                 pair_perfectionist=ach_data.get("pair_perfectionist", False),
                 poker_face=ach_data.get("poker_face", False),
+                tour_champion=ach_data.get("tour_champion", False),
+                ironman_legend=ach_data.get("ironman_legend", False),
             ),
             chips_mode=bool(data.get("chips_mode", True)),
             play_mode=str(data.get("play_mode", "betting")),
@@ -235,6 +307,9 @@ class SaveData:
             tripometer=TripometerData.from_dict(
                 data.get("tripometer") if isinstance(data.get("tripometer"), dict) else None
             ).to_dict(),
+            venue_tour=VenueTourProgress.from_dict(
+                data.get("venue_tour") if isinstance(data.get("venue_tour"), dict) else None
+            ),
         )
 
 
@@ -370,13 +445,23 @@ class SaveManager:
             self.data.highscores.longest_win_streak = streak
             self.save()
 
-    def record_side_bet(self, bet_type: str, outcome: str, bet: int, profit: int, won: bool):
+    def record_side_bet(
+        self,
+        bet_type: str,
+        outcome: str,
+        bet: int,
+        profit: int,
+        won: bool,
+        track_financials: bool = True,
+    ):
         """Updates side bet statistics, checks high water marks, and evaluates side bet achievements."""
-        self.data.highscores.side_bets_played += 1
+        if track_financials:
+            self.data.highscores.side_bets_played += 1
         if won:
-            self.data.highscores.side_bets_won += 1
-            if profit > self.data.highscores.biggest_side_bet_win:
-                self.data.highscores.biggest_side_bet_win = profit
+            if track_financials:
+                self.data.highscores.side_bets_won += 1
+                if profit > self.data.highscores.biggest_side_bet_win:
+                    self.data.highscores.biggest_side_bet_win = profit
             if bet_type == "perfect_pairs" and outcome == "PERFECT_PAIR":
                 self.unlock_achievement("pair_perfectionist")
             elif bet_type == "21_plus_3" and outcome in ("THREE_OF_A_KIND", "STRAIGHT_FLUSH", "SUITED_TRIPS"):
@@ -696,4 +781,14 @@ class SaveManager:
             "newly_unlocked": newly_unlocked,
             "graduated": bp.graduated,
         }
+
+    # --- Casino Venue Tour Persistence ---
+
+    def save_venue_tour(self, save_now: bool = True) -> bool:
+        """Normalizes and persists VenueTourProgress without touching Free-Play bankroll."""
+        self.data.venue_tour = self.data.venue_tour.normalized()
+        if save_now:
+            return self.save()
+        return True
+
 

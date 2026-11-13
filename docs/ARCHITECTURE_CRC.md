@@ -43,11 +43,12 @@ graph TD
         counter[card_counter.py: HiLoCardCounter, MIT_KELLY_UNIT_RAMP]
         trip[tripometer.py: TripometerTracker, TripometerData, HandHistoryRecord]
         bootcamp_dom[counting_bootcamp.py: BootcampCurriculumDAG, BootcampDrillSession]
+        tour_dom[tour_domain.py: SalonSpec, SALON_SPECS, evaluate_tour_settlement]
     end
 
     subgraph Meta Game [Progression & State]
         haunted[haunted_manager.py: HauntedManager, Blessing]
-        save[save_manager.py: SaveManager, SaveData, Achievements, BootcampProgress]
+        save[save_manager.py: SaveManager, SaveData, Achievements, BootcampProgress, VenueTourProgress]
     end
 
     subgraph Audio & Assets [Audio & Theme Subsystem]
@@ -69,6 +70,7 @@ graph TD
         hud[ui_canvases.py: TableAnnouncementHUD]
         count_hud[card_counting_hud.py: CardCountingHud, FloatingCountBadge]
         bootcamp_ui[counting_bootcamp.py: CountingBootcampFrame, BootcampControlDock]
+        tour_ui[venue_tour.py: VenueTourFrame, TourMapRenderer, TourControlDock]
     end
 
     subgraph Modal Views [Toplevel Dialogs]
@@ -189,6 +191,11 @@ graph TD
 | Responsibility | Collaboration |
 | :--- | :--- |
 | **Knows**: 14-node MIT Hi-Lo curriculum DAG (`L0`–`L6` lectures and `S1`–`S7` challenge drills), prerequisite unlock chains, slide decks, prompt distributions, response latencies, and grade rubrics (`S`, `A`, `B`, `C`, `F`).<br>**Does**: Evaluates DAG node statuses (`LOCKED`, `UNLOCKED`, `COMPLETED`), generates deterministic stage drill prompts (Single-Card Tagging, Pair Cancellation, Running Count Stream, Deck Estimation & True Count, Kelly Bet Sizing, Illustrious 18 Index Deviations, and 3-Seat Table Exam), grades submissions, and identifies the primary weakness tag. | Collaborates with [HiLoCardCounter](../card_counter.py#L23), [BootcampProgress](../save_manager.py), and [CountingBootcampFrame](../counting_bootcamp.py). |
+
+#### `SalonSpec` & Venue Tour Domain Functions ([tour_domain.py](../tour_domain.py))
+| Responsibility | Collaboration |
+| :--- | :--- |
+| **Knows**: Immutable 8-Salon progression table (`SALON_SPECS`, \$500 *Training Pit* $\to$ \$150,000 *Sanctum of Light*), `EXORCIST_BOUNTY_AMOUNT` (`\$666`), `TOUR_COORDINATOR_COSTUME` (`julian_monte_carlo`), pure-math `HouseRules` (`preset_id="custom"`), dealer costume & stage backdrop pairings, and Overworld landmark node coordinates.<br>**Does**: Evaluates salon discovery (`get_max_discovered_salon_index`), Standard vs. Ironman node visual states (`get_salon_visual_state`), anti-domino frontier capping (`_is_forgiving_frontier_capped`, `can_select_salon`), `<= 80%` Checkpoint Top-Up eligibility (`can_top_up_forgiving`, `apply_forgiving_top_up`), net-profit settlement promotion & permanent Obsidian Medallion preservation (`evaluate_tour_settlement`), and voluntary Ironman resets (`reset_ironman_run`) with zero Tkinter dependencies. | Collaborates with [HouseRules](../rules.py), [VenueTourProgress](../save_manager.py), [VenueTourFrame](../venue_tour.py), and [BlackjackApp](../blackjack.py). |
 
 ---
 
@@ -314,6 +321,11 @@ graph TD
 | Responsibility | Collaboration |
 | :--- | :--- |
 | **Knows**: Active Bootcamp sub-view (`teacher_intro`, `map`, `lecture`, `challenge`, `report_card`), focused DAG node index, active `BootcampDrillSession`, tracked `.after()` timer handles, and bottom dock button definitions.<br>**Does**: Separates pure domain curriculum/drill state ([`BootcampCurriculumDAG`](../bootcamp_domain.py), [`BootcampDrillSession`](../bootcamp_domain.py)), stateless 2.5D baize drawing ([`BootcampCanvasRenderer`](../counting_bootcamp.py)), bottom dock controls ([`BootcampControlDock`](../counting_bootcamp.py)), and navigation/timer orchestration ([`CountingBootcampFrame`](../counting_bootcamp.py)). Swaps cleanly into `row=3` (felt area) and `row=4` (mahogany control dock) while preserving `DealerStageCanvas` (`row=1`) so the live dealer acts as instructor. | Collaborates with [BootcampCurriculumDAG](../bootcamp_domain.py), [ChipRenderer](../ui_chip_renderer.py), [MahoganyRailCanvas](../ui_canvases.py), [SaveManager](../save_manager.py#L182), and [BlackjackApp](../blackjack.py). |
+
+#### `VenueTourFrame`, `TourMapRenderer` & `TourControlDock` ([venue_tour.py](../venue_tour.py), [tour_domain.py](../tour_domain.py))
+| Responsibility | Collaboration |
+| :--- | :--- |
+| **Knows**: Focused Overworld salon index (`0`–`7`), cached zone gradients, `ImageTk.PhotoImage` references bound to `master=self.canvas`, single-source geometric `node_hit_boxes`, and bottom `MahoganyRailCanvas` dock buttons (`Enter Salon [Enter]`, `Mode: Standard` / `Mode: Ironman`, `Top Up` / `Reset Run [$500]`, `Free Play [Esc]`).<br>**Does**: Mounts the 2.5D Super Mario World Overworld Map into `row=3` and `TourControlDock` into `row=4` beneath Tour Coordinator *Julian* (`row=1`); renders 8 procedural 2.5D pixel-art landmarks, darkened `'???'` silhouettes, velvet ropes on promoted salons, and dual Gold (`★`) & Obsidian (`♦`) casino chip medallions via `ui_chip_renderer.py`. | Collaborates with [SalonSpec](../tour_domain.py), [ChipRenderer](../ui_chip_renderer.py), [MahoganyRailCanvas](../ui_canvases.py), [SaveManager](../save_manager.py), and [BlackjackApp](../blackjack.py). |
 
 ---
 

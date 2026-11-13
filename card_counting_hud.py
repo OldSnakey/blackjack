@@ -15,7 +15,7 @@ from __future__ import annotations
 import tkinter
 from typing import Any, Callable, Optional
 from card_counter import HiLoCardCounter, MIT_KELLY_UNIT_RAMP
-from rules import HouseRules
+from rules import HouseRules, effective_minimum_bet
 from pixel_ui import (
     get_element_font,
     get_pixel_font,
@@ -418,7 +418,9 @@ class CardCountingHud(tkinter.Frame):
             self.on_bootcamp_request()
 
     def _on_stage_bet_click(self):
-        """Dispatches stage bet callback if registered."""
+        """Dispatches stage bet callback if registered (blocked in Drill Mode to prevent leaking hidden Kelly bet)."""
+        if self.drill_mode:
+            return
         if self.on_stage_bet_request:
             self.on_stage_bet_request(self._last_rec_bet)
 
@@ -672,7 +674,11 @@ class CardCountingHud(tkinter.Frame):
         self._last_deviation = deviation
 
         # 1. Update Basic Strategy label text, color, and dynamic font
-        display_text, fg_col, font_spec = self._format_strategy_display(hint, text)
+        # In Drill Mode, mask count-dependent pre-deal Kelly bets & Insurance TC hints on the felt plaque
+        if self.drill_mode and hint is None and text:
+            display_text, fg_col, font_spec = "DRILL\n(Count!)", "#ffd54f", ("m6x11plus", -14, "bold")
+        else:
+            display_text, fg_col, font_spec = self._format_strategy_display(hint, text)
         self.strategy_label.configure(text=display_text, fg=fg_col, font=font_spec)
 
         # 2. Update Illustrious 18 deviation badge
@@ -737,11 +743,22 @@ class CardCountingHud(tkinter.Frame):
             rec_bet, tier_idx, _ = HiLoCardCounter.get_kelly_bet_target(
                 self._house_rules, tc, int(bankroll), self._last_active_seats
             )
-            rec_units = MIT_KELLY_UNIT_RAMP[tier_idx]
+            raw_units = MIT_KELLY_UNIT_RAMP[tier_idx]
+            eff_min = effective_minimum_bet(self._house_rules, int(bankroll))
+            max_bet = int(getattr(self._house_rules, "maximum_bet", 0) or 0)
+            if max_bet > 0 and rec_bet >= max_bet and eff_min > 0 and rec_bet < raw_units * eff_min:
+                eff_units = max(1, round(rec_bet / eff_min))
+                bet_guide_str = f"{eff_units}u MAX (${rec_bet:,})"
+            elif eff_min > 0 and rec_bet > 0 and rec_bet < raw_units * eff_min:
+                eff_units = max(1, round(rec_bet / eff_min))
+                bet_guide_str = f"{eff_units}u (${rec_bet:,})"
+            else:
+                bet_guide_str = f"{raw_units}u (${rec_bet:,})"
         else:
             adv = self.counter.get_player_advantage(cards_remaining)
             rec_bet = self.counter.get_recommended_bet(base_bet, tc)
             rec_units = max(1, rec_bet // max(1, base_bet))
+            bet_guide_str = f"{rec_units}u (${rec_bet:,})"
         self._last_rec_bet = rec_bet
 
         # Decks remaining is always visible (visual shoe estimation)
@@ -777,7 +794,7 @@ class CardCountingHud(tkinter.Frame):
         )
 
         # Bet Guide recommendation
-        self.bet_guide_label.configure(text=f"{rec_units}u (${rec_bet:,})")
+        self.bet_guide_label.configure(text=bet_guide_str)
 
 
 class CardCountingQuizDialog(tkinter.Toplevel):

@@ -187,6 +187,23 @@ from card_counter import HiLoCardCounter, MIT_KELLY_UNIT_RAMP
 from tripometer import TripometerTracker, TripometerData, HandHistoryRecord, DecisionStepRecord
 from card_counting_hud import CardCountingHud, CardCountingQuizDialog, FloatingCountBadge
 from counting_bootcamp import BootcampControlDock, CountingBootcampFrame
+from tour_domain import (
+    EXORCIST_BOUNTY_AMOUNT,
+    SALON_SPECS,
+    TOUR_COORDINATOR_COSTUME,
+    apply_forgiving_top_up,
+    can_select_salon,
+    can_top_up_forgiving,
+    evaluate_tour_settlement,
+    get_active_salon_index,
+    get_active_tour_bankroll,
+    get_forgiving_checkpoint_floor,
+    get_forgiving_frontier_idx,
+    get_salon_spec,
+    get_top_up_threshold,
+    set_active_tour_bankroll,
+)
+from venue_tour import TourControlDock, VenueTourFrame
 from event_bus import EventHub, GameEventType, GameEvent
 from game_engine import BlackjackEngine, RoundResult
 from state_machine import GameStateMachine
@@ -689,6 +706,14 @@ class BlackjackApp:
         self.bootcamp_active: bool = False
         self.bootcamp_frame: Optional[CountingBootcampFrame] = None
         self.bootcamp_dock: Optional[BootcampControlDock] = None
+        self.tour_active: bool = False
+        self.tour_in_salon: bool = False
+        self.active_tour_salon_idx: int = 0
+        self.tour_frame: Optional[VenueTourFrame] = None
+        self.tour_dock: Optional[TourControlDock] = None
+        self._tour_transition_timer_id = None
+        self._free_play_snapshot: Optional[dict[str, Any]] = None
+        self._tour_shoe_cache: dict[tuple[str, int], dict[str, Any]] = {}
 
         # Scale and Fullscreen Display Mode State
         self.scale_factor: float = 1.0
@@ -914,6 +939,14 @@ class BlackjackApp:
         self.trip_button.grid(**get_grid_options("top_bar", "trip_button"), ipady=top_btn_ipady)
         self._refresh_trip_button_badge()
 
+        # Bankroll-Gated Casino Venue Tour Button (column 11 — hidden until Exorcist cleared)
+        self.tour_button = PixelButtonWidget(
+            scoreboard_frame, text="🗺 Tour", font=f_top_btn,
+            theme="neutral", scale=btn_scale, fg="#ffd54f",
+            command=self._on_tour_button_click
+        )
+        self._sync_tour_button()
+
         # Dealer View Toggle Button (retained as unmapped instance in header; accessed via SettingsDialog or 'v')
         self.dealer_view_button = PixelButtonWidget(
             scoreboard_frame, textvariable=self.dealer_view_status_var, font=f_top_btn,
@@ -1118,7 +1151,7 @@ class BlackjackApp:
             background=PANEL_BACKGROUND_COLOR,
             on_chip_click=lambda amt: (self._on_rack_chip_click(amt), self._add_chip_bet(amt) if self.table_seats == 1 else None),
             on_chip_deduct=self._deduct_chip_bet,
-            on_spot_click=lambda amt=5: self._add_chip_bet(amt),
+            on_spot_click=self._on_main_spot_click,
             on_spot_clear=self._clear_main_bet,
             on_side_bet_click=self._add_side_bet,
             on_side_bet_deduct=self._deduct_side_bet,
@@ -1274,6 +1307,15 @@ class BlackjackApp:
         if not self.haunted.unlocked_cursed_stakes:
             self.cursed_stakes_button.grid_remove()  # Hidden until unlocked
 
+        # Casino Venue Tour In-Salon Map Return Button (Left anchor on mahogany rail during Tour salons)
+        self.tour_map_rail_button = CanvasPixelButton(
+            self.mahogany_rail, x=85, y=36, width=124, height=36,
+            text="Map [Esc]", theme="blue", font=f_cursed_btn,
+            scale=btn_scale, group_tag="anchor_dock",
+            command=self.return_to_tour_map, master=self.button_frame
+        )
+        self.tour_map_rail_button.grid_remove()
+
         # Celestial Blessings Display Tray (shows acquired relics in Hell's Table)
         self.blessings_tray = tkinter.Frame(self.root, background=TABLE_BACKGROUND_COLOR)
         self.blessings_tray.grid(**get_grid_options("blessings_tray"))
@@ -1342,6 +1384,10 @@ class BlackjackApp:
         for key in ("<t>", "<T>"):
             self.root.bind(key, lambda e: self._on_tripometer_shortcut())
 
+        # Casino Venue Tour Overworld Map / Salon toggle shortcut (Shift+T)
+        for key in ("<Shift-T>", "<Shift-t>"):
+            self.root.bind(key, lambda e: self._on_tour_shortcut())
+
         # Table Play Mode cycle shortcut (Shift+M)
         for key in ("<Shift-M>", "<Shift-m>"):
             self.root.bind(key, lambda e: self._on_cycle_play_mode_shortcut())
@@ -1368,15 +1414,30 @@ class BlackjackApp:
 
         # Side bet shortcuts during betting phase: Q/6=Perfect Pairs, E/7=21+3
         for key in ("<q>", "<Q>", "<Key-6>", "<KP_6>"):
-            self.root.bind(key, lambda e: self._add_side_bet("perfect_pairs", 5))
+            self.root.bind(key, lambda e, ks=key: self._on_side_bet_or_tour_key("perfect_pairs", ks))
         for key in ("<e>", "<E>", "<Key-7>", "<KP_7>"):
-            self.root.bind(key, lambda e: self._add_side_bet("21_plus_3", 5))
+            self.root.bind(key, lambda e, ks=key: self._on_side_bet_or_tour_key("21_plus_3", ks))
+        for key in ("<Key-8>", "<KP_8>"):
+            self.root.bind(key, lambda e: self._on_tour_map_number_key("8"))
 
-        # Multi-seat betting focus shortcuts (Left and Right arrow keys) & Bootcamp map navigation
+        # Multi-seat betting focus shortcuts (Left and Right arrow keys) & Bootcamp/Tour map navigation
         self.root.bind("<Left>", lambda e: self._on_key_cycle_seat_focus(-1, keysym="Left"))
         self.root.bind("<Right>", lambda e: self._on_key_cycle_seat_focus(1, keysym="Right"))
         self.root.bind("<Up>", lambda e: self._on_key_cycle_seat_focus(-1, keysym="Up"))
         self.root.bind("<Down>", lambda e: self._on_key_cycle_seat_focus(1, keysym="Down"))
+
+    def _on_side_bet_or_tour_key(self, bet_type: str, key_spec: str) -> str:
+        if getattr(self, "tour_active", False) and not getattr(self, "tour_in_salon", False):
+            if getattr(self, "tour_frame", None) is not None and ("6" in key_spec or "7" in key_spec):
+                self.tour_frame.handle_key_event("6" if "6" in key_spec else "7")
+            return "break"
+        return self._add_side_bet(bet_type, 5)
+
+    def _on_tour_map_number_key(self, digit: str) -> str:
+        if getattr(self, "tour_active", False) and not getattr(self, "tour_in_salon", False):
+            if getattr(self, "tour_frame", None) is not None:
+                self.tour_frame.handle_key_event(digit)
+        return "break"
 
     def _on_key_cycle_seat_focus(self, delta: int, keysym: str = ""):
         """
@@ -1386,6 +1447,10 @@ class BlackjackApp:
         """
         if getattr(self, "bootcamp_active", False) and getattr(self, "bootcamp_frame", None) is not None:
             self.bootcamp_frame.handle_key_event(keysym or ("Left" if delta < 0 else "Right"))
+            return "break"
+        if getattr(self, "tour_active", False) and not getattr(self, "tour_in_salon", False):
+            if getattr(self, "tour_frame", None) is not None:
+                self.tour_frame.handle_key_event(keysym or ("Left" if delta < 0 else "Right"))
             return "break"
         if keysym in ("Up", "Down"):
             return "break"
@@ -1409,6 +1474,8 @@ class BlackjackApp:
     def _on_key_action(self, action_fn, button=None):
         """Invokes an action function if the corresponding button is currently enabled and not dealing."""
         if getattr(self, "bootcamp_active", False):
+            return "break"
+        if getattr(self, "tour_active", False) and not getattr(self, "tour_in_salon", False):
             return "break"
         if getattr(self, "_dealing", False):
             return "break"
@@ -1436,6 +1503,13 @@ class BlackjackApp:
                 key_index = denom_to_idx.get(amount, "1")
             self.bootcamp_frame.handle_key_event(key_index)
             return "break"
+        if getattr(self, "tour_active", False) and not getattr(self, "tour_in_salon", False):
+            if getattr(self, "tour_frame", None) is not None:
+                if not key_index:
+                    denom_to_idx = {5: "1", 25: "2", 100: "3", 500: "4", 1000: "5"}
+                    key_index = denom_to_idx.get(amount, "1")
+                self.tour_frame.handle_key_event(key_index)
+            return "break"
         if getattr(self, "_dealing", False):
             return "break"
         if getattr(self, "is_betting_phase", False) and self.chips_mode_var.get():
@@ -1458,6 +1532,11 @@ class BlackjackApp:
         if getattr(self, "bootcamp_active", False) and getattr(self, "bootcamp_frame", None) is not None:
             ks = getattr(event, "keysym", "Return") if event is not None else "Return"
             self.bootcamp_frame.handle_key_event(ks)
+            return "break"
+        if getattr(self, "tour_active", False) and not getattr(self, "tour_in_salon", False):
+            if getattr(self, "tour_frame", None) is not None:
+                ks = getattr(event, "keysym", "Return") if event is not None else "Return"
+                self.tour_frame.handle_key_event(ks)
             return "break"
         if getattr(self, "_dealing", False):
             return "break"
@@ -1678,9 +1757,9 @@ class BlackjackApp:
             active_seats=getattr(self, "table_seats", 1),
         )
 
-    def apply_house_rules(self, new_rules: HouseRules) -> bool:
+    def apply_house_rules(self, new_rules: HouseRules, persist: bool = True) -> bool:
         """
-        Applies and persists normalized HouseRules when no hand is actively in flight.
+        Applies and optionally persists normalized HouseRules when no hand is actively in flight.
         Refunds uncommitted staged bets, rebuilds/shuffles shoe, resets card counter,
         and synchronizes TableFeltCanvas, TableAnnouncementHUD, and CardCountingHud.
         """
@@ -1705,7 +1784,7 @@ class BlackjackApp:
 
         self.house_rules = norm
         self.deck_count = norm.deck_count
-        if hasattr(self, "save_manager") and self.save_manager:
+        if persist and not getattr(self, "tour_active", False) and hasattr(self, "save_manager") and self.save_manager:
             self.save_manager.save_house_rules(norm)
         if hasattr(self, "engine") and self.engine:
             self.engine.apply_house_rules(norm)
@@ -1767,7 +1846,7 @@ class BlackjackApp:
 
     def _on_cycle_play_mode_shortcut(self):
         """Cycles play mode between Casual -> Betting -> Training (only when not dealing and betting or round over)."""
-        if getattr(self, "bootcamp_active", False):
+        if getattr(self, "bootcamp_active", False) or getattr(self, "tour_active", False):
             return "break"
         if getattr(self, "_dealing", False) or getattr(self, "round_phase", None) not in (RoundPhase.BETTING, RoundPhase.ROUND_OVER):
             return "break"
@@ -1837,6 +1916,9 @@ class BlackjackApp:
         if getattr(self, "haunted", None) is not None and self.haunted.phase == Phase.HELL_TABLE:
             self.result_var.set("Cannot enter Counting Bootcamp during Hell's Table!")
             return
+        if getattr(self, "tour_active", False):
+            if not self.exit_venue_tour():
+                return
 
         # Refund any uncommitted staged bets only during RoundPhase.BETTING
         if getattr(self, "round_phase", None) == RoundPhase.BETTING and self.chips_mode_var.get():
@@ -1918,6 +2000,9 @@ class BlackjackApp:
         - 'betting': Chips ON, Card counting HUD hidden, Strategy hints hidden.
         - 'training': Chips ON, Card counting HUD visible, Strategy hints active.
         """
+        if getattr(self, "tour_active", False):
+            if not self.exit_venue_tour():
+                return
         self._unmount_bootcamp_views()
         if mode not in ("casual", "betting", "training"):
             return
@@ -2167,15 +2252,25 @@ class BlackjackApp:
         if getattr(self, "is_betting_phase", False):
             cards_rem = len(self.deck) if hasattr(self, "deck") else 0
             tc = self.card_counter.true_count(cards_rem)
+            round_br = self._get_gui_round_bankroll()
             rec_bet, tier_idx, _ = HiLoCardCounter.get_kelly_bet_target(
                 self.house_rules,
                 tc,
-                self._get_gui_round_bankroll(),
+                round_br,
                 getattr(self, "table_seats", 1),
             )
-            rec_units = MIT_KELLY_UNIT_RAMP[tier_idx]
+            raw_units = MIT_KELLY_UNIT_RAMP[tier_idx]
+            eff_min = effective_minimum_bet(self.house_rules, round_br)
+            max_bet = int(getattr(self.house_rules, "maximum_bet", 0) or 0)
+            if max_bet > 0 and rec_bet >= max_bet and eff_min > 0 and rec_bet < raw_units * eff_min:
+                clamped_units = max(1, round(rec_bet / eff_min))
+                unit_tag = f"{clamped_units}u MAX"
+            elif eff_min > 0 and 0 < rec_bet < raw_units * eff_min:
+                unit_tag = f"{max(1, round(rec_bet / eff_min))}u"
+            else:
+                unit_tag = f"{raw_units}u"
             self.card_counting_hud.update_strategy_hint(
-                text=f"Bet ${rec_bet:,} ({rec_units}u)",
+                text=f"Bet ${rec_bet:,} ({unit_tag})",
                 deviation=None,
             )
             return
@@ -2212,6 +2307,15 @@ class BlackjackApp:
 
     def clear_player_save_data(self):
         """Resets persistent save data to blank slate and synchronizes table unlocks, rules, and Tripometer."""
+        if getattr(self, "tour_active", False):
+            self._free_play_snapshot = None
+            self._cancel_tour_transition_timer()
+            self._unmount_tour_views()
+            self.tour_active = False
+            self.tour_in_salon = False
+            if hasattr(self, "rebuy_button"):
+                self.rebuy_button.configure(text="Rebuy $1K")
+        self._tour_shoe_cache.clear()
         self.save_manager.clear_save()
         if hasattr(self, "tripometer") and self.tripometer is not None:
             self.tripometer.reset()
@@ -2223,6 +2327,8 @@ class BlackjackApp:
         self.cursed_stakes_var.set(False)
         if hasattr(self, "cursed_stakes_button"):
             self.cursed_stakes_button.grid_remove()
+        self._sync_tour_button()
+        self._sync_tour_map_rail_button()
         if getattr(self, "bootcamp_frame", None) is not None:
             try:
                 self.bootcamp_frame.cancel_all_timers()
@@ -2230,6 +2336,587 @@ class BlackjackApp:
                 self.bootcamp_frame.render_dag_map_view()
             except Exception:
                 pass
+
+    # ------------------------------------------------------------------------
+    # Bankroll-Gated 2.5D Casino Venue Tour Orchestration
+    # ------------------------------------------------------------------------
+
+    def _is_tour_unlocked(self) -> bool:
+        """Returns True once the player has cleared Hell's Table (Exorcist unlocked)."""
+        if getattr(getattr(self, "haunted", None), "unlocked_exorcist", False):
+            return True
+        if not hasattr(self, "save_manager") or self.save_manager is None:
+            return False
+        data = self.save_manager.data
+        return bool(
+            data.achievements.exorcist
+            or data.highscores.hell_table_clears > 0
+            or "seraph" in data.unlocked_costumes
+        )
+
+    def _sync_tour_button(self) -> None:
+        """Maps or hides `self.tour_button` in the top scoreboard bar based on Exorcist status."""
+        if not hasattr(self, "tour_button") or self.tour_button is None:
+            return
+        if not self._is_tour_unlocked():
+            self.tour_button.grid_remove()
+            return
+        top_btn_ipady = int(get_ui_layout("top_bar").get("button_ipady", 6) * self.scale_factor)
+        if not bool(self.tour_button.grid_info()):
+            self.tour_button.grid(**get_grid_options("top_bar", "tour_button"), ipady=top_btn_ipady)
+        if getattr(self, "tour_active", False):
+            if getattr(self, "tour_in_salon", False):
+                self.tour_button.configure(text="🗺 Map", fg="#69f0ae")
+            else:
+                self.tour_button.configure(text="🚪 Table", fg="#80cbc4")
+        else:
+            self.tour_button.configure(text="🗺 Tour", fg="#ffd54f")
+
+    def _sync_tour_map_rail_button(self) -> None:
+        """Maps or hides `self.tour_map_rail_button` on the left mahogany rail inside Tour salons."""
+        if not hasattr(self, "tour_map_rail_button") or self.tour_map_rail_button is None:
+            return
+        if getattr(self, "tour_active", False) and getattr(self, "tour_in_salon", False):
+            if not bool(self.tour_map_rail_button.grid_info()):
+                self.tour_map_rail_button.grid(**get_grid_options("mahogany_rail", "cursed_stakes"))
+            can_leave = (
+                (not getattr(self, "_dealing", False))
+                and (not getattr(self, "is_insurance_phase", False))
+                and (getattr(self, "round_phase", None) in (RoundPhase.BETTING, RoundPhase.ROUND_OVER))
+            )
+            self.tour_map_rail_button.configure(state="normal" if can_leave else "disabled")
+        else:
+            self.tour_map_rail_button.grid_remove()
+        self._reposition_rail_buttons()
+
+    def _on_tour_button_click(self) -> str:
+        """Context-sensitive handler for top-bar Tour button (`🗺 Tour` / `🗺 Map` / `🚪 Table`)."""
+        if not self._is_tour_unlocked():
+            return "break"
+        if getattr(self, "tour_active", False):
+            if getattr(self, "tour_in_salon", False):
+                self.return_to_tour_map()
+            else:
+                self.exit_venue_tour()
+        else:
+            self.enter_venue_tour()
+        return "break"
+
+    def _on_tour_shortcut(self) -> str:
+        """Keyboard handler for `Shift+T`."""
+        return self._on_tour_button_click()
+
+    def _cancel_tour_transition_timer(self) -> None:
+        """Cancels any scheduled post-hand salon promotion/bust map transition timer."""
+        tid = getattr(self, "_tour_transition_timer_id", None)
+        if tid is not None:
+            try:
+                self.root.after_cancel(tid)
+            except Exception:
+                pass
+            self._tour_transition_timer_id = None
+
+    def invalidate_tour_shoe_cache(self, mode: Optional[str] = None, salon_idx: Optional[int] = None) -> None:
+        """Clears cached Tour salon shoes (e.g., on Top-Up or Ironman bust reset)."""
+        if mode is None and salon_idx is None:
+            self._tour_shoe_cache.clear()
+            return
+        keys_to_drop = [
+            k for k in self._tour_shoe_cache
+            if (mode is None or k[0] == mode) and (salon_idx is None or k[1] == salon_idx)
+        ]
+        for k in keys_to_drop:
+            self._tour_shoe_cache.pop(k, None)
+
+    def _save_active_salon_shoe_to_cache(self) -> None:
+        """Persists active Tour salon shoe & Hi-Lo counter in memory to prevent map-hop Wonging."""
+        if not (getattr(self, "tour_active", False) and getattr(self, "tour_in_salon", False)):
+            return
+        if not hasattr(self, "save_manager") or self.save_manager is None:
+            return
+        mode = self.save_manager.data.venue_tour.active_mode
+        idx = int(getattr(self, "active_tour_salon_idx", 0))
+        self._tour_shoe_cache[(mode, idx)] = {
+            "deck": list(getattr(self, "deck", [])),
+            "shoe_needs_reshuffle": bool(getattr(self, "shoe_needs_reshuffle", False)),
+            "running_count": int(getattr(self.card_counter, "running_count", 0)) if hasattr(self, "card_counter") else 0,
+            "observed_cards_count": int(getattr(self.card_counter, "observed_cards_count", 0)) if hasattr(self, "card_counter") else 0,
+        }
+
+    def _unmount_tour_views(self) -> None:
+        """Unmaps Overworld Map (`tour_frame`) and `tour_dock` and restores `card_table_frame` & `mahogany_rail`."""
+        if getattr(self, "tour_frame", None) is not None:
+            try:
+                self.tour_frame.cancel_all_timers()
+                self.tour_frame.grid_remove()
+            except Exception:
+                pass
+        if getattr(self, "tour_dock", None) is not None:
+            try:
+                self.tour_dock.grid_remove()
+            except Exception:
+                pass
+        if hasattr(self, "card_table_frame"):
+            self.card_table_frame.grid(**get_grid_options("root_layout", "card_table"))
+        if hasattr(self, "mahogany_rail"):
+            self.mahogany_rail.grid(**get_grid_options("mahogany_rail"))
+
+    def _mount_tour_map_view(
+        self,
+        focused_idx: Optional[int] = None,
+        speech_override: Optional[str] = None,
+    ) -> None:
+        """Mounts the 2.5D Super Mario World Overworld Map on `row=3` and `TourControlDock` on `row=4`."""
+        self._cancel_tour_transition_timer()
+        if getattr(self, "_dealer_timer_id", None) is not None:
+            try:
+                self.root.after_cancel(self._dealer_timer_id)
+            except Exception:
+                pass
+            self._dealer_timer_id = None
+        if hasattr(self, "chip_visualizer"):
+            self.chip_visualizer.clear_timers()
+
+        self.dealer_view_var.set(True)
+        self.dealer_view_status_var.set("👤 Dealer: ON")
+        if hasattr(self, "dealer_stage_frame"):
+            self.dealer_stage_frame.grid(**get_grid_options("root_layout", "dealer_stage"))
+        if hasattr(self, "horizon_rail"):
+            self.horizon_rail.grid(**get_grid_options("root_layout", "horizon_rail"))
+        if hasattr(self, "pumpkin_label"):
+            self.pumpkin_label.pack_forget()
+
+        if hasattr(self, "card_table_frame"):
+            self.card_table_frame.grid_remove()
+        if hasattr(self, "mahogany_rail"):
+            self.mahogany_rail.grid_remove()
+        if hasattr(self, "insurance_frame"):
+            self.insurance_frame.grid_remove()
+        if hasattr(self, "blessings_tray"):
+            self.blessings_tray.grid_remove()
+        if hasattr(self, "card_counting_hud") and self.card_counting_hud:
+            self.card_counting_hud.set_visible(False)
+
+        if self.tour_dock is None:
+            self.tour_dock = TourControlDock(
+                self.root,
+                height=get_ui_layout("mahogany_rail").get("default_height", 72),
+            )
+        if self.tour_frame is None:
+            self.tour_frame = VenueTourFrame(
+                self.root,
+                app=self,
+                dock=self.tour_dock,
+            )
+
+        self.tour_in_salon = False
+        self.tour_frame.grid(**get_grid_options("root_layout", "card_table"))
+        self.tour_dock.grid(**get_grid_options("mahogany_rail"))
+
+        vt = self.save_manager.data.venue_tour
+        self.tour_frame.focused_salon_idx = (
+            get_active_salon_index(vt) if focused_idx is None else int(focused_idx)
+        )
+        self._sync_cursed_stakes_button()
+        self._sync_tour_button()
+        self._sync_tour_map_rail_button()
+        self._apply_phase_theme(Phase.NORMAL)
+        self._update_dealer_avatar()
+        self.tour_frame.refresh_map(speech_override=speech_override)
+
+    def enter_venue_tour(self) -> bool:
+        """Snapshots Free-Play state and launches the 2.5D Casino Venue Tour Overworld Map."""
+        if not self._is_tour_unlocked():
+            return False
+        if getattr(self, "_dealing", False) or getattr(self, "is_insurance_phase", False):
+            self.result_var.set("Finish the active hand before entering the Casino Venue Tour!")
+            return False
+        if getattr(self, "round_phase", None) not in (RoundPhase.BETTING, RoundPhase.ROUND_OVER):
+            self.result_var.set("Finish the active hand before entering the Casino Venue Tour!")
+            return False
+        if getattr(self, "haunted", None) is not None and self.haunted.phase == Phase.HELL_TABLE:
+            self.result_var.set("Banish the Pit Fiend or exit Cursed Stakes before entering the Casino Tour!")
+            return False
+
+        if getattr(self, "tour_active", False):
+            if getattr(self, "tour_in_salon", False):
+                return self.return_to_tour_map()
+            return True
+
+        if getattr(self, "bootcamp_active", False):
+            self._unmount_bootcamp_views()
+
+        # Refund any uncommitted Free-Play staged bets prior to taking snapshot
+        if getattr(self, "round_phase", None) == RoundPhase.BETTING and self.chips_mode_var.get():
+            self._clear_side_bets()
+            self._clear_bet()
+
+        fp_chips = bool(self.chips_mode_var.get())
+        fp_bankroll = int(self.bankroll_var.get()) if fp_chips else int(self.save_manager.data.current_bankroll)
+        if fp_chips:
+            self.save_manager.data.current_bankroll = fp_bankroll
+
+        self._free_play_snapshot = {
+            "bankroll": fp_bankroll,
+            "rules": HouseRules.from_dict(self.house_rules.to_dict()),
+            "play_mode": str(getattr(self, "play_mode", "betting")),
+            "chips_mode": fp_chips,
+            "table_seats": int(getattr(self, "table_seats", 1)),
+            "dealer_view": bool(self.dealer_view_var.get()),
+            "counting_hud_visible": bool(self.card_counting_hud.is_visible)
+            if getattr(self, "card_counting_hud", None)
+            else False,
+        }
+
+        if getattr(self, "table_seats", 1) != 1:
+            self.set_table_seats(1)
+        if not self.chips_mode_var.get():
+            self.chips_mode_var.set(True)
+            self.bankroll_label.grid(**get_grid_options("top_bar", "bankroll"))
+            self.betting_frame.grid(row=0, column=0)
+
+        self.tour_active = True
+        self.tour_in_salon = False
+        self._mount_tour_map_view()
+        return True
+
+    def return_to_tour_map(self) -> bool:
+        """Leaves an idle Tour salon back to the 2.5D Overworld Map while preserving its active shoe."""
+        if not getattr(self, "tour_active", False):
+            return False
+        if not getattr(self, "tour_in_salon", False):
+            return True
+        if getattr(self, "_dealing", False) or getattr(self, "is_insurance_phase", False):
+            self.result_var.set("Finish the active hand before returning to the Tour Map!")
+            return False
+        if getattr(self, "round_phase", None) not in (RoundPhase.BETTING, RoundPhase.ROUND_OVER):
+            self.result_var.set("Finish the active hand before returning to the Tour Map!")
+            return False
+
+        had_pending_transition = getattr(self, "_tour_transition_timer_id", None) is not None
+        self._cancel_tour_transition_timer()
+        if getattr(self, "round_phase", None) == RoundPhase.BETTING and self.chips_mode_var.get():
+            self._clear_side_bets()
+            self._clear_bet()
+
+        vt = self.save_manager.data.venue_tour
+        if getattr(self, "round_phase", None) != RoundPhase.ROUND_OVER:
+            set_active_tour_bankroll(vt, self.bankroll_var.get())
+        self.save_manager.save_venue_tour()
+        self._save_active_salon_shoe_to_cache()
+
+        target_idx = get_active_salon_index(vt) if had_pending_transition else self.active_tour_salon_idx
+        self._mount_tour_map_view(focused_idx=target_idx)
+        return True
+
+    def enter_tour_salon(self, salon_idx: int) -> bool:
+        """Mounts the live 1-seat casino table for `SALON_SPECS[salon_idx]` with isolated Tour stake & shoe."""
+        if not getattr(self, "tour_active", False):
+            if not self.enter_venue_tour():
+                return False
+        vt = self.save_manager.data.venue_tour
+        if not can_select_salon(vt, salon_idx):
+            return False
+        if getattr(self, "tour_in_salon", False):
+            if getattr(self, "_dealing", False) or getattr(self, "is_insurance_phase", False):
+                return False
+            if getattr(self, "round_phase", None) not in (RoundPhase.BETTING, RoundPhase.ROUND_OVER):
+                return False
+            if getattr(self, "round_phase", None) == RoundPhase.BETTING and self.chips_mode_var.get():
+                self._clear_side_bets()
+                self._clear_bet()
+            if getattr(self, "round_phase", None) != RoundPhase.ROUND_OVER:
+                set_active_tour_bankroll(vt, self.bankroll_var.get())
+            self._save_active_salon_shoe_to_cache()
+
+        self._cancel_tour_transition_timer()
+        self._unmount_tour_views()
+
+        salon = get_salon_spec(salon_idx)
+        self.tour_active = True
+        self.tour_in_salon = True
+        self.active_tour_salon_idx = salon.index
+        if vt.active_mode == "forgiving":
+            vt.forgiving_selected_idx = salon.index
+        self.save_manager.save_venue_tour()
+
+        tour_br = get_active_tour_bankroll(vt)
+        self.bankroll_var.set(tour_br)
+        if hasattr(self, "engine") and self.engine:
+            self.engine.bankroll = tour_br
+        self.current_bet_var.set(0)
+        self.hand_bets = [0]
+
+        self.apply_house_rules(salon.rules, persist=False)
+
+        # Restore per-salon shoe & Hi-Lo counter if still valid above cut card
+        cache_key = (vt.active_mode, salon.index)
+        min_cards = min_cards_before_deal(salon.rules.deck_count, 1)
+        cached = self._tour_shoe_cache.get(cache_key)
+        if (
+            cached is not None
+            and cached.get("deck")
+            and not cached.get("shoe_needs_reshuffle", False)
+            and len(cached["deck"]) >= min_cards
+        ):
+            self.deck = list(cached["deck"])
+            self.shoe_needs_reshuffle = False
+            if hasattr(self, "card_counter") and self.card_counter:
+                self.card_counter.deck_count = salon.rules.deck_count
+                self.card_counter.running_count = int(cached.get("running_count", 0))
+                self.card_counter.observed_cards_count = int(cached.get("observed_cards_count", 0))
+                self._hole_card_observed = False
+
+        self.new_game()
+        self._save_active_salon_shoe_to_cache()
+
+        if (
+            self._free_play_snapshot
+            and self._free_play_snapshot.get("counting_hud_visible")
+            and hasattr(self, "card_counting_hud")
+            and self.card_counting_hud
+        ):
+            self.card_counting_hud.set_visible(True)
+        self._sync_counting_hud_counts()
+        self._sync_cursed_stakes_button()
+        self._sync_tour_button()
+        self._sync_tour_map_rail_button()
+        self._update_bankroll_display()
+        self._update_betting_controls()
+        self.set_dealer_speech(salon.host_greeting, stream=True)
+        return True
+
+    def exit_venue_tour(self) -> bool:
+        """Exits Casino Venue Tour cleanly and restores Free-Play bankroll, HouseRules, seats, and dealer."""
+        if not getattr(self, "tour_active", False):
+            return False
+        if getattr(self, "tour_in_salon", False):
+            if getattr(self, "_dealing", False) or getattr(self, "is_insurance_phase", False):
+                self.result_var.set("Finish the active hand before exiting the Casino Tour!")
+                return False
+            if getattr(self, "round_phase", None) not in (RoundPhase.BETTING, RoundPhase.ROUND_OVER):
+                self.result_var.set("Finish the active hand before exiting the Casino Tour!")
+                return False
+            if getattr(self, "round_phase", None) == RoundPhase.BETTING and self.chips_mode_var.get():
+                self._clear_side_bets()
+                self._clear_bet()
+            vt = self.save_manager.data.venue_tour
+            if getattr(self, "round_phase", None) != RoundPhase.ROUND_OVER:
+                set_active_tour_bankroll(vt, self.bankroll_var.get())
+            self.save_manager.save_venue_tour()
+            self._save_active_salon_shoe_to_cache()
+
+        self._cancel_tour_transition_timer()
+        self._unmount_tour_views()
+
+        snap = self._free_play_snapshot or {}
+        self._free_play_snapshot = None
+        self.tour_active = False
+        self.tour_in_salon = False
+
+        if hasattr(self, "rebuy_button"):
+            self.rebuy_button.configure(text="Rebuy $1K")
+
+        fp_bankroll = int(snap.get("bankroll", self.save_manager.data.current_bankroll))
+        fp_rules = snap.get("rules") or HouseRules.from_dict(self.save_manager.data.house_rules)
+        fp_seats = int(snap.get("table_seats", 1))
+        fp_chips = bool(snap.get("chips_mode", True))
+        fp_mode = str(snap.get("play_mode", self.save_manager.data.play_mode))
+        fp_dealer_view = bool(snap.get("dealer_view", True))
+        fp_hud = bool(snap.get("counting_hud_visible", fp_mode == "training"))
+
+        self.save_manager.data.current_bankroll = fp_bankroll
+        self.bankroll_var.set(fp_bankroll)
+        if hasattr(self, "engine") and self.engine:
+            self.engine.bankroll = fp_bankroll
+        self.current_bet_var.set(0)
+        self.hand_bets = [0]
+
+        self.apply_house_rules(fp_rules, persist=False)
+        if fp_seats != getattr(self, "table_seats", 1):
+            self.set_table_seats(fp_seats)
+        if not fp_chips and self.chips_mode_var.get():
+            self.apply_play_mode("casual", sync_save=False)
+        else:
+            self.play_mode = fp_mode
+            if hasattr(self, "play_mode_var"):
+                self.play_mode_var.set(fp_mode)
+            if hasattr(self, "card_counting_hud") and self.card_counting_hud:
+                self.card_counting_hud.set_visible(fp_hud)
+            self.new_game()
+
+        if not fp_dealer_view and self.dealer_view_var.get():
+            self._on_toggle_dealer_view()
+        else:
+            self._apply_phase_theme(self.haunted.phase)
+            self._update_dealer_avatar()
+
+        self._sync_cursed_stakes_button()
+        self._sync_tour_button()
+        self._sync_tour_map_rail_button()
+        self._update_bankroll_display()
+        self._update_betting_controls()
+        return True
+
+    def top_up_tour_stake(self) -> bool:
+        """
+        Executes Standard Mode Checkpoint Top-Up when `forgiving_bankroll <= 80%` of checkpoint floor:
+        restores checkpoint floor, increments `forgiving_rebuys` (isolated from Free-Play bailouts),
+        and reshuffles a fresh shoe with reset Hi-Lo count.
+        """
+        if not getattr(self, "tour_active", False):
+            return False
+        vt = self.save_manager.data.venue_tour
+        if getattr(self, "tour_in_salon", False):
+            if getattr(self, "_dealing", False) or getattr(self, "is_insurance_phase", False):
+                return False
+            if getattr(self, "round_phase", None) not in (RoundPhase.BETTING, RoundPhase.ROUND_OVER):
+                return False
+            if getattr(self, "round_phase", None) == RoundPhase.BETTING and self.chips_mode_var.get():
+                self._clear_side_bets()
+                self._clear_bet()
+            if vt.active_mode == "forgiving":
+                vt.forgiving_bankroll = int(self.bankroll_var.get())
+
+        if not apply_forgiving_top_up(vt):
+            return False
+
+        self.save_manager.save_venue_tour()
+        self.invalidate_tour_shoe_cache(mode="forgiving")
+
+        if getattr(self, "tour_in_salon", False):
+            if getattr(self, "all_cards", None):
+                self.deck = build_shoe(self.all_cards, self.deck_count)
+                self.shoe_needs_reshuffle = False
+            if hasattr(self, "card_counter") and self.card_counter:
+                self.card_counter.reset_shoe(deck_count=self.deck_count)
+                self._hole_card_observed = False
+            self._set_bankroll(vt.forgiving_bankroll)
+            self.current_bet_var.set(0)
+            self.hand_bets = [0]
+            self._update_shoe_display()
+            self._enter_betting_phase()
+            self._sync_counting_hud_counts()
+            self._save_active_salon_shoe_to_cache()
+            self.result_var.set(
+                f"Checkpoint Top-Up! Tour stack restored to ${vt.forgiving_bankroll:,} (Fresh shoe shuffled)."
+            )
+            self.set_dealer_speech(
+                "Checkpoint stake restored and fresh shoe shuffled. Place your wager!",
+                stream=True,
+            )
+            if hasattr(self, "sound_manager"):
+                self.sound_manager.play_chip_stack()
+        else:
+            if hasattr(self, "sound_manager"):
+                self.sound_manager.play_chip_stack()
+            if getattr(self, "tour_frame", None) is not None:
+                self.tour_frame.refresh_map(
+                    speech_override=(
+                        f"Checkpoint Top-Up complete! Your Standard Tour stack is restored to "
+                        f"${vt.forgiving_bankroll:,} with freshly shuffled shoes."
+                    )
+                )
+        return True
+
+    def _complete_tour_promotion_transition(
+        self,
+        next_salon_idx: int,
+        speech_override: Optional[str] = None,
+    ) -> None:
+        """Tracked post-hand callback returning from a salon table to unveil the next Overworld Map stop."""
+        self._cancel_tour_transition_timer()
+        if not getattr(self, "tour_active", False):
+            return
+        if getattr(self, "_dealing", False) or getattr(self, "round_phase", None) not in (
+            RoundPhase.BETTING,
+            RoundPhase.ROUND_OVER,
+        ):
+            return
+        self._save_active_salon_shoe_to_cache()
+        self._mount_tour_map_view(focused_idx=next_salon_idx, speech_override=speech_override)
+
+    def _handle_tour_round_settled(self) -> None:
+        """Evaluates settled Tour hand against salon promotion/bust gates and schedules Map transitions."""
+        if not (getattr(self, "tour_active", False) and getattr(self, "tour_in_salon", False)):
+            return
+        self._cancel_tour_transition_timer()
+        vt = self.save_manager.data.venue_tour
+        new_br = max(0, int(self.bankroll_var.get()))
+        round_start_br = getattr(self, "_round_start_bankroll", None)
+        res = evaluate_tour_settlement(
+            vt,
+            self.active_tour_salon_idx,
+            new_br,
+            round_start_bankroll=round_start_br,
+        )
+        if res.ironman_busted:
+            self.bankroll_var.set(res.bankroll_after)
+            if hasattr(self, "engine") and self.engine:
+                self.engine.bankroll = res.bankroll_after
+            self.invalidate_tour_shoe_cache(mode="ironman")
+        if res.tour_completed and hasattr(self, "save_manager") and self.save_manager:
+            self.save_manager.unlock_achievement("tour_champion")
+            if res.mode == "ironman":
+                self.save_manager.unlock_achievement("ironman_legend")
+        self.save_manager.save_venue_tour()
+        self._save_active_salon_shoe_to_cache()
+        self._update_bankroll_display()
+        self._update_betting_controls()
+
+        cur_msg = self.result_var.get()
+        sep = " | " if cur_msg else ""
+
+        if res.ironman_busted:
+            self.result_var.set(
+                f"{cur_msg}{sep}💀 IRONMAN BUST! Run reset to Salon 1 ($500) — Obsidian Stamps preserved!"
+            )
+            self.set_dealer_speech(
+                "Ironman stack busted! Returning to the Tour Map—your earned Obsidian Medallions remain forever.",
+                stream=True,
+            )
+            self._tour_transition_timer_id = self.root.after(
+                1500,
+                lambda: self._complete_tour_promotion_transition(
+                    0,
+                    speech_override=(
+                        "Rough beat on the Ironman Gauntlet! Your run resets to Salon 1 ($500), "
+                        "and all earned Obsidian Medallions remain permanently stamped."
+                    ),
+                ),
+            )
+        elif res.forgiving_busted:
+            floor_amt = get_forgiving_checkpoint_floor(vt)
+            self.result_var.set(
+                f"{cur_msg}{sep}Tour stack at $0 — Click 'New Game' then '↺ Top Up' to restore ${floor_amt:,}!"
+            )
+        elif res.promoted:
+            if hasattr(self, "sound_manager"):
+                self.sound_manager.play_payout()
+            if res.tour_completed:
+                banner = "IRONMAN GAUNTLET" if res.mode == "ironman" else "GRAND CASINO TOUR"
+                self.result_var.set(f"{cur_msg}{sep}🏆 {banner} COMPLETE! $150,000 SUMMIT CONQUERED!")
+                speech = (
+                    "UNBELIEVABLE! You conquered all 8 Salons on the Ironman Gauntlet with zero re-buys! "
+                    "Every Obsidian Medallion is yours forever!"
+                    if res.mode == "ironman"
+                    else "CHAMPION OF THE CIRCUIT! You reached $150,000 at the Sanctum of Light and cleared all 8 Salons! "
+                    "Enjoy free-roam across the entire map or test your mettle in Ironman Mode!"
+                )
+                self._tour_transition_timer_id = self.root.after(
+                    1500,
+                    lambda s=speech: self._complete_tour_promotion_transition(len(SALON_SPECS) - 1, speech_override=s),
+                )
+            elif res.newly_unlocked_salon_idx is not None:
+                next_idx = int(res.newly_unlocked_salon_idx)
+                next_salon = get_salon_spec(next_idx)
+                self.result_var.set(
+                    f"{cur_msg}{sep}🎉 SALON {next_idx + 1} UNLOCKED: {next_salon.name.upper()}!"
+                )
+                self._tour_transition_timer_id = self.root.after(
+                    1500,
+                    lambda idx=next_idx: self._complete_tour_promotion_transition(idx),
+                )
 
     # ------------------------------------------------------------------------
     # Haunted Halloween & Hell's Table Orchestration
@@ -2245,6 +2932,8 @@ class BlackjackApp:
     def _on_toggle_dealer_view(self):
         """Toggles upper dealer portrait / stage view visibility."""
         if getattr(self, "bootcamp_active", False):
+            return "break"
+        if getattr(self, "tour_active", False) and not getattr(self, "tour_in_salon", False):
             return "break"
         if hasattr(self, "haunted") and self.haunted.phase == Phase.HELL_TABLE:
             return "break"
@@ -2376,6 +3065,9 @@ class BlackjackApp:
         speech_bg = profile.speech_bg
         nameplate_fg = profile.nameplate_fg
         nameplate_title = profile.title
+        if getattr(self, "tour_active", False) and not getattr(self, "tour_in_salon", False):
+            nameplate_title = "🎩 Julian — Tour Coordinator"
+            nameplate_fg = "#ffd700"
 
         # Apply palette to dialogue frame & nameplate
         if hasattr(self, "dealer_dialogue_frame"):
@@ -2929,6 +3621,20 @@ class BlackjackApp:
         if line:
             self.set_dealer_speech(line, stream=True)
 
+    def _equip_active_normal_dealer(self) -> Optional[str]:
+        """Equips the appropriate dealer & costume for Phase.NORMAL and returns optional stage backdrop override."""
+        if not hasattr(self, "dealer_actor") or not self.dealer_actor:
+            return None
+        if getattr(self, "tour_active", False):
+            if getattr(self, "tour_in_salon", False):
+                salon = get_salon_spec(getattr(self, "active_tour_salon_idx", 0))
+                self.dealer_actor.equip_costume(salon.dealer_id, costume_id=salon.costume_id)
+                return salon.stage_backdrop_theme
+            self.dealer_actor.equip_costume("julian", costume_id=TOUR_COORDINATOR_COSTUME)
+            return "casino"
+        self.dealer_actor.equip_costume(self._get_effective_normal_costume())
+        return None
+
     def _get_effective_normal_costume(self) -> str:
         """Returns the active dealer costume ID for Phase.NORMAL, defaulting to 'professor' in Training Mode."""
         save_data = getattr(getattr(self, "save_manager", None), "data", None) if hasattr(self, "save_manager") else None
@@ -2984,13 +3690,13 @@ class BlackjackApp:
             if self.haunted.phase == Phase.VICTORY:
                 self.dealer_actor.equip_costume("uriel")
             elif self.haunted.phase == Phase.NORMAL:
-                self.dealer_actor.equip_costume(self._get_effective_normal_costume())
+                self._equip_active_normal_dealer()
 
         bg_col = PANEL_BACKGROUND_COLOR
 
         if self.haunted.phase in (Phase.CREEP, Phase.OMEN, Phase.SNUFFING):
             if hasattr(self, "dealer_actor"):
-                self.dealer_actor.equip_costume(self._get_effective_normal_costume())
+                self._equip_active_normal_dealer()
                 img = self._get_scaled_dealer_photo() or self.dealer_actor.get_photo_image()
                 profile = self.dealer_actor.get_profile()
                 base_title = profile.title if profile else "The Classic Croupier"
@@ -3011,14 +3717,21 @@ class BlackjackApp:
             bg_col = "#0d2b26"
         else:
             if hasattr(self, "dealer_actor"):
-                self.dealer_actor.equip_costume(self._get_effective_normal_costume())
+                stage_override = self._equip_active_normal_dealer()
                 img = self._get_scaled_dealer_photo() or self.dealer_actor.get_photo_image()
                 profile = self.dealer_actor.get_profile()
-                name_text = profile.title
-                name_col = profile.nameplate_fg
+                if getattr(self, "tour_active", False) and not getattr(self, "tour_in_salon", False):
+                    name_text = "🎩 Julian — Tour Coordinator"
+                    name_col = "#ffd700"
+                else:
+                    name_text = profile.title
+                    name_col = profile.nameplate_fg
                 bg_col = profile.speech_bg
-                if hasattr(self, "dealer_stage_canvas") and profile and getattr(profile, "theme", None):
-                    self.dealer_stage_canvas.set_theme(profile.theme)
+                target_stage_theme = stage_override or (getattr(profile, "theme", None) if profile else None)
+                if hasattr(self, "dealer_stage_canvas") and target_stage_theme:
+                    self.dealer_stage_canvas.set_theme(target_stage_theme)
+                if getattr(self, "tour_active", False) and hasattr(self, "card_table_frame") and isinstance(self.card_table_frame, TableFeltCanvas):
+                    self.card_table_frame.set_theme("casino")
             else:
                 img = self.haunted_assets.get("dealer_classic")
                 name_text = "The Classic Croupier"
@@ -3473,18 +4186,19 @@ class BlackjackApp:
                 widget.configure(background=stage_bg)
 
         # Dealer costume selection by phase
+        stage_override = None
         if hasattr(self, "dealer_actor"):
             if phase == Phase.HELL_TABLE:
                 self.dealer_actor.equip_costume("malphas")
             elif phase == Phase.VICTORY:
                 self.dealer_actor.equip_costume("uriel")
             elif phase == Phase.NORMAL:
-                self.dealer_actor.equip_costume(self._get_effective_normal_costume())
+                stage_override = self._equip_active_normal_dealer()
 
         if hasattr(self, "dealer_stage_canvas"):
             self.dealer_stage_canvas.configure(background=stage_bg)
-            stage_theme = palette.felt_theme
-            if phase == Phase.NORMAL and hasattr(self, "dealer_actor"):
+            stage_theme = stage_override or palette.felt_theme
+            if stage_override is None and phase == Phase.NORMAL and hasattr(self, "dealer_actor"):
                 prof = self.dealer_actor.get_profile()
                 if prof and getattr(prof, "theme", None) in self.dealer_stage_canvas.backdrop_images:
                     stage_theme = prof.theme
@@ -3686,10 +4400,11 @@ class BlackjackApp:
     def _show_victory_dialog(self):
         """Displays triumphant banishment dialogue and awards spoils."""
         self._apply_phase_theme(Phase.VICTORY)
-        self.bankroll_var.set(self.bankroll_var.get() + 6666)
+        self.bankroll_var.set(self.bankroll_var.get() + EXORCIST_BOUNTY_AMOUNT)
         if hasattr(self, "save_manager"):
             self.save_manager.unlock_achievement("exorcist")
             self.save_manager.record_bankroll(self.bankroll_var.get())
+        self._sync_tour_button()
         if hasattr(self, "cursed_stakes_button"):
             cursed_opts = get_grid_options("mahogany_rail", "cursed_stakes")
             if "padx" in cursed_opts and isinstance(cursed_opts["padx"], tuple):
@@ -3702,6 +4417,7 @@ class BlackjackApp:
             self.haunted.reset_after_victory()
             self.cursed_stakes_var.set(False)
             self._sync_cursed_stakes_button()
+            self._sync_tour_button()
             self._candles_manifested = False
             self._last_gravestones_risen = 0
             self._update_candles_display()
@@ -3722,8 +4438,8 @@ class BlackjackApp:
                     pass
             self._update_bankroll_display()
             self._update_dealer_avatar()
-            self.set_dealer_speech("✦ Darkness is banished! Peace returns to the table. ✦", stream=True)
-            self.result_var.set("VICTORY! +$6,666 Exorcist Bounty Claimed!")
+            self.set_dealer_speech("✦ Darkness is banished! The Grand Casino Venue Tour is now open! ✦", stream=True)
+            self.result_var.set(f"VICTORY! +${EXORCIST_BOUNTY_AMOUNT:,} Exorcist Bounty Claimed! 🗺 Tour Unlocked!")
 
         is_headless = getattr(self, "suppress_mode_dialog", False)
         try:
@@ -3737,8 +4453,8 @@ class BlackjackApp:
 
         text = (
             "The Pit Fiend is banished back to the void! Your soul shines untarnished.\n\n"
-            "The Heavens have bestowed upon you the EXORCIST title and +$6,666 casino bankroll.\n\n"
-            "You have unlocked permanent Cursed Stakes mode at the bottom action bar!"
+            f"The Heavens have bestowed upon you the EXORCIST title and +${EXORCIST_BOUNTY_AMOUNT:,} casino bankroll.\n\n"
+            "You have unlocked the Grand Casino Venue Tour (🗺 Tour in the top bar) and manual Cursed Stakes mode!"
         )
         port_img = None
         if hasattr(self, "dealer_actor"):
@@ -3820,7 +4536,7 @@ class BlackjackApp:
         """Synchronizes Cursed Stakes button label, theme, and visibility with active Haunted state."""
         if not hasattr(self, "cursed_stakes_button"):
             return
-        if getattr(self, "table_seats", 1) == 3:
+        if getattr(self, "table_seats", 1) == 3 or getattr(self, "tour_active", False):
             self.cursed_stakes_button.grid_remove()
             return
         if (
@@ -3939,7 +4655,7 @@ class BlackjackApp:
 
     def _on_toggle_cursed_stakes(self):
         """Toggles between manually entering Hell's Table mode and exiting back to normal play at any time."""
-        if getattr(self, "table_seats", 1) == 3:
+        if getattr(self, "table_seats", 1) == 3 or getattr(self, "tour_active", False):
             return
         if self.haunted.phase != Phase.NORMAL:
             self._exit_haunted_mode()
@@ -4066,6 +4782,9 @@ class BlackjackApp:
 
     def new_game(self):
         """Starts a fresh round of Blackjack or enters betting phase depending on Chips Mode."""
+        if getattr(self, "_tour_transition_timer_id", None) is not None and getattr(self, "tour_active", False):
+            self.return_to_tour_map()
+            return
         # 0. Cancel any active dealer timer from a prior round and discard uncommitted telemetry
         if getattr(self, "_gui_telemetry_active", False) and getattr(self, "tripometer", None) is not None:
             self.tripometer.abort_round()
@@ -4140,7 +4859,7 @@ class BlackjackApp:
             self.insurance_frame.grid_remove()
 
         # Haunted progression & table synchronization
-        if getattr(self, "table_seats", 1) == 3:
+        if getattr(self, "table_seats", 1) == 3 or getattr(self, "tour_active", False):
             if hasattr(self, "haunted"):
                 self.haunted.phase = Phase.NORMAL
             phase = Phase.NORMAL
@@ -4160,6 +4879,8 @@ class BlackjackApp:
                 self.cursed_stakes_button.grid_remove()
             if hasattr(self, "blessings_tray"):
                 self.blessings_tray.grid_remove()
+            if getattr(self, "tour_active", False) and getattr(self, "tour_in_salon", False):
+                self._save_active_salon_shoe_to_cache()
         else:
             phase = self.haunted.on_new_hand()
             self._apply_phase_theme(phase)
@@ -4224,7 +4945,17 @@ class BlackjackApp:
             max_bet = self.house_rules.maximum_bet
             if round_br <= 0:
                 self.current_bet_var.set(0)
-                self.result_var.set("Bankroll empty! Click Rebuy $1K to keep playing.")
+                if getattr(self, "tour_active", False):
+                    vt = self.save_manager.data.venue_tour
+                    if vt.active_mode == "ironman":
+                        self.result_var.set("Ironman stack empty! Return to Tour Map to start a fresh climb.")
+                    else:
+                        floor_amt = get_forgiving_checkpoint_floor(vt)
+                        self.result_var.set(
+                            f"Tour stack empty! Click '↺ Top Up' to restore ${floor_amt:,} Checkpoint."
+                        )
+                else:
+                    self.result_var.set("Bankroll empty! Click Rebuy $1K to keep playing.")
             elif round_br < self.house_rules.minimum_bet:
                 if self.current_bet_var.get() != round_br:
                     self.current_bet_var.set(0)
@@ -4253,6 +4984,7 @@ class BlackjackApp:
 
         self._update_bankroll_display()
         self._update_betting_controls()
+        self._sync_tour_map_rail_button()
         self._refresh_strategy_hint()
 
     def _is_supernatural_round(self) -> bool:
@@ -4279,6 +5011,10 @@ class BlackjackApp:
             and self.haunted.phase == Phase.HELL_TABLE
         )
         reason = "haunted" if self._is_supernatural_round() else None
+        tour_prefix = ""
+        if getattr(self, "tour_active", False) and getattr(self, "tour_in_salon", False):
+            salon = get_salon_spec(getattr(self, "active_tour_salon_idx", 0))
+            tour_prefix = f"T{salon.index + 1} {salon.short_name}"
         self._round_start_bankroll = int(round_start_bankroll)
         self.tripometer.begin_round(
             rules=self.house_rules,
@@ -4287,6 +5023,7 @@ class BlackjackApp:
             round_bankroll=int(round_start_bankroll),
             chips_mode=chips_active,
             ungraded_reason=reason,
+            rules_badge_prefix=tour_prefix,
         )
         self._gui_telemetry_active = True
 
@@ -4412,6 +5149,7 @@ class BlackjackApp:
 
         if self.chips_mode_var.get():
             self._update_betting_controls()
+        self._sync_tour_map_rail_button()
 
         if getattr(self, "table_seats", 1) == 3 and hasattr(self, "engine"):
             active_seats = [s.seat_index for s in self.engine.get_active_seats()]
@@ -4658,6 +5396,16 @@ class BlackjackApp:
         if hasattr(self, "sound_manager"):
             self.sound_manager.play_chip_clear()
 
+    def _on_main_spot_click(self, amt: int = 5):
+        """
+        Stages a bet when clicking the center 1-seat betting spot:
+        - Default center clicks (`amt == 5`) increment by `max(5, effective_minimum_bet)` (`1u`),
+          so high-roller salons ($100–$500 min) ramp cleanly in 1-unit increments ($500 -> $1,000 -> $1,500).
+        """
+        eff_min = effective_minimum_bet(self.house_rules, self._get_gui_round_bankroll())
+        step = max(amt, eff_min) if amt == 5 else amt
+        self._add_chip_bet(step)
+
     def _clear_main_bet(self):
         """Resets the staged main bet back to 0, clearing side bets as well since side bets require a main bet."""
         if not self.fsm.trigger("stage_bet"):
@@ -4788,6 +5536,9 @@ class BlackjackApp:
 
     def set_table_seats(self, count: int):
         """Switches table layout between 1-Seat and 3-Seat Wagering modes."""
+        if getattr(self, "tour_active", False) and count >= 3:
+            self.result_var.set("Casino Venue Tour Salons are strictly 1-Seat VIP tables!")
+            return
         self._unmount_bootcamp_views()
         new_count = 3 if count >= 3 else 1
         if getattr(self, "table_seats", 1) != new_count and hasattr(self, "engine"):
@@ -5029,7 +5780,14 @@ class BlackjackApp:
             res = results.get(b_type)
             if res and getattr(res, "bet", 0) > 0:
                 if hasattr(self, "save_manager"):
-                    self.save_manager.record_side_bet(res.bet_type, res.outcome, res.bet, res.profit, res.won)
+                    self.save_manager.record_side_bet(
+                        res.bet_type,
+                        res.outcome,
+                        res.bet,
+                        res.profit,
+                        res.won,
+                        track_financials=not bool(getattr(self, "tour_active", False)),
+                    )
                 if res.won:
                     self.bankroll_var.set(self.engine.bankroll)
                     if hasattr(self, "chip_visualizer"):
@@ -5055,7 +5813,10 @@ class BlackjackApp:
         self._update_betting_controls()
 
     def _rebuy(self):
-        """Replenishes player bankroll strictly when invariant round_bankroll == 0."""
+        """Replenishes player bankroll strictly when invariant round_bankroll == 0 (or Tour Checkpoint Top-Up)."""
+        if getattr(self, "tour_active", False):
+            self.top_up_tour_stake()
+            return
         if self._get_gui_round_bankroll() <= 0:
             self._set_bankroll(STARTING_BANKROLL)
             self.current_bet_var.set(0)
@@ -5072,12 +5833,39 @@ class BlackjackApp:
         """Updates the bankroll & bet label text and synchronizes the bottom-right bankroll chip piles."""
         if not hasattr(self, "bankroll_label"):
             return
+        if getattr(self, "tour_active", False) and not getattr(self, "tour_in_salon", False):
+            vt = self.save_manager.data.venue_tour
+            tour_br = get_active_tour_bankroll(vt)
+            mode_tag = "♦ IRONMAN" if vt.active_mode == "ironman" else "★ STANDARD"
+            self.bankroll_label.configure(
+                text=f"🗺 CASINO TOUR ({mode_tag})  |  TOUR BANKROLL: ${tour_br:,}"
+            )
+            return
+
         bankroll = self.bankroll_var.get()
         total_side = sum(self.engine.staged_side_bets.values()) if hasattr(self, "engine") and self.is_betting_phase else 0
         bet = (self.current_bet_var.get() + total_side) if self.is_betting_phase else sum(self.hand_bets)
-        self.bankroll_label.configure(
-            text=f"BANKROLL: ${bankroll:,}  |  BET: ${bet:,}"
-        )
+        if getattr(self, "tour_active", False) and getattr(self, "tour_in_salon", False):
+            vt = self.save_manager.data.venue_tour
+            salon = get_salon_spec(getattr(self, "active_tour_salon_idx", 0))
+            mode_badge = "♦ IRONMAN" if vt.active_mode == "ironman" else "★ TOUR"
+            if vt.active_mode == "forgiving" and vt.forgiving_completed:
+                target_str = "VIP ROAM"
+            elif vt.active_mode == "forgiving" and salon.index < get_forgiving_frontier_idx(vt):
+                f_spec = get_salon_spec(get_forgiving_frontier_idx(vt))
+                target_str = f"GOAL: S{f_spec.index + 1} (${f_spec.exit_bankroll:,})"
+            else:
+                target_str = f"GOAL: ${salon.exit_bankroll:,}"
+            self.bankroll_label.configure(
+                text=(
+                    f"{mode_badge} S{salon.index + 1} | "
+                    f"TOUR BANKROLL: ${bankroll:,} | {target_str} | BET: ${bet:,}"
+                )
+            )
+        else:
+            self.bankroll_label.configure(
+                text=f"BANKROLL: ${bankroll:,}  |  BET: ${bet:,}"
+            )
         if hasattr(self, "chip_visualizer"):
             available = max(0, bankroll - self.current_bet_var.get() - total_side) if self.is_betting_phase else max(0, bankroll)
             self.chip_visualizer.set_bankroll(available, interactive=self.is_betting_phase)
@@ -5155,10 +5943,21 @@ class BlackjackApp:
                 self.clear_bet_button.configure(state="normal" if (staged_bet > 0 or total_side > 0) else "disabled")
                 self.deal_bet_button.configure(state="normal" if deal_ok else "disabled")
 
-            if round_br <= 0:
-                self.rebuy_button.configure(state="normal")
+            if getattr(self, "tour_active", False) and getattr(self, "tour_in_salon", False):
+                vt = self.save_manager.data.venue_tour
+                if vt.active_mode == "ironman":
+                    self.rebuy_button.configure(text="Ironman", state="disabled")
+                else:
+                    can_tu = round_br <= get_top_up_threshold(vt)
+                    self.rebuy_button.configure(
+                        text="Top Up",
+                        state="normal" if can_tu else "disabled",
+                    )
             else:
-                self.rebuy_button.configure(state="disabled")
+                self.rebuy_button.configure(
+                    text="Rebuy $1K",
+                    state="normal" if round_br <= 0 else "disabled",
+                )
         else:
             self._set_dock_phase("play")
             # During active card play or dealer turn, betting controls are disabled
@@ -5241,6 +6040,14 @@ class BlackjackApp:
                     m_x = cs_x + (cs_w // 2) + gap + (m_w // 2)
                     cur_x = max(cur_x, cs_x + (cs_w // 2) + int(24 * s))
 
+        if hasattr(self, "tour_map_rail_button") and isinstance(self.tour_map_rail_button, CanvasPixelButton):
+            tm_w = int(124 * s)
+            tm_x = side_margin + (tm_w // 2)
+            self.tour_map_rail_button.resize(tm_x, cy, tm_w, btn_h, scale=btn_scale)
+            if bool(self.tour_map_rail_button.grid_info()):
+                m_x = tm_x + (tm_w // 2) + gap + (m_w // 2)
+                cur_x = max(cur_x, tm_x + (tm_w // 2) + int(24 * s))
+
         # Miracle: Placed to the right of Cursed Stakes when Cursed Stakes is visible
         if hasattr(self, "miracle_button"):
             self.miracle_button.resize(m_x, cy, m_w, btn_h, scale=btn_scale)
@@ -5262,6 +6069,7 @@ class BlackjackApp:
         self.round_phase = RoundPhase.INSURANCE
         self._set_action_buttons_state("disabled")
         self.new_game_button.configure(state="disabled")
+        self._sync_tour_map_rail_button()
 
         if getattr(self, "table_seats", 1) == 3 and hasattr(self, "engine"):
             active_seats = [s for s in self.engine.seats if s.is_active and s.main_bet > 0]
@@ -6440,7 +7248,12 @@ class BlackjackApp:
             ]
         )
 
-        self.new_game_button.configure(state="normal")
+        if getattr(self, "tour_active", False) and getattr(self, "tour_in_salon", False):
+            self._handle_tour_round_settled()
+
+        has_tour_transition = getattr(self, "_tour_transition_timer_id", None) is not None
+        self.new_game_button.configure(state="disabled" if has_tour_transition else "normal")
+        self._sync_tour_map_rail_button()
         self._refresh_strategy_hint()
 
     def on_hit(self):
@@ -6579,6 +7392,12 @@ class BlackjackApp:
           Control immediately returns to the Tkinter event loop, keeping the UI responsive.
         - If NO: concludes the round and awards wins.
         """
+        prev_tid = getattr(self, "_dealer_timer_id", None)
+        if prev_tid is not None:
+            try:
+                self.root.after_cancel(prev_tid)
+            except Exception:
+                pass
         self._dealer_timer_id = None
 
         # Guard against window close during active callback
@@ -6909,50 +7728,55 @@ class BlackjackApp:
         primary_outcome = outcomes[0]
         is_double = getattr(self, "_last_was_double", False)
         self._last_was_double = False
-        prev_phase = self.haunted.phase
 
-        soul_delta, haunted_msg = self.haunted.on_round_outcome(
-            primary_outcome, is_double=is_double, is_split=is_split
-        )
-        self._update_dealer_speech_for_outcome(primary_outcome)
+        if getattr(self, "tour_active", False):
+            haunted_msg = ""
+            self._update_dealer_speech_for_outcome(primary_outcome)
+        else:
+            prev_phase = self.haunted.phase
 
-        if prev_phase in (Phase.OMEN, Phase.SNUFFING):
-            self._update_candles_display()
-            if primary_outcome in ('DEALER_WINS', 'PLAYER_BUST', 'SURRENDER'):
-                self._update_gravestones_display()
+            soul_delta, haunted_msg = self.haunted.on_round_outcome(
+                primary_outcome, is_double=is_double, is_split=is_split
+            )
+            self._update_dealer_speech_for_outcome(primary_outcome)
+
+            if prev_phase in (Phase.OMEN, Phase.SNUFFING):
+                self._update_candles_display()
+                if primary_outcome in ('DEALER_WINS', 'PLAYER_BUST', 'SURRENDER'):
+                    self._update_gravestones_display()
+                    if hasattr(self, "sound_manager"):
+                        self.sound_manager.play_haunted_sound("candle_snuff")
+                        self.sound_manager.play_haunted_sound("stone_scrape")
+                if self.haunted.candles_remaining == 0:
+                    self._haunted_round_timer_id = self.root.after(800, self._trigger_hell_table)
+
+            elif self.haunted.phase == Phase.HELL_TABLE:
+                if hasattr(self, "chip_visualizer"):
+                    self.chip_visualizer.grid_remove()
+                if hasattr(self, "soul_meter_canvas"):
+                    self.soul_meter_canvas.grid()
+                    self.soul_meter_canvas.set_meter(self.haunted.soul_meter, animated=True)
+                if primary_outcome in ('DEALER_WINS', 'PLAYER_BUST', 'SURRENDER'):
+                    self._update_gravestones_display()
+                    if hasattr(self, "sound_manager"):
+                        self.sound_manager.play_haunted_sound("stone_scrape")
+
+                if self.haunted.is_draft_pending:
+                    self._haunted_round_timer_id = self.root.after(700, self._open_angelic_draft)
+
+            elif self.haunted.phase == Phase.VICTORY:
+                if hasattr(self, "soul_meter_canvas"):
+                    self.soul_meter_canvas.set_meter(1.0, animated=True)
                 if hasattr(self, "sound_manager"):
-                    self.sound_manager.play_haunted_sound("candle_snuff")
-                    self.sound_manager.play_haunted_sound("stone_scrape")
-            if self.haunted.candles_remaining == 0:
-                self._haunted_round_timer_id = self.root.after(800, self._trigger_hell_table)
+                    self.sound_manager.play_haunted_sound("banish")
+                self._haunted_round_timer_id = self.root.after(600, self._show_victory_dialog)
 
-        elif self.haunted.phase == Phase.HELL_TABLE:
-            if hasattr(self, "chip_visualizer"):
-                self.chip_visualizer.grid_remove()
-            if hasattr(self, "soul_meter_canvas"):
-                self.soul_meter_canvas.grid()
-                self.soul_meter_canvas.set_meter(self.haunted.soul_meter, animated=True)
-            if primary_outcome in ('DEALER_WINS', 'PLAYER_BUST', 'SURRENDER'):
-                self._update_gravestones_display()
+            elif self.haunted.phase == Phase.DEFEAT:
+                if hasattr(self, "soul_meter_canvas"):
+                    self.soul_meter_canvas.set_meter(0.0, animated=True)
                 if hasattr(self, "sound_manager"):
-                    self.sound_manager.play_haunted_sound("stone_scrape")
-
-            if self.haunted.is_draft_pending:
-                self._haunted_round_timer_id = self.root.after(700, self._open_angelic_draft)
-
-        elif self.haunted.phase == Phase.VICTORY:
-            if hasattr(self, "soul_meter_canvas"):
-                self.soul_meter_canvas.set_meter(1.0, animated=True)
-            if hasattr(self, "sound_manager"):
-                self.sound_manager.play_haunted_sound("banish")
-            self._haunted_round_timer_id = self.root.after(600, self._show_victory_dialog)
-
-        elif self.haunted.phase == Phase.DEFEAT:
-            if hasattr(self, "soul_meter_canvas"):
-                self.soul_meter_canvas.set_meter(0.0, animated=True)
-            if hasattr(self, "sound_manager"):
-                self.sound_manager.play_haunted_sound("demon_laugh")
-            self.root.after(600, self._show_defeat_dialog)
+                    self.sound_manager.play_haunted_sound("demon_laugh")
+                self.root.after(600, self._show_defeat_dialog)
 
         if haunted_msg:
             cur = self.result_var.get()
@@ -6966,14 +7790,16 @@ class BlackjackApp:
 
         # 4. SaveManager Statistics & Gameplay Achievements Hookup
         if hasattr(self, "save_manager"):
-            if self.chips_mode_var.get():
+            in_tour = bool(getattr(self, "tour_active", False))
+            if self.chips_mode_var.get() and not in_tour:
                 self.save_manager.record_round_financials(
                     current_bankroll=self.bankroll_var.get(),
                     total_wagered=sum(self.hand_bets),
                     save_now=False,
                 )
-            is_all_in = getattr(self, "_is_all_in_round", False) or (
-                self.chips_mode_var.get() and len(payouts) > 0 and self.bankroll_var.get() == sum(payouts)
+            is_all_in = (not in_tour) and (
+                getattr(self, "_is_all_in_round", False)
+                or (self.chips_mode_var.get() and len(payouts) > 0 and self.bankroll_var.get() == sum(payouts))
             )
             cur_tc = (
                 self.card_counter.true_count(len(self.deck))
@@ -6985,8 +7811,8 @@ class BlackjackApp:
                 player_hands=self.player_hands,
                 dealer_hand=self.dealer_hand,
                 hand_bets=self.hand_bets,
-                current_bankroll=self.bankroll_var.get(),
-                chips_mode=bool(self.chips_mode_var.get()),
+                current_bankroll=0 if in_tour else self.bankroll_var.get(),
+                chips_mode=False if in_tour else bool(self.chips_mode_var.get()),
                 is_all_in=is_all_in,
                 haunted_phase=self.haunted.phase,
                 current_streak=getattr(self, "_current_win_streak", 0),
@@ -6995,9 +7821,14 @@ class BlackjackApp:
             )
             self._is_all_in_round = False
 
-        # Disable Hit/Stand/Double/Split/Surrender, enable New Game
+        if getattr(self, "tour_active", False) and getattr(self, "tour_in_salon", False):
+            self._handle_tour_round_settled()
+
+        # Disable Hit/Stand/Double/Split/Surrender, enable New Game (unless a Tour Map transition is pending)
         self._set_action_buttons_state("disabled")
-        self.new_game_button.configure(state="normal")
+        has_tour_transition = getattr(self, "_tour_transition_timer_id", None) is not None
+        self.new_game_button.configure(state="disabled" if has_tour_transition else "normal")
+        self._sync_tour_map_rail_button()
         self._refresh_strategy_hint()
 
     def _update_ui_scaling(self):
@@ -7028,6 +7859,7 @@ class BlackjackApp:
             getattr(self, "scale_button", None),
             getattr(self, "fullscreen_button", None),
             getattr(self, "trip_button", None),
+            getattr(self, "tour_button", None),
             getattr(self, "settings_button", None),
         ):
             if btn:
@@ -7105,6 +7937,19 @@ class BlackjackApp:
                 else:
                     px = int(px * s)
                 self.cursed_stakes_button.grid_configure(padx=px, pady=btn_pady)
+
+        if hasattr(self, "tour_map_rail_button"):
+            self.tour_map_rail_button.configure(font=f_cursed_btn)
+            if hasattr(self.tour_map_rail_button, "rebuild"):
+                self.tour_map_rail_button.rebuild(scale=btn_scale)
+            if bool(self.tour_map_rail_button.grid_info()):
+                cursed_opts = get_grid_options("mahogany_rail", "cursed_stakes")
+                px = cursed_opts.get("padx", (6, 8))
+                if isinstance(px, (list, tuple)):
+                    px = tuple(int(p * s) for p in px)
+                else:
+                    px = int(px * s)
+                self.tour_map_rail_button.grid_configure(padx=px, pady=btn_pady)
 
         # 4. Betting Buttons (when Chips Mode is on)
         f_bet_btn = get_element_font("betting_button", scale=scale_ratio)
@@ -7281,6 +8126,21 @@ class BlackjackApp:
         if getattr(self, "bootcamp_active", False) and getattr(self, "bootcamp_frame", None) is not None:
             self.bootcamp_frame.handle_key_event("Escape")
             return "break"
+        if getattr(self, "tour_active", False):
+            if getattr(self, "tour_in_salon", False):
+                if (
+                    not getattr(self, "_dealing", False)
+                    and not getattr(self, "is_insurance_phase", False)
+                    and getattr(self, "round_phase", None) in (RoundPhase.BETTING, RoundPhase.ROUND_OVER)
+                ):
+                    self.return_to_tour_map()
+                    return "break"
+            else:
+                if getattr(self, "tour_frame", None) is not None:
+                    self.tour_frame.handle_key_event("Escape")
+                else:
+                    self.exit_venue_tour()
+                return "break"
         if getattr(self, "is_insurance_phase", False) and getattr(self, "decline_insurance_button", None):
             try:
                 if str(self.decline_insurance_button.cget("state")) == "normal":
@@ -7322,6 +8182,11 @@ class BlackjackApp:
                 self.bootcamp_frame.cancel_all_timers()
             except Exception:
                 pass
+        if getattr(self, "tour_frame", None) is not None:
+            try:
+                self.tour_frame.cancel_all_timers()
+            except Exception:
+                pass
         if hasattr(self, "card_table_frame") and hasattr(self.card_table_frame, "cancel_card_animations"):
             self.card_table_frame.cancel_card_animations()
         self._dealing = False
@@ -7334,6 +8199,7 @@ class BlackjackApp:
             "_dealer_speech_anim_timer_id",
             "_typewriter_timer_id",
             "_haunted_round_timer_id",
+            "_tour_transition_timer_id",
             "_ambient_timer_id",
             "_dealer_timer_id",
             "_blessing_tooltip_hide_id",
@@ -7353,10 +8219,19 @@ class BlackjackApp:
 
     def _on_close(self):
         """Safely cleans up any pending timer callback before window destruction."""
-        if hasattr(self, "save_manager") and getattr(self, "chips_mode_var", None) and self.chips_mode_var.get():
-            # If a round is actively in flight, wagers were deducted; persist current bankroll to disk
-            self.save_manager.data.current_bankroll = self.bankroll_var.get()
-            self.save_manager.save()
+        if hasattr(self, "save_manager") and self.save_manager is not None:
+            if getattr(self, "tour_active", False):
+                vt = self.save_manager.data.venue_tour
+                if getattr(self, "tour_in_salon", False) and getattr(self, "round_phase", None) != RoundPhase.ROUND_OVER:
+                    set_active_tour_bankroll(vt, self.bankroll_var.get())
+                snap = self._free_play_snapshot or {}
+                if "bankroll" in snap:
+                    self.save_manager.data.current_bankroll = int(snap["bankroll"])
+                self.save_manager.save()
+            elif getattr(self, "chips_mode_var", None) and self.chips_mode_var.get():
+                # If a round is actively in flight, wagers were deducted; persist current bankroll to disk
+                self.save_manager.data.current_bankroll = self.bankroll_var.get()
+                self.save_manager.save()
         self._close_shortcuts_overlay()
         self._close_tripometer_dialog()
         self._close_settings_dialog()

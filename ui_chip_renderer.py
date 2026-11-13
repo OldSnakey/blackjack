@@ -12,7 +12,7 @@ from typing import Any, Optional
 
 from bootcamp_domain import BOOTCAMP_GRADE_CHIP_STYLES
 from config import CHIP_STYLES
-from pixel_ui import get_display_font, get_element_font, get_header_font, get_title_font
+from pixel_ui import get_badge_font, get_display_font, get_element_font, get_header_font, get_title_font
 from rules import breakdown_chips
 
 
@@ -21,6 +21,8 @@ GRADE_CHIP_STYLES: dict[str, dict[str, Any]] = {
     "D": {"denom": 2, "bg": "#9a4b1a", "rim": "#5c2b0c", "stripe": "#ffe082", "fg": "#fff8e1"},
     "N/A": {"denom": 0, "bg": "#1b3024", "rim": "#0e1b14", "stripe": "#4f6b5b", "fg": "#90a4ae"},
     "-": {"denom": 0, "bg": "#1b3024", "rim": "#0e1b14", "stripe": "#4f6b5b", "fg": "#90a4ae"},
+    "TOUR_GOLD": {"denom": 500, "bg": "#115e38", "rim": "#093820", "stripe": "#ffd700", "fg": "#fff8e1"},
+    "TOUR_IRONMAN": {"denom": 1000, "bg": "#1a0a10", "rim": "#4a0714", "stripe": "#ff1744", "fg": "#ffd700"},
 }
 
 
@@ -156,6 +158,9 @@ def draw_25d_grade_medallion(
     grade: str,
     scale: float = 1.0,
     compact: bool = False,
+    mini: bool = False,
+    stamp_override: Optional[str] = None,
+    extra_tags: tuple[str, ...] = (),
 ) -> list[int]:
     """
     Renders a high-fidelity 2.5D Casino Chip Medallion with drop shadow, 3D ribbed cylinder wall,
@@ -163,11 +168,24 @@ def draw_25d_grade_medallion(
     """
     clean_grade = str(grade or "N/A").strip()
     style = GRADE_CHIP_STYLES.get(clean_grade, GRADE_CHIP_STYLES["C"])
-    stamp_text = "-" if clean_grade in ("N/A", "-", "") else clean_grade
-    tags = ("grade_medallion", f"grade_medallion_{clean_grade}")
+    if stamp_override is not None:
+        stamp_text = str(stamp_override)
+    elif clean_grade == "TOUR_GOLD":
+        stamp_text = "★"
+    elif clean_grade == "TOUR_IRONMAN":
+        stamp_text = "♦"
+    else:
+        stamp_text = "-" if clean_grade in ("N/A", "-", "") else clean_grade
+    tags = ("grade_medallion", f"grade_medallion_{clean_grade}", *extra_tags)
     items: list[int] = []
 
-    if compact:
+    if mini:
+        rx, ry, depth = 13, 8, 4
+        sh_dx, sh_dy = 2, 2
+        stripe_w = 2
+        edge_deg_half = 12.0
+        face_font = get_badge_font(12)
+    elif compact:
         rx, ry, depth = 21, 11, 5
         sh_dx, sh_dy = 2, 3
         stripe_w = 3
@@ -181,6 +199,8 @@ def draw_25d_grade_medallion(
         stripe_w = max(4, int(3.5 * scale))
         edge_deg_half = 10.0
         face_font = get_display_font(36) if scale >= 1.8 else get_title_font(24)
+
+    is_small = bool(compact or mini)
 
     # 1. 2.5D Drop Shadow on table/plaque surface
     items.append(
@@ -205,7 +225,7 @@ def draw_25d_grade_medallion(
             y + ry + depth,
             fill=style["rim"],
             outline="#080808",
-            width=2 if not compact else 1,
+            width=2 if not is_small else 1,
             tags=tags,
         )
     )
@@ -247,7 +267,7 @@ def draw_25d_grade_medallion(
             )
         )
 
-    if not compact:
+    if not is_small:
         # Mid-cylinder stacked medallion groove on large trophy chip
         items.append(
             canvas.create_arc(
@@ -267,7 +287,7 @@ def draw_25d_grade_medallion(
     # 4. Top Chip Face & Outer Metallic Bevel
     outer_border = (
         "#ffd700"
-        if clean_grade in ("S", "A", "B")
+        if clean_grade in ("S", "A", "B", "TOUR_GOLD", "TOUR_IRONMAN")
         else ("#546e7a" if clean_grade in ("N/A", "-") else "#cfd8dc")
     )
     items.append(
@@ -278,7 +298,7 @@ def draw_25d_grade_medallion(
             y + ry,
             fill=style["bg"],
             outline=outer_border,
-            width=2 if not compact else 1,
+            width=2 if not is_small else 1,
             tags=tags,
         )
     )
@@ -310,7 +330,7 @@ def draw_25d_grade_medallion(
         )
 
     # 6. Recessed Inner Medallion Center Disc & Stitched Casino Inlay Ring
-    irx, iry = max(12, int(rx * 0.66)), max(7, int(ry * 0.66))
+    irx, iry = max(8 if mini else 12, int(rx * 0.66)), max(5 if mini else 7, int(ry * 0.66))
     items.append(
         canvas.create_oval(
             x - irx,
@@ -319,12 +339,12 @@ def draw_25d_grade_medallion(
             y + iry,
             fill=style["bg"],
             outline=style["stripe"],
-            width=2 if not compact else 1,
+            width=2 if not is_small else 1,
             tags=tags,
         )
     )
     drx, dry = max(9, int(rx * 0.54)), max(5, int(ry * 0.54))
-    if not compact:
+    if not is_small:
         items.append(
             canvas.create_oval(
                 x - drx,
@@ -339,7 +359,7 @@ def draw_25d_grade_medallion(
         )
 
     # 7. Embossed Grade Stamp with 3D Drop Shadow
-    sh_off = 1 if compact else 2
+    sh_off = 1 if is_small else 2
     shadow_col = "#ffffff" if style["fg"] in ("#111111", "#1a1a1a") else "#090503"
     items.append(
         canvas.create_text(

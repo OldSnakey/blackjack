@@ -399,10 +399,14 @@ class HiLoCardCounter:
 
     def decks_remaining(self, cards_remaining: int) -> float:
         """
-        Calculates estimated decks remaining in the shoe with 0.5-deck minimum clamp.
-        Formula: max(0.5, cards_remaining / 52.0)
+        Calculates estimated decks remaining in the shoe:
+        - Single-deck (`deck_count == 1`): quarter-deck precision with 0.25-deck minimum clamp
+          so deep single-deck penetration (e.g. 16 cards left -> 0.31 decks) resolves accurately.
+        - Multi-deck (`deck_count >= 2`): standard 0.1-deck rounding with 0.5-deck minimum clamp.
         """
         decks = cards_remaining / 52.0
+        if self.deck_count == 1 and decks < 0.5:
+            return max(0.25, round(decks, 2))
         return max(0.5, round(decks, 1))
 
     def true_count(self, cards_remaining: int) -> float:

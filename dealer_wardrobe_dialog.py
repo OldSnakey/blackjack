@@ -1032,6 +1032,20 @@ class WardrobeDialog(tkinter.Toplevel):
             "reward": "Card Sharp Title",
             "criteria": "Win 21+3 Premium Hand",
         },
+        {
+            "id": "tour_champion",
+            "title": "🏆 Grand Tour Champion",
+            "desc": "Conquer all 8 Casino Venue Tour Salons and reach the $150,000 Sanctum summit.",
+            "reward": "VIP Circuit Free-Roam",
+            "criteria": "Complete 8/8 Tour Salons",
+        },
+        {
+            "id": "ironman_legend",
+            "title": "♦ Ironman Legend",
+            "desc": "Conquer all 8 Casino Venue Tour Salons in a single Ironman Gauntlet run ($0 re-buys).",
+            "reward": "8/8 Obsidian Medallions",
+            "criteria": "Complete 8/8 Ironman Gauntlet",
+        },
     ]
 
     def __init__(self, parent: tkinter.Tk, app: Any, initial_tab: int = 0):
@@ -1377,19 +1391,33 @@ class WardrobeDialog(tkinter.Toplevel):
 
     def _equip_costume(self, char_id: str, costume_id: Optional[str] = None):
         """Swaps active character and costume persona, updates saves, and refreshes UI."""
-        self.app.dealer_actor.equip_costume(char_id, costume_id=costume_id)
         if hasattr(self.app, "save_manager") and hasattr(self.app.save_manager, "data"):
             self.app.save_manager.data.equipped_costume = costume_id or char_id
             self.app.save_manager.save()
 
-        self.app._update_dealer_avatar()
+        if not getattr(self.app, "tour_active", False):
+            self.app.dealer_actor.equip_costume(char_id, costume_id=costume_id)
+            self.app._update_dealer_avatar()
+        else:
+            if hasattr(self.app, "result_var"):
+                self.app.result_var.set("Costume saved for Free Play! Active Casino Tour hosts are fixed.")
         if hasattr(self.app, "sound_manager") and hasattr(self.app.sound_manager, "play_chip_add"):
             self.app.sound_manager.play_chip_add()
 
         self._refresh_card_actions()
 
     def _refresh_card_actions(self):
-        active_char = self.app.dealer_actor.current_character
+        if getattr(self.app, "tour_active", False) and hasattr(self.app, "save_manager"):
+            saved_eq = getattr(self.app.save_manager.data, "equipped_costume", "classic")
+            legacy_map = {"classic": "julian", "grim": "mortimer", "grim_bones": "mortimer", "seraph": "uriel"}
+            active_char = legacy_map.get(saved_eq, saved_eq)
+            if active_char not in CHARACTERS:
+                for cid, prof in CHARACTERS.items():
+                    if any(c.costume_id == saved_eq for c in prof.get_costumes()):
+                        active_char = cid
+                        break
+        else:
+            active_char = self.app.dealer_actor.current_character
         for char_id, card_data in self.cards.items():
             is_equipped = (active_char == char_id)
             card_data["is_equipped"] = is_equipped
@@ -1432,6 +1460,14 @@ class WardrobeDialog(tkinter.Toplevel):
             font=get_role_font("header", size_override=-16),
             fill="#ffd700",
             anchor="nw",
+        )
+        self.lbl_tour_record = records_canvas.create_text(
+            892,
+            13,
+            text="🗺 Tour: ★ 0/8 • ♦ 0/8",
+            font=get_role_font("badge", size_override=-15),
+            fill="#ffd54f",
+            anchor="ne",
         )
 
         self.dot_peak_record = records_canvas.create_text(
@@ -1584,6 +1620,12 @@ class WardrobeDialog(tkinter.Toplevel):
             return
 
         hs = save_data.highscores
+        vt = getattr(save_data, "venue_tour", None)
+        if vt is not None and hasattr(self, "lbl_tour_record"):
+            self._records_canvas.itemconfigure(
+                self.lbl_tour_record,
+                text=f"🗺 Tour: ★ {vt.forgiving_salons_cleared}/8 • ♦ {vt.ironman_salons_cleared}/8",
+            )
         self._records_canvas.itemconfigure(self.lbl_peak_record, text=f"Peak Bankroll: ${hs.peak_bankroll:,}")
         self._records_canvas.itemconfigure(self.lbl_streak_record, text=f"Longest Win Streak: {hs.longest_win_streak:,} hands")
         self._records_canvas.itemconfigure(self.lbl_clears_record, text=f"Hell's Table Clears: {hs.hell_table_clears:,}")

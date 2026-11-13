@@ -108,7 +108,7 @@
       "dealer_wins_value": {
         "row": 0,
         "column": 1,
-        "padx": [0, 15],
+        "padx": [0, 10],
         "sticky": "w"
       },
       "player_wins_title": {
@@ -119,7 +119,7 @@
       "player_wins_value": {
         "row": 0,
         "column": 3,
-        "padx": [0, 15],
+        "padx": [0, 10],
         "sticky": "w"
       },
       "ties_title": {
@@ -135,7 +135,7 @@
       "shoe_label": {
         "row": 0,
         "column": 6,
-        "padx": [12, 0]
+        "padx": [10, 0]
       },
       "spacer": {
         "column": 7,
@@ -144,50 +144,56 @@
       "sound_button": {
         "row": 0,
         "column": 8,
-        "padx": [15, 0],
+        "padx": [8, 0],
         "sticky": "e"
       },
       "help_button": {
         "row": 0,
         "column": 9,
-        "padx": [10, 0],
+        "padx": [5, 0],
         "sticky": "e"
       },
       "trip_button": {
         "row": 0,
         "column": 10,
-        "padx": [6, 0],
+        "padx": [5, 0],
+        "sticky": "e"
+      },
+      "tour_button": {
+        "row": 0,
+        "column": 11,
+        "padx": [5, 0],
         "sticky": "e"
       },
       "scale_button": {
         "row": 0,
-        "column": 11,
-        "padx": [6, 0],
+        "column": 12,
+        "padx": [5, 0],
         "sticky": "e"
       },
       "fullscreen_button": {
         "row": 0,
-        "column": 12,
-        "padx": [6, 0],
+        "column": 13,
+        "padx": [5, 0],
         "sticky": "e"
       },
       "settings_button": {
         "row": 0,
-        "column": 13,
-        "padx": [6, 0],
+        "column": 14,
+        "padx": [5, 0],
         "sticky": "e"
       },
       "bankroll_label": {
         "row": 1,
         "column": 0,
-        "columnspan": 14,
+        "columnspan": 15,
         "pady": [2, 2],
         "sticky": "ew"
       },
       "result_label": {
         "row": 2,
         "column": 0,
-        "columnspan": 14,
+        "columnspan": 15,
         "pady": [2, 4],
         "sticky": "ew"
       }

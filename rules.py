@@ -237,8 +237,12 @@ class Seat:
 ALLOWED_DECK_COUNTS: tuple[int, ...] = (1, 2, 4, 6, 8)
 ALLOWED_PAYOUTS: tuple[tuple[int, int], ...] = ((3, 2), (6, 5))
 ALLOWED_DOUBLE_RESTRICTIONS: tuple[str, ...] = ("any", "9_10_11", "10_11")
-ALLOWED_MIN_BETS: tuple[int, ...] = (5, 10, 15, 25, 50, 100, 250, 500, 1000)
-ALLOWED_MAX_BETS: tuple[int, ...] = (0, 100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000)
+SETTINGS_MIN_BETS: tuple[int, ...] = (5, 10, 15, 25, 50, 100, 250, 500, 1000)
+SETTINGS_MAX_BETS: tuple[int, ...] = (0, 100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000)
+ALLOWED_MIN_BETS: tuple[int, ...] = (5, 10, 15, 25, 50, 100, 200, 250, 500, 1000)
+ALLOWED_MAX_BETS: tuple[int, ...] = (
+    0, 100, 250, 400, 500, 700, 1000, 1500, 2000, 2500, 5000, 10000, 25000, 50000
+)
 
 VENUE_PRESET_LABELS: dict[str, str] = {
     "classic_4_deck": "Classic 4-Deck",

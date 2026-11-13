@@ -402,12 +402,14 @@ class BlackjackEngine:
         seat_idx: Optional[int] = None,
     ) -> int:
         """Sets or clamps a staged side bet ('perfect_pairs' or '21_plus_3') for a seat or legacy mode."""
+        max_bet = int(getattr(self.house_rules, "maximum_bet", 0) or 0)
         if seat_idx is not None:
             seat = self.get_seat(seat_idx)
             if bet_type not in seat.side_bets:
                 return 0
             curr = seat.side_bets.get(bet_type, 0)
-            delta = amount - curr
+            target = min(amount, max_bet) if max_bet > 0 else amount
+            delta = target - curr
             clamped_delta = max(-curr, min(delta, self.bankroll))
             self.bankroll -= clamped_delta
             seat.side_bets[bet_type] = curr + clamped_delta
@@ -427,6 +429,8 @@ class BlackjackEngine:
             return 0
         other_side = sum(v for k, v in self.staged_side_bets.items() if k != bet_type)
         max_allowed = max(0, self.bankroll - self.staged_bet - other_side)
+        if max_bet > 0:
+            max_allowed = min(max_allowed, max_bet)
         clamped = max(0, min(amount, max_allowed))
         self.staged_side_bets[bet_type] = clamped
         self.event_bus.emit(

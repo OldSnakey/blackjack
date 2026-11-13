@@ -215,8 +215,8 @@ class TestDealerWardrobeDialog(unittest.TestCase):
         dialog._switch_tab(1)
         self.assertEqual(dialog.current_tab, 1)
 
-        # Check all 12 plaques are registered
-        self.assertEqual(len(dialog.plaque_widgets), 12)
+        # Check all 14 plaques are registered (including Track 6 Tour prestige plaques)
+        self.assertEqual(len(dialog.plaque_widgets), 14)
         for ach_id in (
             "exorcist",
             "high_roller",
@@ -230,6 +230,8 @@ class TestDealerWardrobeDialog(unittest.TestCase):
             "count_capitalist",
             "pair_perfectionist",
             "poker_face",
+            "tour_champion",
+            "ironman_legend",
         ):
             self.assertIn(ach_id, dialog.plaque_widgets)
 

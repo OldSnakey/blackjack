@@ -56,6 +56,7 @@ TIERS: Dict[str, List[str]] = {
         "tests.test_tripometer",
         "tests.test_ui_layout",
         "tests.test_universal_puppet_faceplates",
+        "tests.test_venue_tour_domain",
         "tests.test_version",
     ],
     "core": [
@@ -79,6 +80,8 @@ TIERS: Dict[str, List[str]] = {
         "tests.test_surrender",
         "tests.test_test_runner",
         "tests.test_tripometer",
+        "tests.test_venue_tour_domain",
+        "tests.test_venue_tour_integration",
         "tests.test_version",
     ],
     "betting": [
@@ -119,6 +122,8 @@ TIERS: Dict[str, List[str]] = {
         "tests.test_table_hud",
         "tests.test_ui_geometry_and_rendering",
         "tests.test_ui_layout",
+        "tests.test_venue_tour_gui",
+        "tests.test_venue_tour_integration",
         "tests.test_welcome_splash_dialog",
     ],
 }

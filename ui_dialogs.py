@@ -20,8 +20,8 @@ from config import ASSETS_EXTRA_DIR, PANEL_BACKGROUND_COLOR, TABLE_BACKGROUND_CO
 from haunted_manager import BLESSING_REGISTRY, Blessing
 from rules import (
     ALLOWED_DECK_COUNTS,
-    ALLOWED_MAX_BETS as ALLOWED_MAXIMUM_BETS,
-    ALLOWED_MIN_BETS as ALLOWED_MINIMUM_BETS,
+    SETTINGS_MAX_BETS as ALLOWED_MAXIMUM_BETS,
+    SETTINGS_MIN_BETS as ALLOWED_MINIMUM_BETS,
     HouseRules,
     RoundPhase,
     VENUE_PRESETS,
@@ -1150,6 +1150,8 @@ class SettingsDialog(tkinter.Toplevel):
         self._refresh_house_rules_controls()
 
     def _is_rules_change_allowed(self) -> bool:
+        if getattr(self.app, "tour_active", False):
+            return False
         phase = getattr(self.app, "round_phase", RoundPhase.BETTING)
         dealing = bool(getattr(self.app, "_dealing", False))
         return not dealing and phase in (RoundPhase.BETTING, RoundPhase.ROUND_OVER)
@@ -1176,6 +1178,10 @@ class SettingsDialog(tkinter.Toplevel):
         self._refresh_house_rules_controls()
 
     def _on_apply_house_rules(self) -> None:
+        if getattr(self.app, "tour_active", False):
+            self.rules_status_var.set("🔒 Active Casino Tour Salon rules are fixed. Exit Tour to customize.")
+            self._refresh_house_rules_controls()
+            return
         if not self._is_rules_change_allowed():
             self.rules_status_var.set("🔒 Finish current hand before changing House Rules.")
             self._refresh_house_rules_controls()
@@ -1238,7 +1244,10 @@ class SettingsDialog(tkinter.Toplevel):
                 self.rules_status_var.set("")
         else:
             self.apply_rules_btn.configure(state="disabled", background="#455a64")
-            self.rules_status_var.set("🔒 Finish current hand to change House Rules.")
+            if getattr(self.app, "tour_active", False):
+                self.rules_status_var.set("🔒 Active Casino Tour Salon rules are fixed. Exit Tour to customize.")
+            else:
+                self.rules_status_var.set("🔒 Finish current hand to change House Rules.")
 
     def _refresh_stats_display(self):
         """Refreshes the high scores, counting records, and achievement badges displayed in the dialog."""
@@ -1308,6 +1317,9 @@ class SettingsDialog(tkinter.Toplevel):
 
     def _on_cycle_play_mode(self):
         """Cycles through casual -> betting -> training modes and updates app."""
+        if getattr(self.app, "tour_active", False):
+            self.status_msg_var.set("🔒 Exit the Casino Venue Tour before switching play mode.")
+            return
         current = getattr(self.app, "play_mode", "betting")
         modes = ["casual", "betting", "training"]
         try:
@@ -1329,6 +1341,9 @@ class SettingsDialog(tkinter.Toplevel):
         self.status_msg_var.set(f"Play mode switched to {next_mode.capitalize()}.")
 
     def _on_toggle_table_seats(self):
+        if getattr(self.app, "tour_active", False):
+            self.status_msg_var.set("🔒 Casino Venue Tour salons are 1-Seat high-stakes tables.")
+            return
         current = getattr(self.app, "table_seats", 1)
         new_count = 3 if current == 1 else 1
         if hasattr(self.app, "set_table_seats"):
@@ -1342,7 +1357,10 @@ class SettingsDialog(tkinter.Toplevel):
             self.status_msg_var.set("Standard 1-Seat Wagering enabled.")
 
     def _on_open_welcome_screen(self):
-        """Relaunches the Welcome & Play Mode Selection splash dialog."""
+        """Relaunches the Welcome & Play Mode Selection splash dialog (blocked during Tour)."""
+        if getattr(self.app, "tour_active", False):
+            self.status_msg_var.set("🔒 Exit the Casino Venue Tour before switching Free-Play modes.")
+            return
         if hasattr(self.app, "_open_welcome_splash_dialog"):
             self.app._open_welcome_splash_dialog()
 
@@ -1628,6 +1646,7 @@ class ShortcutsDialog(tkinter.Toplevel):
         panel_trainer = make_panel(right_col_s, "🧮 TRAINER & SUPERNATURAL")
         add_row(panel_trainer, ["keyboard_k", "keyboard_shift", "keyboard_c"], "Card Counter HUD", "(K or Shift+C)")
         add_row(panel_trainer, ["keyboard_t"], "Strategy Tripometer", "(Hand review & grades)")
+        add_row(panel_trainer, ["keyboard_shift", "keyboard_t"], "Casino Venue Tour", "(Shift+T · Post-Exorcist)")
         add_row(panel_trainer, ["keyboard_shift", "keyboard_m"], "Cycle Play Mode", "(Casual / Betting / Training)")
         add_row(panel_trainer, ["keyboard_x"], "Miracle Draw", "(Hell's Table relic redraw)")
 
