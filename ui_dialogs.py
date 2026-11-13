@@ -14,9 +14,20 @@ from __future__ import annotations
 import tkinter
 from typing import Any, Callable, List, Optional
 
+import config
 from audio_assets import KeyboardIconLoader
 from config import ASSETS_EXTRA_DIR, PANEL_BACKGROUND_COLOR, TABLE_BACKGROUND_COLOR
 from haunted_manager import BLESSING_REGISTRY, Blessing
+from rules import (
+    ALLOWED_DECK_COUNTS,
+    ALLOWED_MAX_BETS as ALLOWED_MAXIMUM_BETS,
+    ALLOWED_MIN_BETS as ALLOWED_MINIMUM_BETS,
+    HouseRules,
+    RoundPhase,
+    VENUE_PRESETS,
+    VENUE_PRESET_LABELS,
+    estimate_house_edge_pct,
+)
 from pixel_ui import (
     get_element_font,
     get_title_font,
@@ -27,6 +38,7 @@ from pixel_ui import (
     get_display_font,
     get_digital_font,
 )
+from ui_chip_renderer import draw_25d_grade_medallion
 
 try:
     from PIL import Image, ImageTk
@@ -494,23 +506,127 @@ class SettingsDialog(tkinter.Toplevel):
             root_w = parent.winfo_width()
             root_h = parent.winfo_height()
             screen_h = parent.winfo_screenheight()
-            dialog_h = min(dialog_h, max(460, screen_h - 80))
+            scale = getattr(app, "scale_factor", 1.0)
+            cfg_max_h = int(config.DEFAULT_WINDOW_HEIGHT * scale)
+            dialog_h = min(dialog_h, max(460, min(screen_h - 80, cfg_max_h)))
             x = max(0, root_x + (root_w - dialog_w) // 2)
             y = max(0, root_y + (root_h - dialog_h) // 2)
             self.geometry(f"{dialog_w}x{dialog_h}+{x}+{y}")
         except Exception:
             self.geometry(f"{dialog_w}x{dialog_h}")
 
+        self.active_tab: int = 0
+        initial_rules = getattr(app, "house_rules", None)
+        self._draft_rules: HouseRules = (
+            initial_rules.normalized() if isinstance(initial_rules, HouseRules) else HouseRules()
+        )
         self.status_msg_var = tkinter.StringVar(value="All casino records active.")
+        self.rules_status_var = tkinter.StringVar(value="")
+
+        # Persistent Header & Paginated Tab Bar
+        self.header_frame = tkinter.Frame(self, background=PANEL_BACKGROUND_COLOR, padx=16, pady=8)
+        self.header_frame.pack(side="top", fill="x")
+
+        header = tkinter.Label(
+            self.header_frame,
+            text="⚙ CASINO SETTINGS & HOUSE RULES",
+            font=get_header_font(16, weight="bold"),
+            fg="#ffd700",
+            background=PANEL_BACKGROUND_COLOR,
+        )
+        header.pack(pady=(0, 6))
+
+        tab_bar = tkinter.Frame(self.header_frame, background=PANEL_BACKGROUND_COLOR)
+        tab_bar.pack(fill="x")
+        tab_bar.columnconfigure(0, weight=1, uniform="settings_tabs")
+        tab_bar.columnconfigure(1, weight=1, uniform="settings_tabs")
+
+        self.tab_general_btn = tkinter.Button(
+            tab_bar,
+            text="[1] Table & Audio",
+            font=get_button_font(15),
+            background="#1b5e20",
+            fg="#ffd700",
+            activebackground="#2e7d32",
+            activeforeground="#ffffff",
+            relief="sunken",
+            borderwidth=2,
+            cursor="hand2",
+            padx=10,
+            pady=4,
+            command=lambda: self._switch_tab(0),
+        )
+        self.tab_general_btn.grid(row=0, column=0, sticky="ew", padx=(0, 4))
+
+        self.tab_rules_btn = tkinter.Button(
+            tab_bar,
+            text="[2] House Rules",
+            font=get_button_font(15),
+            background="#082415",
+            fg="#b0bec5",
+            activebackground="#143d26",
+            activeforeground="#ffffff",
+            relief="raised",
+            borderwidth=2,
+            cursor="hand2",
+            padx=10,
+            pady=4,
+            command=lambda: self._switch_tab(1),
+        )
+        self.tab_rules_btn.grid(row=0, column=1, sticky="ew", padx=(4, 0))
+
+        # Persistent Bottom Action Buttons Row: Green "Done" and Red "Reset Data"
+        action_row = tkinter.Frame(self, background=PANEL_BACKGROUND_COLOR, padx=16, pady=8)
+        action_row.pack(side="bottom", fill="x")
+        action_row.columnconfigure(0, weight=1)
+        action_row.columnconfigure(1, weight=1)
+
+        self.done_btn = tkinter.Button(
+            action_row,
+            text="✔ Done",
+            font=get_button_font(15),
+            background="#2e7d32",
+            fg="white",
+            activebackground="#388e3c",
+            activeforeground="white",
+            relief="raised",
+            borderwidth=2,
+            cursor="hand2",
+            command=self._on_close,
+            padx=12,
+            pady=6,
+        )
+        self.done_btn.grid(row=0, column=0, sticky="ew", padx=(0, 6))
+
+        self.clear_save_btn = tkinter.Button(
+            action_row,
+            text="🗑 Reset Data",
+            font=get_button_font(15),
+            background="#b71c1c",
+            fg="#ffffff",
+            activebackground="#d32f2f",
+            activeforeground="#ffffff",
+            relief="raised",
+            borderwidth=2,
+            cursor="hand2",
+            command=self._on_click_clear_save,
+            padx=12,
+            pady=6,
+        )
+        self.clear_save_btn.grid(row=0, column=1, sticky="ew", padx=(6, 0))
 
         # Scrollable container setup
         self.canvas = tkinter.Canvas(
-            self, background=PANEL_BACKGROUND_COLOR, highlightthickness=0, borderwidth=0
+            self,
+            background=PANEL_BACKGROUND_COLOR,
+            highlightthickness=0,
+            borderwidth=0,
+            height=240,
         )
         self.v_scrollbar = tkinter.Scrollbar(
             self, orient="vertical", command=self.canvas.yview
         )
-        self.scroll_content = tkinter.Frame(self.canvas, background=PANEL_BACKGROUND_COLOR, padx=16, pady=12)
+        self.scroll_content = tkinter.Frame(self.canvas, background=PANEL_BACKGROUND_COLOR, padx=16, pady=6)
 
         self.canvas_window = self.canvas.create_window(
             (0, 0), window=self.scroll_content, anchor="nw"
@@ -525,11 +641,50 @@ class SettingsDialog(tkinter.Toplevel):
         self.bind("<MouseWheel>", self._on_mousewheel)
         self.bind("<Button-4>", lambda e: self.canvas.yview_scroll(-1, "units"))
         self.bind("<Button-5>", lambda e: self.canvas.yview_scroll(1, "units"))
+        self.bind("<Left>", lambda e: self._on_prev_tab())
+        self.bind("<Right>", lambda e: self._on_next_tab())
+        self.bind("<Tab>", lambda e: self._on_tab_key())
+        self.bind("1", lambda e: self._switch_tab(0))
+        self.bind("2", lambda e: self._switch_tab(1))
 
         self._build_ui()
+        self._switch_tab(0)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.bind("<Escape>", lambda e: self._on_close())
         self.focus_set()
+
+    def _on_prev_tab(self):
+        self._switch_tab((self.active_tab - 1) % 2)
+        return "break"
+
+    def _on_next_tab(self):
+        self._switch_tab((self.active_tab + 1) % 2)
+        return "break"
+
+    def _on_tab_key(self):
+        self._switch_tab((self.active_tab + 1) % 2)
+        return "break"
+
+    def _switch_tab(self, tab_idx: int) -> None:
+        """Switches between Tab 0 (Table & Audio) and Tab 1 (House Rules)."""
+        self.active_tab = 0 if int(tab_idx) == 0 else 1
+        if self.active_tab == 0:
+            self.tab_rules_frame.pack_forget()
+            self.tab_general_frame.pack(fill="x", expand=True)
+            self.tab_general_btn.configure(background="#1b5e20", fg="#ffd700", relief="sunken")
+            self.tab_rules_btn.configure(background="#082415", fg="#b0bec5", relief="raised")
+        else:
+            self.tab_general_frame.pack_forget()
+            self.tab_rules_frame.pack(fill="x", expand=True)
+            self.tab_general_btn.configure(background="#082415", fg="#b0bec5", relief="raised")
+            self.tab_rules_btn.configure(background="#1b5e20", fg="#ffd700", relief="sunken")
+            self._refresh_house_rules_controls()
+        try:
+            self.canvas.yview_moveto(0.0)
+            self.scroll_content.update_idletasks()
+            self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        except Exception:
+            pass
 
     def _on_scroll_update(self, first, last):
         self.v_scrollbar.set(first, last)
@@ -551,21 +706,18 @@ class SettingsDialog(tkinter.Toplevel):
             self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def _build_ui(self):
-        # Header title
-        header = tkinter.Label(
-            self.scroll_content, text="⚙ CASINO SETTINGS & RECORDS",
-            font=get_header_font(16, weight="bold"), fg="#ffd700", background=PANEL_BACKGROUND_COLOR
-        )
-        header.pack(pady=(0, 8))
+        self.tab_general_frame = tkinter.Frame(self.scroll_content, background=PANEL_BACKGROUND_COLOR)
+        self.tab_rules_frame = tkinter.Frame(self.scroll_content, background=PANEL_BACKGROUND_COLOR)
 
-        # Audio & Display Controls Frame (Two-Tier Layout)
+        # ====================================================================
+        # TAB 0: Table & Audio Preferences + Save Data & Hall of Fame Records
+        # ====================================================================
         ctrl_frame = tkinter.LabelFrame(
-            self.scroll_content, text=" Table Preferences ", font=get_header_font(16),
+            self.tab_general_frame, text=" Table Preferences ", font=get_header_font(16),
             fg="#80cbc4", background=PANEL_BACKGROUND_COLOR, padx=12, pady=8
         )
         ctrl_frame.pack(fill="x", pady=(0, 10))
 
-        # Tier 1: Audio & Dialogue
         tier1_lbl = tkinter.Label(
             ctrl_frame, text="Audio & Dialogue:", font=get_badge_font(15),
             fg="#b2dfdb", background=PANEL_BACKGROUND_COLOR
@@ -594,7 +746,6 @@ class SettingsDialog(tkinter.Toplevel):
             )
             self.voice_btn.grid(row=0, column=1, sticky="ew", padx=(4, 0))
 
-        # Tier 2: Display & Customization
         tier2_lbl = tkinter.Label(
             ctrl_frame, text="Display & Customization:", font=get_badge_font(15),
             fg="#b2dfdb", background=PANEL_BACKGROUND_COLOR
@@ -622,7 +773,6 @@ class SettingsDialog(tkinter.Toplevel):
         )
         self.wardrobe_btn.grid(row=0, column=1, sticky="ew", padx=(3, 0))
 
-        # Tier 3: Play Mode & Onboarding Controls
         tier3_lbl = tkinter.Label(
             ctrl_frame, text="Play Mode & Onboarding:", font=get_badge_font(15),
             fg="#b2dfdb", background=PANEL_BACKGROUND_COLOR
@@ -651,7 +801,6 @@ class SettingsDialog(tkinter.Toplevel):
         )
         self.welcome_btn.grid(row=0, column=1, sticky="ew", padx=(3, 0))
 
-        # Tier 4: Table Wagering Layout
         tier4_lbl = tkinter.Label(
             ctrl_frame, text="Table Wagering Seats:", font=get_badge_font(15),
             fg="#b2dfdb", background=PANEL_BACKGROUND_COLOR
@@ -682,14 +831,12 @@ class SettingsDialog(tkinter.Toplevel):
         )
         self.bootcamp_btn.grid(row=0, column=1, sticky="ew", padx=(3, 0))
 
-        # Save Data Management Frame
         save_frame = tkinter.LabelFrame(
-            self.scroll_content, text=" Save Data & Hall of Fame Records ", font=get_header_font(16),
+            self.tab_general_frame, text=" Save Data & Hall of Fame Records ", font=get_header_font(16),
             fg="#ffd700", background=PANEL_BACKGROUND_COLOR, padx=12, pady=8
         )
-        save_frame.pack(fill="x", pady=(0, 8))
+        save_frame.pack(fill="x", pady=(0, 6))
 
-        # Stats labels
         self.stats_frame = tkinter.Frame(save_frame, background=PANEL_BACKGROUND_COLOR)
         self.stats_frame.pack(fill="x", pady=(0, 6))
 
@@ -725,37 +872,373 @@ class SettingsDialog(tkinter.Toplevel):
 
         self._refresh_stats_display()
 
-        # Status feedback label
         lbl_status = tkinter.Label(
             save_frame, textvariable=self.status_msg_var, font=get_body_font(15),
             fg="#ffeb3b", background=PANEL_BACKGROUND_COLOR
         )
-        lbl_status.pack(pady=(2, 6))
+        lbl_status.pack(pady=(2, 4))
 
-        # Bottom Action Buttons Row: Green "Done" and Red "Reset Data"
-        action_row = tkinter.Frame(self.scroll_content, background=PANEL_BACKGROUND_COLOR)
-        action_row.pack(fill="x", pady=(10, 2))
-        action_row.columnconfigure(0, weight=1)
-        action_row.columnconfigure(1, weight=1)
+        # ====================================================================
+        # TAB 1: Configurable Casino House Rules & Table Limits
+        # ====================================================================
+        self._build_house_rules_tab()
 
-        # Green "Done" button to save settings as-is
-        self.done_btn = tkinter.Button(
-            action_row, text="✔ Done", font=get_button_font(15),
-            background="#2e7d32", fg="white", activebackground="#388e3c",
-            activeforeground="white", relief="raised", borderwidth=2, cursor="hand2",
-            command=self._on_close, padx=12, pady=6
+    def _build_house_rules_tab(self) -> None:
+        """Builds Tab 1 (House Rules) with discrete <=3-button-per-row grids."""
+        edge_banner = tkinter.Frame(
+            self.tab_rules_frame,
+            background="#082415",
+            highlightbackground="#d4af37",
+            highlightthickness=1,
+            padx=10,
+            pady=6,
         )
-        self.done_btn.grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        edge_banner.pack(fill="x", pady=(0, 8))
 
-        # Red "Reset Data" button beside it (with confirmation prompt)
-        self.clear_save_btn = tkinter.Button(
-            action_row, text="🗑 Reset Data", font=get_button_font(15),
-            background="#b71c1c", fg="#ffffff", activebackground="#d32f2f",
-            activeforeground="#ffffff", relief="raised", borderwidth=2, cursor="hand2",
-            command=self._on_click_clear_save, padx=12, pady=6
+        self.house_edge_label = tkinter.Label(
+            edge_banner,
+            text="",
+            font=get_header_font(15, weight="bold"),
+            fg="#ffd700",
+            background="#082415",
         )
-        self.clear_save_btn.grid(row=0, column=1, sticky="ew", padx=(6, 0))
-        self.clear_save_btn.grid(row=0, column=1, sticky="ew", padx=(6, 0))
+        self.house_edge_label.pack(anchor="w")
+
+        self.active_rules_badge_label = tkinter.Label(
+            edge_banner,
+            text="",
+            font=get_body_font(13),
+            fg="#80cbc4",
+            background="#082415",
+        )
+        self.active_rules_badge_label.pack(anchor="w")
+
+        # 1. Built-In Venue Presets (2x3 grid)
+        presets_box = tkinter.LabelFrame(
+            self.tab_rules_frame,
+            text=" Casino Venue Presets ",
+            font=get_header_font(15),
+            fg="#ffd700",
+            background=PANEL_BACKGROUND_COLOR,
+            padx=10,
+            pady=6,
+        )
+        presets_box.pack(fill="x", pady=(0, 8))
+        for col in range(3):
+            presets_box.columnconfigure(col, weight=1, uniform="hr_presets")
+
+        self._preset_buttons: dict[str, tkinter.Button] = {}
+        preset_order = [
+            ("classic_4_deck", "Classic 4D"),
+            ("reno_single_deck", "1D Reno"),
+            ("downtown_pitch", "2D Pitch"),
+            ("vegas_strip", "6D Strip"),
+            ("high_roller_vip", "VIP Salon"),
+            ("tourist_trap_6_5", "8D 6:5 Trap"),
+        ]
+        for idx, (pid, short_lbl) in enumerate(preset_order):
+            r, c = divmod(idx, 3)
+            btn = tkinter.Button(
+                presets_box,
+                text=short_lbl,
+                font=get_button_font(13),
+                background="#004d40",
+                fg="#ffffff",
+                activebackground="#00695c",
+                activeforeground="#ffffff",
+                relief="ridge",
+                borderwidth=1,
+                cursor="hand2",
+                padx=6,
+                pady=4,
+                command=lambda p=pid: self._select_preset(p),
+            )
+            btn.grid(row=r, column=c, sticky="ew", padx=3, pady=2)
+            self._preset_buttons[pid] = btn
+
+        # 2. Shoe & Dealer Rules
+        rules_box = tkinter.LabelFrame(
+            self.tab_rules_frame,
+            text=" Shoe, Payout & Player Options ",
+            font=get_header_font(15),
+            fg="#80cbc4",
+            background=PANEL_BACKGROUND_COLOR,
+            padx=10,
+            pady=6,
+        )
+        rules_box.pack(fill="x", pady=(0, 8))
+
+        def make_section_label(parent: tkinter.Misc, title: str) -> None:
+            tkinter.Label(
+                parent,
+                text=title,
+                font=get_badge_font(14),
+                fg="#b2dfdb",
+                background=PANEL_BACKGROUND_COLOR,
+            ).pack(anchor="w", pady=(4, 2))
+
+        def make_option_grid(
+            parent: tkinter.Misc,
+            options: list[tuple[Any, str]],
+            cols: int,
+            on_pick: Callable[[Any], None],
+            uniform_tag: str,
+        ) -> dict[Any, tkinter.Button]:
+            frame = tkinter.Frame(parent, background=PANEL_BACKGROUND_COLOR)
+            frame.pack(fill="x", pady=(0, 4))
+            for col in range(cols):
+                frame.columnconfigure(col, weight=1, uniform=uniform_tag)
+            mapping: dict[Any, tkinter.Button] = {}
+            for idx, (val, label) in enumerate(options):
+                r, c = divmod(idx, cols)
+                b = tkinter.Button(
+                    frame,
+                    text=label,
+                    font=get_button_font(13),
+                    background="#004d40",
+                    fg="#ffffff",
+                    activebackground="#00695c",
+                    activeforeground="#ffffff",
+                    relief="ridge",
+                    borderwidth=1,
+                    cursor="hand2",
+                    padx=6,
+                    pady=3,
+                    command=lambda v=val: on_pick(v),
+                )
+                b.grid(row=r, column=c, sticky="ew", padx=3, pady=2)
+                mapping[val] = b
+            return mapping
+
+        make_section_label(rules_box, "Shoe Deck Count:")
+        self._deck_buttons = make_option_grid(
+            rules_box,
+            [(d, f"{d} Deck{'s' if d > 1 else ''}") for d in ALLOWED_DECK_COUNTS],
+            3,
+            lambda v: self._update_draft(deck_count=v),
+            "hr_decks",
+        )
+
+        make_section_label(rules_box, "Dealer Soft 17 Rule:")
+        self._s17_buttons = make_option_grid(
+            rules_box,
+            [(False, "Stand Soft 17 (S17)"), (True, "Hit Soft 17 (H17)")],
+            2,
+            lambda v: self._update_draft(dealer_hits_soft_17=v),
+            "hr_s17",
+        )
+
+        make_section_label(rules_box, "Natural Blackjack Payout:")
+        self._payout_buttons = make_option_grid(
+            rules_box,
+            [((3, 2), "Pays 3 to 2"), ((6, 5), "Pays 6 to 5")],
+            2,
+            lambda v: self._update_draft(blackjack_payout=v),
+            "hr_payout",
+        )
+
+        make_section_label(rules_box, "Double After Split (DAS):")
+        self._das_buttons = make_option_grid(
+            rules_box,
+            [(True, "DAS Allowed"), (False, "No DAS")],
+            2,
+            lambda v: self._update_draft(allow_das=v),
+            "hr_das",
+        )
+
+        make_section_label(rules_box, "Double Down Restriction:")
+        self._dbl_buttons = make_option_grid(
+            rules_box,
+            [
+                ("any", "Any Two Cards"),
+                ("9_10_11", "Hard 9 / 10 / 11"),
+                ("10_11", "Hard 10 / 11"),
+            ],
+            3,
+            lambda v: self._update_draft(double_restriction=v),
+            "hr_dbl",
+        )
+
+        make_section_label(rules_box, "Late Surrender:")
+        self._surr_buttons = make_option_grid(
+            rules_box,
+            [(True, "Surrender ON"), (False, "No Surrender")],
+            2,
+            lambda v: self._update_draft(allow_surrender=v),
+            "hr_surr",
+        )
+
+        # 3. Table Betting Limits
+        limits_box = tkinter.LabelFrame(
+            self.tab_rules_frame,
+            text=" Table Betting Limits (Min & Max) ",
+            font=get_header_font(15),
+            fg="#ffd700",
+            background=PANEL_BACKGROUND_COLOR,
+            padx=10,
+            pady=6,
+        )
+        limits_box.pack(fill="x", pady=(0, 8))
+
+        make_section_label(limits_box, "Minimum Main Bet:")
+        self._min_bet_buttons = make_option_grid(
+            limits_box,
+            [(m, f"${m:,}") for m in ALLOWED_MINIMUM_BETS],
+            3,
+            lambda v: self._update_draft(minimum_bet=v),
+            "hr_minbet",
+        )
+
+        make_section_label(limits_box, "Maximum Main Bet:")
+        self._max_bet_buttons = make_option_grid(
+            limits_box,
+            [(0, "No Limit")] + [(m, f"${m:,}") for m in ALLOWED_MAXIMUM_BETS if m > 0],
+            3,
+            lambda v: self._update_draft(maximum_bet=v),
+            "hr_maxbet",
+        )
+
+        # 4. Staged Apply & Reset Defaults Row
+        commit_row = tkinter.Frame(self.tab_rules_frame, background=PANEL_BACKGROUND_COLOR)
+        commit_row.pack(fill="x", pady=(4, 4))
+        commit_row.columnconfigure(0, weight=1, uniform="hr_commit")
+        commit_row.columnconfigure(1, weight=1, uniform="hr_commit")
+
+        self.apply_rules_btn = tkinter.Button(
+            commit_row,
+            text="✔ Apply Rules",
+            font=get_button_font(15),
+            background="#2e7d32",
+            fg="#ffffff",
+            activebackground="#388e3c",
+            activeforeground="#ffffff",
+            relief="raised",
+            borderwidth=2,
+            cursor="hand2",
+            padx=10,
+            pady=6,
+            command=self._on_apply_house_rules,
+        )
+        self.apply_rules_btn.grid(row=0, column=0, sticky="ew", padx=(0, 6))
+
+        self.reset_rules_defaults_btn = tkinter.Button(
+            commit_row,
+            text="↺ Classic Defaults",
+            font=get_button_font(15),
+            background="#37474f",
+            fg="#ffffff",
+            activebackground="#455a64",
+            activeforeground="#ffffff",
+            relief="raised",
+            borderwidth=2,
+            cursor="hand2",
+            padx=10,
+            pady=6,
+            command=self._on_reset_draft_rules,
+        )
+        self.reset_rules_defaults_btn.grid(row=0, column=1, sticky="ew", padx=(6, 0))
+
+        self.rules_status_lbl = tkinter.Label(
+            self.tab_rules_frame,
+            textvariable=self.rules_status_var,
+            font=get_body_font(14),
+            fg="#ffeb3b",
+            background=PANEL_BACKGROUND_COLOR,
+        )
+        self.rules_status_lbl.pack(pady=(2, 4))
+
+        self._refresh_house_rules_controls()
+
+    def _is_rules_change_allowed(self) -> bool:
+        phase = getattr(self.app, "round_phase", RoundPhase.BETTING)
+        dealing = bool(getattr(self.app, "_dealing", False))
+        return not dealing and phase in (RoundPhase.BETTING, RoundPhase.ROUND_OVER)
+
+    def _select_preset(self, preset_id: str) -> None:
+        if preset_id in VENUE_PRESETS:
+            self._draft_rules = VENUE_PRESETS[preset_id]
+            self.rules_status_var.set(
+                f"Staged preset: {VENUE_PRESET_LABELS.get(preset_id, preset_id)} — click ✔ Apply Rules."
+            )
+            self._refresh_house_rules_controls()
+
+    def _update_draft(self, **changes: Any) -> None:
+        raw = self._draft_rules.to_dict()
+        raw.update(changes)
+        raw["preset_id"] = "custom"
+        self._draft_rules = HouseRules.from_dict(raw)
+        self.rules_status_var.set("Draft modified — click ✔ Apply Rules to reshuffle with new rules.")
+        self._refresh_house_rules_controls()
+
+    def _on_reset_draft_rules(self) -> None:
+        self._draft_rules = HouseRules()
+        self.rules_status_var.set("Draft reset to Classic 4-Deck defaults — click ✔ Apply Rules.")
+        self._refresh_house_rules_controls()
+
+    def _on_apply_house_rules(self) -> None:
+        if not self._is_rules_change_allowed():
+            self.rules_status_var.set("🔒 Finish current hand before changing House Rules.")
+            self._refresh_house_rules_controls()
+            return
+        if hasattr(self.app, "apply_house_rules"):
+            applied = self.app.apply_house_rules(self._draft_rules)
+            if applied:
+                self._draft_rules = self.app.house_rules
+                self.rules_status_var.set(f"✓ Applied: {self.app.house_rules.short_badge()} (shoe reshuffled).")
+            else:
+                self.rules_status_var.set("🔒 Finish current hand before changing House Rules.")
+        self._refresh_house_rules_controls()
+
+    def _style_choice_buttons(self, mapping: dict[Any, tkinter.Button], selected_val: Any) -> None:
+        for val, btn in mapping.items():
+            is_sel = val == selected_val
+            btn.configure(
+                background="#1b5e20" if is_sel else "#0b2919",
+                fg="#ffd700" if is_sel else "#cfd8dc",
+                relief="sunken" if is_sel else "ridge",
+            )
+
+    def _refresh_house_rules_controls(self) -> None:
+        r = self._draft_rules
+        edge = estimate_house_edge_pct(r)
+        preset_title = VENUE_PRESET_LABELS.get(r.preset_id, "Custom Rules")
+        self.house_edge_label.configure(
+            text=f"Estimated House Edge: {edge:.2f}%  ({preset_title})"
+        )
+        live_rules = getattr(self.app, "house_rules", HouseRules())
+        self.active_rules_badge_label.configure(
+            text=f"Live Table: {live_rules.short_badge()}   |   Draft: {r.short_badge()}"
+        )
+
+        self._style_choice_buttons(self._preset_buttons, r.preset_id)
+        self._style_choice_buttons(self._deck_buttons, r.deck_count)
+        self._style_choice_buttons(self._s17_buttons, r.dealer_hits_soft_17)
+        self._style_choice_buttons(self._payout_buttons, r.blackjack_payout)
+        self._style_choice_buttons(self._das_buttons, r.allow_das)
+        self._style_choice_buttons(self._dbl_buttons, r.double_restriction)
+        self._style_choice_buttons(self._surr_buttons, r.allow_surrender)
+        self._style_choice_buttons(self._min_bet_buttons, r.minimum_bet)
+
+        for max_val, btn in self._max_bet_buttons.items():
+            if max_val != 0 and max_val < r.minimum_bet:
+                btn.configure(state="disabled", background="#1c2621", fg="#546e7a", relief="flat")
+            else:
+                is_sel = max_val == r.maximum_bet
+                btn.configure(
+                    state="normal",
+                    background="#1b5e20" if is_sel else "#0b2919",
+                    fg="#ffd700" if is_sel else "#cfd8dc",
+                    relief="sunken" if is_sel else "ridge",
+                )
+
+        unlocked = self._is_rules_change_allowed()
+        if unlocked:
+            self.apply_rules_btn.configure(state="normal", background="#2e7d32")
+            if self.rules_status_var.get().startswith("🔒"):
+                self.rules_status_var.set("")
+        else:
+            self.apply_rules_btn.configure(state="disabled", background="#455a64")
+            self.rules_status_var.set("🔒 Finish current hand to change House Rules.")
 
     def _refresh_stats_display(self):
         """Refreshes the high scores, counting records, and achievement badges displayed in the dialog."""
@@ -812,7 +1295,15 @@ class SettingsDialog(tkinter.Toplevel):
             return
 
         self.app.clear_player_save_data()
+        if hasattr(self.app, "apply_house_rules"):
+            self.app.apply_house_rules(HouseRules())
+        if hasattr(self.app, "tripometer") and self.app.tripometer is not None:
+            self.app.tripometer.reset()
+        if hasattr(self.app, "_refresh_trip_button_badge"):
+            self.app._refresh_trip_button_badge()
+        self._draft_rules = HouseRules()
         self._refresh_stats_display()
+        self._refresh_house_rules_controls()
         self.status_msg_var.set("✓ Save file reset to initial blank slate.")
 
     def _on_cycle_play_mode(self):
@@ -1136,6 +1627,7 @@ class ShortcutsDialog(tkinter.Toplevel):
 
         panel_trainer = make_panel(right_col_s, "🧮 TRAINER & SUPERNATURAL")
         add_row(panel_trainer, ["keyboard_k", "keyboard_shift", "keyboard_c"], "Card Counter HUD", "(K or Shift+C)")
+        add_row(panel_trainer, ["keyboard_t"], "Strategy Tripometer", "(Hand review & grades)")
         add_row(panel_trainer, ["keyboard_shift", "keyboard_m"], "Cycle Play Mode", "(Casual / Betting / Training)")
         add_row(panel_trainer, ["keyboard_x"], "Miracle Draw", "(Hell's Table relic redraw)")
 
@@ -1597,4 +2089,610 @@ class WelcomeSplashDialog(tkinter.Toplevel):
             self.destroy()
         except Exception:
             pass
+        return "break"
+
+
+# ============================================================================
+# 7. TripometerDialog (Persistent Strategy Tripometer & 50-Hand Audit Log)
+# ============================================================================
+
+class TripometerDialog(tkinter.Toplevel):
+    """
+    Modal Strategy Tripometer & Hand Review overlay.
+    Displays Hands Since Reset, Net Trip P&L, 3 independent skill grade plaques
+    (Basic Strategy, Illustrious 18, Kelly Bet Sizing), an All Hands / Mistakes Only
+    filter bar, and the 50-hand rolling audit log using crisp native-grid pixel fonts.
+    """
+
+    _OUTCOME_LABELS: dict[str, tuple[str, str]] = {
+        "NATURAL_BLACKJACK": ("BLACKJACK", "#ffd700"),
+        "BLACKJACK": ("BLACKJACK", "#ffd700"),
+        "PLAYER_WINS": ("WIN", "#69f0ae"),
+        "WIN": ("WIN", "#69f0ae"),
+        "DEALER_WINS": ("LOSS", "#ff8a80"),
+        "LOSS": ("LOSS", "#ff8a80"),
+        "BUST": ("BUST", "#ff8a80"),
+        "PLAYER_BUST": ("BUST", "#ff8a80"),
+        "PUSH": ("PUSH", "#cfd8dc"),
+        "TIE": ("PUSH", "#cfd8dc"),
+        "SURRENDER": ("SURRENDER", "#ffb74d"),
+    }
+
+    def __init__(self, parent: tkinter.Misc, app: Any) -> None:
+        super().__init__(parent)
+        self.app = app
+        self.filter_mode: str = "all"  # "all" | "mistakes"
+        self._rendered_hand_frames: list[tkinter.Frame] = []
+
+        self.title("Strategy Tripometer & Hand Review")
+        self.configure(background=PANEL_BACKGROUND_COLOR)
+        self.resizable(False, False)
+        self.transient(parent)
+        if hasattr(app, "_icon_photo") and app._icon_photo is not None:
+            try:
+                self.iconphoto(False, app._icon_photo)
+            except Exception:
+                pass
+
+        target_w, target_h = 820, 640
+        try:
+            root_x = parent.winfo_rootx()
+            root_y = parent.winfo_rooty()
+            root_w = parent.winfo_width()
+            root_h = parent.winfo_height()
+            screen_w = parent.winfo_screenwidth()
+            screen_h = parent.winfo_screenheight()
+            scale = getattr(app, "scale_factor", 1.0)
+            cfg_max_h = int(config.DEFAULT_WINDOW_HEIGHT * scale)
+            dialog_w = min(target_w, max(640, screen_w - 40))
+            dialog_h = min(target_h, max(420, min(screen_h - 80, cfg_max_h)))
+            x = max(0, root_x + (root_w - dialog_w) // 2)
+            y = max(0, root_y + (root_h - dialog_h) // 2)
+            self.geometry(f"{dialog_w}x{dialog_h}+{x}+{y}")
+        except Exception:
+            self.geometry(f"{target_w}x{target_h}")
+
+        # Persistent Header (crisp BoldPixels title + m6x11plus 16px subtitle, zero synthetic bold)
+        header_bar = tkinter.Frame(self, background=PANEL_BACKGROUND_COLOR, padx=18, pady=8)
+        header_bar.pack(side="top", fill="x")
+
+        tkinter.Label(
+            header_bar,
+            text="STRATEGY TRIPOMETER & HAND REVIEW",
+            font=get_title_font(28),
+            fg="#ffd700",
+            background=PANEL_BACKGROUND_COLOR,
+        ).pack(anchor="center")
+
+        self.subtitle_lbl = tkinter.Label(
+            header_bar,
+            text="",
+            font=get_header_font(16),
+            fg="#80cbc4",
+            background=PANEL_BACKGROUND_COLOR,
+        )
+        self.subtitle_lbl.pack(anchor="center", pady=(2, 0))
+
+        # Persistent Bottom Footer: Green Done + Red Reset Trip (confirmation-guarded)
+        footer_row = tkinter.Frame(self, background=PANEL_BACKGROUND_COLOR, padx=18, pady=8)
+        footer_row.pack(side="bottom", fill="x")
+        footer_row.columnconfigure(0, weight=1, uniform="trip_footer")
+        footer_row.columnconfigure(1, weight=1, uniform="trip_footer")
+
+        self.done_btn = tkinter.Button(
+            footer_row,
+            text="Done (Esc)",
+            font=get_button_font(16),
+            background="#2e7d32",
+            fg="#ffffff",
+            activebackground="#388e3c",
+            activeforeground="#ffffff",
+            relief="raised",
+            borderwidth=2,
+            cursor="hand2",
+            padx=14,
+            pady=6,
+            command=self._on_close,
+        )
+        self.done_btn.grid(row=0, column=0, sticky="ew", padx=(0, 6))
+
+        self.reset_trip_btn = tkinter.Button(
+            footer_row,
+            text="Reset Trip Stats",
+            font=get_button_font(16),
+            background="#b71c1c",
+            fg="#ffffff",
+            activebackground="#d32f2f",
+            activeforeground="#ffffff",
+            relief="raised",
+            borderwidth=2,
+            cursor="hand2",
+            padx=14,
+            pady=6,
+            command=self._on_click_reset_trip,
+        )
+        self.reset_trip_btn.grid(row=0, column=1, sticky="ew", padx=(6, 0))
+
+        # Adaptive Scroll Container
+        self.canvas = tkinter.Canvas(
+            self,
+            background=PANEL_BACKGROUND_COLOR,
+            highlightthickness=0,
+            borderwidth=0,
+            height=220,
+        )
+        self.v_scrollbar = tkinter.Scrollbar(self, orient="vertical", command=self.canvas.yview)
+        self.scroll_content = tkinter.Frame(self.canvas, background=PANEL_BACKGROUND_COLOR, padx=18, pady=6)
+        self.canvas_window = self.canvas.create_window((0, 0), window=self.scroll_content, anchor="nw")
+        self.canvas.configure(yscrollcommand=self._on_scroll_update)
+
+        self.scroll_content.bind("<Configure>", self._on_frame_configure)
+        self.canvas.bind("<Configure>", self._on_canvas_configure)
+        self.canvas.pack(side="left", fill="both", expand=True)
+
+        self.bind("<MouseWheel>", self._on_mousewheel)
+        self.bind("<Button-4>", lambda e: self.canvas.yview_scroll(-1, "units"))
+        self.bind("<Button-5>", lambda e: self.canvas.yview_scroll(1, "units"))
+        self.bind("1", lambda e: self._set_filter_mode("all"))
+        self.bind("2", lambda e: self._set_filter_mode("mistakes"))
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+        self.bind("<Escape>", lambda e: self._on_close())
+
+        self._render_tripometer_contents()
+        self.focus_set()
+
+    def _on_scroll_update(self, first: Any, last: Any) -> None:
+        self.v_scrollbar.set(first, last)
+        if float(first) <= 0.0 and float(last) >= 1.0:
+            if self.v_scrollbar.winfo_ismapped():
+                self.v_scrollbar.pack_forget()
+        else:
+            if not self.v_scrollbar.winfo_ismapped():
+                self.v_scrollbar.pack(side="right", fill="y")
+
+    def _on_frame_configure(self, event: Any) -> None:
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+
+    def _on_canvas_configure(self, event: Any) -> None:
+        self.canvas.itemconfig(self.canvas_window, width=event.width)
+
+    def _on_mousewheel(self, event: Any) -> None:
+        if hasattr(self, "canvas") and self.canvas.winfo_exists():
+            self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    def _bind_mousewheel_recursive(self, widget: tkinter.Misc) -> None:
+        widget.bind("<MouseWheel>", self._on_mousewheel)
+        widget.bind("<Button-4>", lambda e: self.canvas.yview_scroll(-1, "units"))
+        widget.bind("<Button-5>", lambda e: self.canvas.yview_scroll(1, "units"))
+        for child in widget.winfo_children():
+            self._bind_mousewheel_recursive(child)
+
+    def _set_filter_mode(self, mode: str) -> None:
+        if mode in ("all", "mistakes") and mode != self.filter_mode:
+            self.filter_mode = mode
+            self.canvas.yview_moveto(0.0)
+            self._render_tripometer_contents()
+
+    @classmethod
+    def _format_outcome_badge(cls, raw_outcome: str, net_profit: int) -> tuple[str, str]:
+        clean_key = str(raw_outcome or "").strip().upper()
+        human, base_col = cls._OUTCOME_LABELS.get(clean_key, (clean_key.replace("_", " ") or "HAND", "#cfd8dc"))
+        pnl_str = (
+            f"+${net_profit:,}"
+            if net_profit > 0
+            else (f"-${abs(net_profit):,}" if net_profit < 0 else "$0")
+        )
+        return f"{human}  {pnl_str}", base_col
+
+    @staticmethod
+    def _grade_letter_and_color(pct: Optional[float]) -> tuple[str, str]:
+        if pct is None:
+            return "N/A", "#90a4ae"
+        if pct >= 98.0:
+            return "S", "#00e676"
+        if pct >= 90.0:
+            return "A", "#69f0ae"
+        if pct >= 80.0:
+            return "B", "#81c784"
+        if pct >= 70.0:
+            return "C", "#ffd54f"
+        if pct >= 60.0:
+            return "D", "#ffb74d"
+        return "F", "#ff8a80"
+
+    def _render_tripometer_contents(self) -> None:
+        for child in self.scroll_content.winfo_children():
+            child.destroy()
+        self._rendered_hand_frames = []
+
+        tracker = getattr(self.app, "tripometer", None)
+        summary = tracker.get_summary() if tracker is not None else {
+            "hands_recorded": 0,
+            "rounds_recorded": 0,
+            "trip_net_profit": 0,
+            "bs_optimal": 0,
+            "bs_total": 0,
+            "bs_pct": None,
+            "i18_optimal": 0,
+            "i18_opportunities": 0,
+            "i18_pct": None,
+            "kelly_optimal": 0,
+            "kelly_total": 0,
+            "kelly_pct": None,
+        }
+        rules = getattr(self.app, "house_rules", HouseRules())
+        min_str = f"${rules.minimum_bet:,}"
+        max_str = f"${rules.maximum_bet:,}" if rules.maximum_bet > 0 else "No Limit"
+        self.subtitle_lbl.configure(
+            text=f"Active Table: {rules.short_badge()}   |   Limits: {min_str} - {max_str}"
+        )
+
+        # 1. Trip Summary Strip (Hands Since Reset & Net Trip P&L)
+        top_strip = tkinter.Frame(
+            self.scroll_content,
+            background="#082415",
+            highlightbackground="#d4af37",
+            highlightthickness=1,
+            padx=14,
+            pady=8,
+        )
+        top_strip.pack(fill="x", pady=(0, 10))
+        top_strip.columnconfigure(0, weight=1)
+        top_strip.columnconfigure(1, weight=1)
+
+        hands_cnt = summary["hands_recorded"]
+        rounds_cnt = summary["rounds_recorded"]
+        pnl = summary["trip_net_profit"]
+        pnl_str = f"+${pnl:,}" if pnl > 0 else (f"-${abs(pnl):,}" if pnl < 0 else "$0")
+        pnl_col = "#69f0ae" if pnl > 0 else ("#ff8a80" if pnl < 0 else "#cfd8dc")
+
+        tkinter.Label(
+            top_strip,
+            text=f"Hands Graded: {hands_cnt:,}  ({rounds_cnt:,} rounds)",
+            font=get_header_font(18),
+            fg="#ffffff",
+            background="#082415",
+        ).grid(row=0, column=0, sticky="w")
+
+        tkinter.Label(
+            top_strip,
+            text=f"Net Trip P&L: {pnl_str}",
+            font=get_header_font(18),
+            fg=pnl_col,
+            background="#082415",
+        ).grid(row=0, column=1, sticky="e")
+
+        # 2. Three Independent Skill Grade Plaques
+        plaques_row = tkinter.Frame(self.scroll_content, background=PANEL_BACKGROUND_COLOR)
+        plaques_row.pack(fill="x", pady=(0, 12))
+        for col in range(3):
+            plaques_row.columnconfigure(col, weight=1, uniform="trip_plaques")
+
+        plaque_specs = [
+            ("BASIC STRATEGY", summary["bs_pct"], summary["bs_optimal"], summary["bs_total"], "decisions"),
+            ("ILLUSTRIOUS 18", summary["i18_pct"], summary["i18_optimal"], summary["i18_opportunities"], "index spots"),
+            ("KELLY BET SIZING", summary["kelly_pct"], summary["kelly_optimal"], summary["kelly_total"], "rounds"),
+        ]
+        for idx, (title, pct, opt, tot, unit_lbl) in enumerate(plaque_specs):
+            letter, col_hex = self._grade_letter_and_color(pct)
+            border_hex = "#d4af37" if letter in ("S", "A") else col_hex
+            card = tkinter.Frame(
+                plaques_row,
+                background="#0b2919",
+                highlightbackground=border_hex,
+                highlightthickness=1,
+                padx=8,
+                pady=8,
+            )
+            card.grid(row=0, column=idx, sticky="nsew", padx=4)
+
+            tkinter.Label(
+                card,
+                text=title,
+                font=get_header_font(16),
+                fg="#ffd700",
+                background="#0b2919",
+            ).pack(anchor="center")
+
+            hero_row = tkinter.Frame(card, background="#0b2919")
+            hero_row.pack(anchor="center", pady=(4, 2))
+
+            chip_canvas = tkinter.Canvas(
+                hero_row,
+                width=88,
+                height=62,
+                background="#0b2919",
+                highlightthickness=0,
+                borderwidth=0,
+            )
+            chip_canvas.pack(side="left", padx=(0, 8))
+            draw_25d_grade_medallion(
+                chip_canvas,
+                x=42,
+                y=25,
+                grade=letter,
+                scale=1.22,
+            )
+
+            pct_str = f"{pct:.1f}%" if pct is not None else "N/A"
+            tkinter.Label(
+                hero_row,
+                text=pct_str,
+                font=get_display_font(32),
+                fg=col_hex,
+                background="#0b2919",
+            ).pack(side="left")
+
+            sub_str = f"{opt:,} / {tot:,} {unit_lbl}" if tot > 0 else f"0 {unit_lbl}"
+            tkinter.Label(
+                card,
+                text=sub_str,
+                font=get_header_font(16),
+                fg="#cfd8dc",
+                background="#0b2919",
+            ).pack(anchor="center")
+
+        # 3. Audit Log Header + Filter Controls (All Hands | Mistakes Only)
+        recent_hands = list(tracker.data.recent_hands) if tracker is not None else []
+        mistake_hands = [r for r in recent_hands if r.has_mistake]
+
+        filter_bar = tkinter.Frame(self.scroll_content, background=PANEL_BACKGROUND_COLOR)
+        filter_bar.pack(fill="x", pady=(0, 6))
+        filter_bar.columnconfigure(0, weight=1)
+
+        tkinter.Label(
+            filter_bar,
+            text="RECENT 50-HAND AUDIT LOG",
+            font=get_header_font(16),
+            fg="#ffd700",
+            background=PANEL_BACKGROUND_COLOR,
+        ).grid(row=0, column=0, sticky="w")
+
+        btn_strip = tkinter.Frame(filter_bar, background=PANEL_BACKGROUND_COLOR)
+        btn_strip.grid(row=0, column=1, sticky="e")
+
+        is_all = self.filter_mode == "all"
+        self.filter_all_btn = tkinter.Button(
+            btn_strip,
+            text=f"[1] All Hands ({len(recent_hands)})",
+            font=get_button_font(16),
+            background="#1b5e20" if is_all else "#0b2919",
+            fg="#ffd700" if is_all else "#cfd8dc",
+            activebackground="#2e7d32",
+            activeforeground="#ffffff",
+            relief="sunken" if is_all else "ridge",
+            borderwidth=1,
+            cursor="hand2",
+            padx=12,
+            pady=3,
+            command=lambda: self._set_filter_mode("all"),
+        )
+        self.filter_all_btn.grid(row=0, column=0, padx=(0, 6))
+
+        self.filter_mistakes_btn = tkinter.Button(
+            btn_strip,
+            text=f"[2] Mistakes Only ({len(mistake_hands)})",
+            font=get_button_font(16),
+            background="#7f1d1d" if not is_all else "#0b2919",
+            fg="#ffd54f" if not is_all else "#cfd8dc",
+            activebackground="#991b1b",
+            activeforeground="#ffffff",
+            relief="sunken" if not is_all else "ridge",
+            borderwidth=1,
+            cursor="hand2",
+            padx=12,
+            pady=3,
+            command=lambda: self._set_filter_mode("mistakes"),
+        )
+        self.filter_mistakes_btn.grid(row=0, column=1)
+
+        # 4. 50-Hand Rolling Audit Cards
+        audit_box = tkinter.Frame(
+            self.scroll_content,
+            background=PANEL_BACKGROUND_COLOR,
+        )
+        audit_box.pack(fill="x", pady=(0, 4))
+
+        displayed_hands = recent_hands if is_all else mistake_hands
+        if not recent_hands:
+            empty_card = tkinter.Frame(
+                audit_box,
+                background="#092114",
+                highlightbackground="#1f5736",
+                highlightthickness=1,
+                padx=14,
+                pady=12,
+            )
+            empty_card.pack(fill="x", pady=2)
+            tkinter.Label(
+                empty_card,
+                text="No hands recorded since reset. Play a round to see strategy, index, and bet-sizing feedback.",
+                font=get_header_font(16),
+                fg="#b0bec5",
+                background="#092114",
+                anchor="w",
+            ).pack(fill="x")
+        elif not displayed_hands:
+            clean_card = tkinter.Frame(
+                audit_box,
+                background="#092114",
+                highlightbackground="#2e7d32",
+                highlightthickness=1,
+                padx=14,
+                pady=12,
+            )
+            clean_card.pack(fill="x", pady=2)
+            tkinter.Label(
+                clean_card,
+                text="[OK] Flawless play! Zero Basic Strategy, Illustrious 18, or Kelly bet-sizing mistakes in recent hands.",
+                font=get_header_font(16),
+                fg="#69f0ae",
+                background="#092114",
+                anchor="w",
+            ).pack(fill="x")
+        else:
+            for idx, rec in enumerate(displayed_hands, start=1):
+                if rec.ungraded_reason is not None:
+                    row_bg = "#151824"
+                    border_col = "#5c6bc0"
+                elif rec.has_mistake:
+                    row_bg = "#211114"
+                    border_col = "#ef5350"
+                else:
+                    row_bg = "#092315" if idx % 2 == 1 else "#0d2e1c"
+                    border_col = "#1f5736"
+
+                row_frame = tkinter.Frame(
+                    audit_box,
+                    background=row_bg,
+                    highlightbackground=border_col,
+                    highlightthickness=1,
+                    padx=12,
+                    pady=8,
+                )
+                row_frame.pack(fill="x", pady=3)
+                self._rendered_hand_frames.append(row_frame)
+
+                # Row 1: Hand # + Rules Badge + True Count (Left) | Outcome + Net P&L (Right)
+                top_row = tkinter.Frame(row_frame, background=row_bg)
+                top_row.pack(fill="x")
+                top_row.columnconfigure(0, weight=1)
+
+                seat_prefix = f"Seat {rec.seat_idx}  |  " if rec.seat_idx > 0 else ""
+                ungraded_tag = f"  |  [UNGRADED: {rec.ungraded_reason.upper()}]" if rec.ungraded_reason else ""
+                tc_sign = "+" if rec.pre_deal_tc > 0 else ""
+                meta_text = (
+                    f"#{idx}   |   {seat_prefix}{rec.rules_badge}   |   True Count: {tc_sign}{rec.pre_deal_tc:.1f}{ungraded_tag}"
+                )
+                tkinter.Label(
+                    top_row,
+                    text=meta_text,
+                    font=get_header_font(16),
+                    fg="#ffd54f" if rec.ungraded_reason is None else "#9fa8da",
+                    background=row_bg,
+                    anchor="w",
+                ).grid(row=0, column=0, sticky="w")
+
+                outcome_badge, outcome_col = self._format_outcome_badge(rec.outcome, rec.net_profit)
+                tkinter.Label(
+                    top_row,
+                    text=outcome_badge,
+                    font=get_header_font(16),
+                    fg=outcome_col,
+                    background=row_bg,
+                    anchor="e",
+                ).grid(row=0, column=1, sticky="e")
+
+                # Row 2: Player vs Dealer Cards (Left) | Wager & Kelly Evaluation (Right)
+                mid_row = tkinter.Frame(row_frame, background=row_bg)
+                mid_row.pack(fill="x", pady=(4, 3))
+                mid_row.columnconfigure(0, weight=1)
+
+                p_cards = " ".join(rec.player_cards) if rec.player_cards else "-"
+                d_cards = " ".join(rec.dealer_cards) if rec.dealer_cards else "-"
+                tkinter.Label(
+                    mid_row,
+                    text=f"Player: [ {p_cards} ]    vs    Dealer: [ {d_cards} ]",
+                    font=get_header_font(16),
+                    fg="#ffffff",
+                    background=row_bg,
+                    anchor="w",
+                ).grid(row=0, column=0, sticky="w")
+
+                if rec.kelly_status == "OPTIMAL":
+                    kelly_txt = f"Wager: ${rec.wager:,}  (Kelly: OPTIMAL)"
+                    kelly_col = "#69f0ae"
+                elif rec.kelly_status in ("OVERBET", "UNDERBET"):
+                    kelly_txt = f"Wager: ${rec.wager:,}  ({rec.kelly_status}: Target ${rec.kelly_target_bet:,})"
+                    kelly_col = "#ffb74d"
+                else:
+                    kelly_txt = "Casual Mode (No Wager)" if rec.wager == 0 else f"Wager: ${rec.wager:,}"
+                    kelly_col = "#90a4ae"
+
+                tkinter.Label(
+                    mid_row,
+                    text=kelly_txt,
+                    font=get_header_font(16),
+                    fg=kelly_col,
+                    background=row_bg,
+                    anchor="e",
+                ).grid(row=0, column=1, sticky="e")
+
+                # Row 3+: Decision & Coaching Lines
+                if not rec.decisions:
+                    tkinter.Label(
+                        row_frame,
+                        text="Resolved on initial deal (no voluntary action required)",
+                        font=get_header_font(16),
+                        fg="#90a4ae",
+                        background=row_bg,
+                        anchor="w",
+                    ).pack(fill="x", pady=(2, 0))
+                else:
+                    for d in rec.decisions:
+                        clean_expl = str(d.explanation).replace("\u2014", "-").replace("\u2013", "-")
+                        if not d.is_bs_optimal:
+                            step_txt = (
+                                f"[!] Mistake: Played {d.action_taken} -> Optimal: {d.optimal_action}  ({clean_expl})"
+                            )
+                            step_col = "#ff8a80"
+                        elif d.is_i18_spot and not d.is_i18_optimal:
+                            step_txt = (
+                                f"[i] Played {d.action_taken} -> Missed I18 Index: {d.optimal_action}  ({clean_expl})"
+                            )
+                            step_col = "#ffd54f"
+                        else:
+                            step_txt = f"[OK] Optimal: {d.action_taken}  ({clean_expl})"
+                            step_col = "#69f0ae"
+
+                        tkinter.Label(
+                            row_frame,
+                            text=step_txt,
+                            font=get_header_font(16),
+                            fg=step_col,
+                            background=row_bg,
+                            anchor="w",
+                            justify="left",
+                            wraplength=730,
+                        ).pack(fill="x", pady=(2, 0))
+
+        self._bind_mousewheel_recursive(self.scroll_content)
+        try:
+            self.scroll_content.update_idletasks()
+            self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        except Exception:
+            pass
+
+    def _ask_confirm_reset_trip(self) -> bool:
+        import tkinter.messagebox as msgbox
+
+        return msgbox.askyesno(
+            title="⚠️ Reset Strategy Tripometer?",
+            message=(
+                "Reset the Strategy Tripometer counters, Net Trip P&L, and 50-hand audit log?\n\n"
+                "Your career bankroll, Hall of Fame records, Bootcamp badges, and unlocked costumes "
+                "will NOT be affected."
+            ),
+            icon="warning",
+            default="no",
+            parent=self,
+        )
+
+    def _on_click_reset_trip(self) -> None:
+        if not self._ask_confirm_reset_trip():
+            return
+        if hasattr(self.app, "tripometer") and self.app.tripometer is not None:
+            self.app.tripometer.reset()
+        if hasattr(self.app, "_refresh_trip_button_badge"):
+            self.app._refresh_trip_button_badge()
+        self._render_tripometer_contents()
+
+    def _on_close(self, event: Any = None) -> str:
+        if hasattr(self.app, "_close_tripometer_dialog"):
+            self.app._close_tripometer_dialog()
+        else:
+            try:
+                self.destroy()
+            except Exception:
+                pass
         return "break"

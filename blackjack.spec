@@ -37,6 +37,7 @@ hiddenimports = [
     "dialogue_voice_engine",
     "card_counter",
     "card_counting_hud",
+    "tripometer",
     "bootcamp_domain",
     "counting_bootcamp",
     "pixel_ui",

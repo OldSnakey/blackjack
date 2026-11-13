@@ -14,7 +14,8 @@ from __future__ import annotations
 
 import tkinter
 from typing import Any, Callable, Optional
-from card_counter import HiLoCardCounter
+from card_counter import HiLoCardCounter, MIT_KELLY_UNIT_RAMP
+from rules import HouseRules
 from pixel_ui import (
     get_element_font,
     get_pixel_font,
@@ -143,10 +144,23 @@ class CardCountingHud(tkinter.Frame):
 
         self.is_visible = False
         self.drill_mode = False
+        self._house_rules: HouseRules = HouseRules()
         self._last_rec_bet = 25
+        self._last_bankroll: Optional[int] = None
+        self._last_active_seats: int = 1
         self._last_cards_remaining = int(getattr(self.counter, "deck_count", 4)) * 52
 
         self._build_ui()
+
+    def set_house_rules(self, rules: HouseRules) -> None:
+        """Synchronizes active HouseRules used for edge estimation and Kelly bet targets."""
+        self._house_rules = rules.normalized() if isinstance(rules, HouseRules) else HouseRules()
+        if hasattr(self, "decks_label") and self.decks_label.winfo_exists():
+            try:
+                decks = self.counter.decks_remaining(self._last_cards_remaining)
+                self.decks_label.configure(text=f"{decks:.1f}")
+            except Exception:
+                pass
 
     def mount_on_stage(
         self,
@@ -692,23 +706,43 @@ class CardCountingHud(tkinter.Frame):
                 self.mode_btn.configure(text="👁 Assisted", foreground="#80cbc4", background="#1b382d")
         if self.drill_mode and hasattr(self, "deviation_badge") and bool(self.deviation_badge.winfo_manager()):
             self.deviation_badge.pack_forget()
-        self.update_counts(cards_remaining=cards_remaining, base_bet=base_bet)
+        self.update_counts(
+            cards_remaining=cards_remaining,
+            base_bet=base_bet,
+            bankroll=self._last_bankroll,
+            active_seats=self._last_active_seats,
+        )
         return self.drill_mode
 
     def toggle_drill_mode(self, cards_remaining: int = 208, base_bet: int = 25) -> bool:
         """Toggles between Assisted HUD Mode and Drill Challenge Mode."""
         return self.set_drill_mode(not self.drill_mode, cards_remaining=cards_remaining, base_bet=base_bet)
 
-    def update_counts(self, cards_remaining: int, base_bet: int = 25):
+    def update_counts(
+        self,
+        cards_remaining: int,
+        base_bet: int = 25,
+        bankroll: Optional[int] = None,
+        active_seats: int = 1,
+    ) -> None:
         """Refreshes HUD count badges from internal counter state."""
         self._last_cards_remaining = cards_remaining
+        self._last_bankroll = bankroll
+        self._last_active_seats = max(1, int(active_seats))
         rc = self.counter.running_count
         decks = self.counter.decks_remaining(cards_remaining)
         tc = self.counter.true_count(cards_remaining)
-        adv = self.counter.get_player_advantage(cards_remaining)
-        rec_bet = self.counter.get_recommended_bet(base_bet, tc)
+        if bankroll is not None:
+            adv = self.counter.get_player_advantage(cards_remaining, rules=self._house_rules)
+            rec_bet, tier_idx, _ = HiLoCardCounter.get_kelly_bet_target(
+                self._house_rules, tc, int(bankroll), self._last_active_seats
+            )
+            rec_units = MIT_KELLY_UNIT_RAMP[tier_idx]
+        else:
+            adv = self.counter.get_player_advantage(cards_remaining)
+            rec_bet = self.counter.get_recommended_bet(base_bet, tc)
+            rec_units = max(1, rec_bet // max(1, base_bet))
         self._last_rec_bet = rec_bet
-        rec_units = max(1, rec_bet // max(1, base_bet))
 
         # Decks remaining is always visible (visual shoe estimation)
         self.decks_label.configure(text=f"{decks:.1f}")
@@ -743,7 +777,7 @@ class CardCountingHud(tkinter.Frame):
         )
 
         # Bet Guide recommendation
-        self.bet_guide_label.configure(text=f"{rec_units}u (${rec_bet})")
+        self.bet_guide_label.configure(text=f"{rec_units}u (${rec_bet:,})")
 
 
 class CardCountingQuizDialog(tkinter.Toplevel):

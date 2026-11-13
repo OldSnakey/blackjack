@@ -83,6 +83,14 @@ Designed as an educational project for Python learners and junior developers, th
   - Independent Double Down, Split, and Surrender decisions across all seats.
   - Bankroll-guarded `MultiSeatInsuranceDialog` offering sequential insurance decisions across all active seats when the dealer shows an Ace.
   - Multi-seat felt chip tray and hands-free seat focus navigation via `Left` and `Right` arrow keys.
+- **Configurable Casino House Rules & Venue Presets (`rules.py`, `ui_dialogs.py`)**:
+  - Dedicated `[2] House Rules` tab in Casino Settings (`O` / `F2`) with 6 authentic venue presets (*Classic 4-Deck*, *Vegas Strip 6-Deck*, *Downtown 2-Deck Pitch*, *Reno Single-Deck Pitch*, *High-Roller VIP Salon*, and *Tourist Trap 6:5 Warning*) plus full custom overrides.
+  - Configurable shoe size (`1`, `2`, `4`, `6`, `8` decks), dealer soft-17 rule (`S17` vs `H17`), Natural Blackjack payout (`3:2` vs `6:5`), Double After Split (`DAS`), double-down total restrictions (`Any 2`, `9/10/11`, `10/11`), Late Surrender (`LS`), and flexible table limits (default \$5 min and No Limit max, scaling up to \$1,000 min / \$5,000 max for bankroll progression) with sub-minimum All-In recovery protection.
+  - Dynamic felt arc engraving (`BLACKJACK PAYS 3 TO 2` / `6 TO 5`, `DEALER MUST STAND ON ALL 17s` / `HITS SOFT 17`), live House Edge % estimation, and rule-aware Basic Strategy, Illustrious 18 + Fab 4 surrender deviations, and Hi-Lo advantage math.
+- **Persistent Strategy Tripometer & 50-Hand Audit Log (`tripometer.py`, `ui_dialogs.py`)**:
+  - Continuous background skill grading accessible any time via the top-bar `📊 Trip` button or `T` shortcut—independent from lifetime career records so players can reset trip stats (`🗑 Reset Trip`) when switching rules or practicing new spreads.
+  - Real-time evaluation of Basic Strategy accuracy, Illustrious 18 + Fab 4 True Count index play accuracy, and bankroll-aware Kelly bet sizing (`±1` unit tier tolerance) against each hand's snapshotted `HouseRules`.
+  - Bounded 50-hand scrollable audit log with rule badges (`6D · H17 · 3:2 · DAS · LS`), `All Hands` vs `Mistakes Only` filtering, and automatic quarantine of supernatural Haunted/Card 13 rounds so arcade effects never skew mastery percentages.
 - **Fixed 1.0x Scale & Borderless Fullscreen**:
   - Crisp, fixed 1.0x interface geometry (`1000x700` default) ensuring authentic pixel art rendering without blurring or distortion.
   - Borderless Fullscreen mode (`F11` / `⛶ Full`).
@@ -222,7 +230,8 @@ The game supports complete hands-free keyboard navigation with context-sensitive
 | `M` | Any Time | Toggle Sound Mute (`ON` / `OFF`) |
 | `Shift + M` | Any Time (Betting/Over) | Cycle Table Play Mode (`Casual` $\to$ `Betting` $\to$ `Training`) |
 | `V` | Any Time | Toggle **Dealer Horizon Stage View** (Show / Hide) |
-| `O` / `F2` | Any Time | Open **Casino Settings & Table Preferences** |
+| `T` | Any Time | Open **Strategy Tripometer & 50-Hand Audit Log** (`📊 Trip`) |
+| `O` / `F2` | Any Time | Open **Casino Settings & House Rules** |
 | `F11` | Any Time | Toggle **Borderless Fullscreen** |
 | `K` / `Shift + C` | Any Time | Toggle **Card Counter Trainer HUD** (Hi-Lo Running & True Count) |
 | `Shift + W` | Any Time | Open **Dealer Wardrobe & Costumes** |
@@ -331,11 +340,12 @@ Career statistics, costume unlocks, and game mode preferences are encapsulated w
 ### 8. Educational Modular Architecture & Separation of Concerns
 To foster code discoverability and provide junior developers with clean patterns, the core codebase is decoupled into modular layers:
 - **`config.py`**: Centralized configuration, game constants, screen dimension limits, theme color math (`hex_to_rgb`), and frozen `@dataclass` `ThemePalette` definitions with `get_phase_palette()`.
-- **`rules.py`**: Pure, stateless domain logic with zero GUI or Tkinter dependencies. Implements `Card(tuple)` (supporting indexing `card[0]`, `val, img = card`, dot access, and `len(card) == 2`), `Hand` (first-class hand domain model with `list[Card]` sequence compatibility), `RoundPhase`, `score_hand()`, `dealer_should_hit()`, `determine_outcome()`, `calculate_payout()`, and `breakdown_chips()`. Juniors can import and experiment with rules in a CLI REPL or headless test without spinning up a GUI.
+- **`rules.py`**: Pure, stateless domain logic with zero GUI or Tkinter dependencies. Implements `Card(tuple)` (supporting indexing `card[0]`, `val, img = card`, dot access, and `len(card) == 2`), `Hand` (first-class hand domain model with `list[Card]` sequence compatibility), `HouseRules` & `VENUE_PRESETS` (configurable table rules and house-edge math), `RoundPhase`, `score_hand()`, `dealer_should_hit()`, `determine_outcome()`, `calculate_payout()`, and `breakdown_chips()`. Juniors can import and experiment with rules in a CLI REPL or headless test without spinning up a GUI.
 - **`state_machine.py`**: Pure Finite State Machine (`GameStateMachine`) governing legal `RoundPhase` transitions and raising `InvalidStateTransitionError` on illegal jumps.
 - **`event_bus.py`**: Synchronous publish-subscribe event bus (`EventHub`, `GameEvent`, `GameEventType`) decoupling domain state transitions from audio, HUDs, puppet kinematics, and persistence.
 - **`game_engine.py`**: Pure headless Blackjack state engine (`BlackjackEngine`, `RoundResult`) encapsulating shoe management, betting, multi-hand splits, double downs, surrenders, and dealer turns without GUI dependencies.
-- **`card_counter.py`**: Pure stateless Hi-Lo card counting math, Running Count, True Count estimation, player edge percentage (`get_player_advantage`), bet spread sizing, and quiz verification independent of the GUI.
+- **`card_counter.py`**: Pure stateless Hi-Lo card counting math, Running Count, True Count estimation, rule-aware player edge percentage (`estimate_player_advantage` / `get_player_advantage`), bankroll-aware Kelly bet ramp (`get_kelly_bet_target`), Illustrious 18 + Fab 4 surrender deviations, and quiz verification independent of the GUI.
+- **`tripometer.py`**: Pure headless Strategy Tripometer engine (`TripometerTracker`, `TripometerData`, `HandHistoryRecord`, `DecisionStepRecord`) grading Basic Strategy, Illustrious 18 index plays, and Kelly bet sizing in real time with a 50-hand JSON-safe ring buffer.
 - **`card_counting_hud.py`**: Custom 2.5D felt HUD pill (with Running Count, True Count, Decks Remaining, Edge %, and Assisted vs. Drill Challenge Mode toggle), transient floating count badges (`+1`, `-1`, `0`), and interactive mid-shoe counting quiz drill modal.
 - **`haunted_manager.py`**: Haunted Halloween narrative state engine managing supernatural creep phases, altar candle tracking, cursed Card 13 manifestation, and The Pit Fiend boss logic with Celestial Blessings.
 - **`dealer_actor.py`**: Living Dealer 7-layer puppet engine handling autonomous breathing/blinking kinematics, phonetic visemes, costume profiles, and high-resolution composite rendering.
@@ -345,7 +355,7 @@ To foster code discoverability and provide junior developers with clean patterns
 - **`pixel_ui.py`**: Retro pixel art UI controls (`CanvasPixelButton`, `CanvasPixelPanel`, `PixelPlaqueFrame`, `PixelDialogueFrame`), GDI pixel font loader, and negative pixel font scale clamping.
 - **`ui_layout.py`**: Declarative JSON UI geometry (`ui_layout.json`), responsive coordinate resolution, widget styling, and PIL filter configuration.
 - **`ui_canvases.py`**: Custom 2.5D `tkinter.Canvas` presentation components: `ChipVisualizer`, `SoulMeterCanvas`, `TableAnnouncementHUD`, `HauntedAltarCanvas` (with color synchronization), `DealerStageCanvas`, `TableFeltCanvas`, and `MahoganyRailCanvas`.
-- **`ui_dialogs.py`**: Modal `tkinter.Toplevel` dialogs: `ShortcutsDialog`, `SettingsDialog`, `StoryDialogueDialog`, `AngelicDraftDialog`, and `WelcomeSplashDialog`.
+- **`ui_dialogs.py`**: Modal `tkinter.Toplevel` dialogs: `ShortcutsDialog`, `SettingsDialog` (two-tab Table & Audio + House Rules), `TripometerDialog` (50-hand strategy audit log), `StoryDialogueDialog`, `AngelicDraftDialog`, and `WelcomeSplashDialog`.
 - **`save_manager.py`**: Career statistics, persistent JSON storage, and round achievement evaluation (`evaluate_round_achievements`).
 - **`blackjack.py`**: Main application coordinator (`BlackjackApp`) wiring event loops, user keyboard/mouse bindings, and game phase transitions, while re-exporting key domain symbols for 100% backward compatibility.
 - **[CRC Architecture & System Design (`docs/ARCHITECTURE_CRC.md`)](docs/ARCHITECTURE_CRC.md)**: Exhaustive Class-Responsibility-Collaboration (CRC) reference covering all project classes, sequence flows, and architectural improvement analyses.
@@ -418,6 +428,8 @@ python -m unittest discover tests -v
 | [`tests/test_hall_of_fame_and_achievements.py`](tests/test_hall_of_fame_and_achievements.py) | Tests Hall of Fame modal GUI, badge rendering, stats aggregation, and achievement unlock triggers. |
 | [`tests/test_hand.py`](tests/test_hand.py) | Modular domain unit tests for the pure `Hand` class: card accumulation, soft/hard scoring, sequence protocol (`len`, `getitem`, `iter`), equality, and string formatting. |
 | [`tests/test_haunted_mode.py`](tests/test_haunted_mode.py) | Validates Haunted Halloween phase transitions, Card 13 manifestation & immediate deal bust handling, candle snuffing, gravestone rising, Pit Fiend composite, Soul Meter animations, and relic mechanics. |
+| [`tests/test_house_rules.py`](tests/test_house_rules.py) | Unit tests for `HouseRules` normalization, 6 casino venue presets, house-edge estimation, H17/6:5/DAS/double-restriction/LS basic strategy & payouts, sub-minimum All-In recovery, and `BlackjackEngine` rule enforcement. |
+| [`tests/test_house_rules_and_tripometer_gui.py`](tests/test_house_rules_and_tripometer_gui.py) | Headless GUI integration tests verifying `SettingsDialog` Tab 1 (`House Rules`), mid-hand mutation guards, dynamic felt `6 TO 5` / `H17` markings, `TripometerDialog` (`📊 Trip` & `T`), end-to-end GUI round telemetry, and Trip reset isolation. |
 | [`tests/test_living_animations.py`](tests/test_living_animations.py) | Validates DealerActor autonomous idle breathing, blinking cadence, typewriter speech timers, and gesture transitions. |
 | [`tests/test_multi_seat_engine.py`](tests/test_multi_seat_engine.py) | Headless unit tests for multi-seat engine: clockwise dealing, inactive seat skipping, dealer turn skip on bust/surrender, independent surrender, and canonical bankroll synchronization. |
 | [`tests/test_multi_seat_gui.py`](tests/test_multi_seat_gui.py) | Headless GUI tests for 3-seat felt layout, bounding boxes, split hand fanning, canvas-level geometric click dispatching, and `MultiSeatInsuranceDialog` bankroll clamping. |
@@ -439,6 +451,7 @@ python -m unittest discover tests -v
 | [`tests/test_table_felt.py`](tests/test_table_felt.py) | Validates procedural canvas texture generation, theme switching (casino/creep/hell), and child coordinate slice extraction. |
 | [`tests/test_table_hud.py`](tests/test_table_hud.py) | Tests 2.5D animated announcement HUD popups, banner styling, and auto-dismiss timers on the table felt. |
 | [`tests/test_test_runner.py`](tests/test_test_runner.py) | Validates the tiered test runner (`run_tests.py`), tier module mappings, disk existence of configured test modules, suite construction, and CLI argument parsing. |
+| [`tests/test_tripometer.py`](tests/test_tripometer.py) | Unit tests for `TripometerTracker`, `TripometerData`, `HandHistoryRecord`, Kelly $\pm 1$-tier bet grading, Illustrious 18 + Fab 4 surrender index evaluation, supernatural round quarantine, 50-hand ring buffer eviction, and `SaveManager` persistence. |
 | [`tests/test_typewriter_and_audio_accents.py`](tests/test_typewriter_and_audio_accents.py) | Validates typewriter dialogue streaming (25-35 ms cadence), directional speech tail rendering, fast-forward skip on click, character audio accents, and extension safety. |
 | [`tests/test_ui_geometry_and_rendering.py`](tests/test_ui_geometry_and_rendering.py) | Validates zero card clipping, beveled plaque geometry, TableAnnouncementHUD auto-dismiss, and OMEN altar color synchronization. |
 | [`tests/test_ui_layout.py`](tests/test_ui_layout.py) | Validates JSON-driven UI layout configuration (`ui_layout.py`), origin/offset resolution, grid/pack option scaling, and PIL resampling filters. |
@@ -465,13 +478,14 @@ Blackjack/
 ├── game_engine.py                  # Pure headless BlackjackEngine and RoundResult domain state manager
 ├── haunted_manager.py              # Haunted Halloween narrative state: phases, altar candles, relics
 ├── pixel_ui.py                     # Retro pixel art UI primitives, beveled plaques, and GDI pixel font loader
-├── rules.py                        # Pure stateless Blackjack math, Card, Hand, and RoundPhase (zero GUI imports)
-├── save_manager.py                 # Persistent save data, stats tracking, and achievement unlocks
+├── rules.py                        # Pure stateless Blackjack math, HouseRules, VENUE_PRESETS, Card, Hand, and RoundPhase
+├── save_manager.py                 # Persistent save data, HouseRules, TripometerData, stats tracking, and achievements
 ├── state_machine.py                # Formal Finite State Machine (GameStateMachine) for RoundPhase transitions
+├── tripometer.py                   # Persistent Strategy Tripometer engine: BS, Illustrious 18, Kelly bet grading & 50-hand log
 ├── audio_assets.py                 # Polyphonic SoundManager, AssetScaler & KeyboardIconLoader
 ├── ui_canvases.py                  # Custom 2.5D Canvas components (Chips, Altar, Stage, Felt, Rail)
 ├── ui_chip_renderer.py              # Stateless 2.5D casino chip cylinder and stack renderer
-├── ui_dialogs.py                   # Modal Toplevel dialogs (Shortcuts, Settings, Story, Draft, Welcome)
+├── ui_dialogs.py                   # Modal Toplevel dialogs (Shortcuts, Settings, Tripometer, Story, Draft, Welcome)
 ├── ui_layout.py                    # Declarative UI geometry, scaling options, and resampling configuration
 ├── blackjack.spec                  # PyInstaller build spec for itch.io packaging
 ├── build_itch_release.bat          # Windows 1-click build batch wrapper
@@ -521,8 +535,9 @@ Blackjack/
 │   ├── ARCHITECTURE_CRC.md         # Class-Responsibility-Collaboration (CRC) architecture & review
 │   ├── ITCH_IO_GUIDE.md            # itch.io deployment, store copy, and release guide
 │   └── designs/
-│       └── counting_bootcamp.md    # Architectural design specification for the MIT Hi-Lo Counting Bootcamp
-└── tests/                          # Automated test suite (300+ unit tests)
+│       ├── counting_bootcamp.md    # Architectural design specification for the MIT Hi-Lo Counting Bootcamp
+│       └── house_rules_and_tripometer.md # Design spec for Configurable House Rules & Persistent Strategy Tripometer
+└── tests/                          # Automated test suite (400+ unit tests)
     ├── __init__.py
     ├── test_architectural_integration.py
     ├── test_basic_strategy.py
@@ -545,6 +560,8 @@ Blackjack/
     ├── test_hall_of_fame_and_achievements.py
     ├── test_hand.py
     ├── test_haunted_mode.py
+    ├── test_house_rules.py
+    ├── test_house_rules_and_tripometer_gui.py
     ├── test_living_animations.py
     ├── test_multi_seat_engine.py
     ├── test_multi_seat_gui.py
@@ -566,6 +583,7 @@ Blackjack/
     ├── test_table_felt.py
     ├── test_table_hud.py
     ├── test_test_runner.py
+    ├── test_tripometer.py
     ├── test_typewriter_and_audio_accents.py
     ├── test_ui_geometry_and_rendering.py
     ├── test_ui_layout.py
@@ -581,14 +599,14 @@ Blackjack/
 ### Public Symbols (Root Modules)
 - **Application Coordinator (`blackjack.py`)**: `[blackjack.py:__version__]`, `[blackjack.py:APP_VERSION]`, `[blackjack.py:BlackjackApp]`, `[blackjack.py:BlackjackApp.new_game]`, `[blackjack.py:BlackjackApp.apply_play_mode]`, `[blackjack.py:BlackjackApp.get_current_strategy_hint]`, `[blackjack.py:BlackjackApp.clear_player_save_data]`, `[blackjack.py:BlackjackApp.play_dealer_accent]`, `[blackjack.py:BlackjackApp.set_dealer_speech]`, `[blackjack.py:BlackjackApp.clear_dealer_speech]`, `[blackjack.py:BlackjackApp.on_hit]`, `[blackjack.py:BlackjackApp.on_stand]`, `[blackjack.py:BlackjackApp.on_double_down]`, `[blackjack.py:BlackjackApp.on_split]`, `[blackjack.py:BlackjackApp.on_surrender]`, `[blackjack.py:BlackjackApp.toggle_scale_mode]`, `[blackjack.py:BlackjackApp.toggle_fullscreen]`, `[blackjack.py:BlackjackApp.exit_fullscreen]`, `[blackjack.py:play_game]`
 - **Configuration & Theme Palettes (`config.py`)**: `[config.py:BLACKJACK_TARGET]`, `[config.py:DEALER_STAND_THRESHOLD]`, `[config.py:DEFAULT_DECK_COUNT]`, `[config.py:CUT_CARD_PENETRATION]`, `[config.py:STARTING_BANKROLL]`, `[config.py:MINIMUM_BET]`, `[config.py:CHIP_DENOMINATIONS]`, `[config.py:INSURANCE_PAYOUT_RATIO]`, `[config.py:DEALER_DRAW_DELAY_MS]`, `[config.py:DEFAULT_WINDOW_WIDTH]`, `[config.py:DEFAULT_WINDOW_HEIGHT]`, `[config.py:MIN_WINDOW_WIDTH]`, `[config.py:MIN_WINDOW_HEIGHT]`, `[config.py:CARD_WIDTH]`, `[config.py:CARD_HEIGHT]`, `[config.py:get_base_dir]`, `[config.py:BASE_DIR]`, `[config.py:ASSETS_DIR]`, `[config.py:AUDIO_DIR]`, `[config.py:OVERLAY_ICONS_DIR]`, `[config.py:HAUNTED_ASSETS_DIR]`, `[config.py:HAUNTED_AUDIO_DIR]`, `[config.py:FONTS_DIR]`, `[config.py:hex_to_rgb]`, `[config.py:ThemePalette]`, `[config.py:get_creep_theme]`, `[config.py:get_phase_palette]`
-- **Domain Rules & Math (`rules.py`)**: `[rules.py:RoundPhase]`, `[rules.py:Card]`, `[rules.py:Hand]`, `[rules.py:Player]`, `[rules.py:Seat]`, `[rules.py:score_hand]`, `[rules.py:is_soft_hand]`, `[rules.py:dealer_should_hit]`, `[rules.py:can_split]`, `[rules.py:determine_outcome]`, `[rules.py:calculate_payout]`, `[rules.py:calculate_insurance_payout]`, `[rules.py:breakdown_chips]`, `[rules.py:breakdown_bankroll_piles]`, `[rules.py:build_shoe]`, `[rules.py:BasicStrategyDecision]`, `[rules.py:get_basic_strategy_decision]`
-- **State Machine, Event Bus & Headless Engine (`state_machine.py`, `event_bus.py`, `game_engine.py`)**: `[state_machine.py:InvalidStateTransitionError]`, `[state_machine.py:VALID_TRANSITIONS]`, `[state_machine.py:GameStateMachine]`, `[event_bus.py:GameEventType]`, `[event_bus.py:GameEvent]`, `[event_bus.py:EventHub]`, `[game_engine.py:RoundResult]`, `[game_engine.py:BlackjackEngine]`
+- **Domain Rules & Math (`rules.py`)**: `[rules.py:RoundPhase]`, `[rules.py:Card]`, `[rules.py:Hand]`, `[rules.py:HouseRules]`, `[rules.py:VENUE_PRESETS]`, `[rules.py:Player]`, `[rules.py:Seat]`, `[rules.py:score_hand]`, `[rules.py:is_soft_hand]`, `[rules.py:dealer_should_hit]`, `[rules.py:can_split]`, `[rules.py:can_double_down_hand]`, `[rules.py:can_surrender_hand]`, `[rules.py:estimate_house_edge_pct]`, `[rules.py:effective_minimum_bet]`, `[rules.py:clamp_main_bet]`, `[rules.py:determine_outcome]`, `[rules.py:calculate_payout]`, `[rules.py:calculate_insurance_payout]`, `[rules.py:breakdown_chips]`, `[rules.py:breakdown_bankroll_piles]`, `[rules.py:build_shoe]`, `[rules.py:BasicStrategyDecision]`, `[rules.py:get_basic_strategy_decision]`
+- **State Machine, Event Bus, Headless Engine & Tripometer (`state_machine.py`, `event_bus.py`, `game_engine.py`, `tripometer.py`)**: `[state_machine.py:InvalidStateTransitionError]`, `[state_machine.py:VALID_TRANSITIONS]`, `[state_machine.py:GameStateMachine]`, `[event_bus.py:GameEventType]`, `[event_bus.py:GameEvent]`, `[event_bus.py:EventHub]`, `[game_engine.py:RoundResult]`, `[game_engine.py:BlackjackEngine]`, `[tripometer.py:DecisionStepRecord]`, `[tripometer.py:HandHistoryRecord]`, `[tripometer.py:TripometerData]`, `[tripometer.py:TripometerTracker]`
 - **Card Counting & Bootcamp Subsystem (`card_counter.py`, `card_counting_hud.py`, `bootcamp_domain.py`, `counting_bootcamp.py`)**: `[card_counter.py:HiLoCardCounter]`, `[card_counting_hud.py:FloatingCountBadge]`, `[card_counting_hud.py:CardCountingHud]`, `[card_counting_hud.py:CardCountingQuizDialog]`, `[bootcamp_domain.py:BootcampLectureSlide]`, `[bootcamp_domain.py:BootcampNodeSpec]`, `[bootcamp_domain.py:BootcampPrompt]`, `[bootcamp_domain.py:BootcampCurriculumDAG]`, `[bootcamp_domain.py:BootcampDrillSession]`, `[bootcamp_domain.py:BOOTCAMP_GRADE_CHIP_STYLES]`, `[counting_bootcamp.py:BootcampControlDock]`, `[counting_bootcamp.py:BootcampCanvasRenderer]`, `[counting_bootcamp.py:CountingBootcampFrame]`
 - **Haunted Narrative & Persistence (`haunted_manager.py`, `save_manager.py`)**: `[haunted_manager.py:Phase]`, `[haunted_manager.py:Blessing]`, `[haunted_manager.py:BlessingDetails]`, `[haunted_manager.py:BLESSING_REGISTRY]`, `[haunted_manager.py:HauntedManager]`, `[save_manager.py:GRADE_RANK_ORDER]`, `[save_manager.py:LECTURE_IDS]`, `[save_manager.py:STAGE_IDS]`, `[save_manager.py:BootcampLectureRecord]`, `[save_manager.py:BootcampStageRecord]`, `[save_manager.py:BootcampProgress]`, `[save_manager.py:create_default_bootcamp_progress]`, `[save_manager.py:HighScores]`, `[save_manager.py:Achievements]`, `[save_manager.py:SaveData]`, `[save_manager.py:SaveManager]`
 - **Living Dealer, Wardrobe & Voice Synthesis (`dealer_actor.py`, `dealer_wardrobe_dialog.py`, `dialogue_voice_engine.py`)**: `[dealer_actor.py:CostumeVariant]`, `[dealer_actor.py:CharacterProfile]`, `[dealer_actor.py:CHARACTERS]`, `[dealer_actor.py:COSTUME_ALIASES]`, `[dealer_actor.py:VISEME_STATES]`, `[dealer_actor.py:map_char_to_viseme]`, `[dealer_actor.py:DealerActor]`, `[dealer_wardrobe_dialog.py:DealerCardPanel]`, `[dealer_wardrobe_dialog.py:MysteryDealerCardPanel]`, `[dealer_wardrobe_dialog.py:WardrobeDialog]`, `[dialogue_voice_engine.py:VOICE_PROFILES]`, `[dialogue_voice_engine.py:SUPPORTED_VISEMES]`, `[dialogue_voice_engine.py:synthesize_viseme_pcm]`, `[dialogue_voice_engine.py:AnimaleseVoiceEngine]`
 - **Audio Presentation & Asset Scaling (`audio_assets.py`)**: `[audio_assets.py:AssetScaler]`, `[audio_assets.py:load_images]`, `[audio_assets.py:SoundManager]`, `[audio_assets.py:KeyboardIconLoader]`
 - **Table Felt, Stage & HUD Canvases (`ui_canvases.py`)**: `[ui_canvases.py:ChipVisualizer]`, `[ui_canvases.py:SoulMeterCanvas]`, `[ui_canvases.py:TableAnnouncementHUD]`, `[ui_canvases.py:HauntedAltarCanvas]`, `[ui_canvases.py:DealerStageCanvas]`, `[ui_canvases.py:TableFeltCanvas]`, `[ui_canvases.py:MahoganyRailCanvas]`
-- **Modal & Informational Overlays (`ui_dialogs.py`)**: `[ui_dialogs.py:StoryDialogueDialog]`, `[ui_dialogs.py:AngelicDraftDialog]`, `[ui_dialogs.py:SettingsDialog]`, `[ui_dialogs.py:ShortcutsDialog]`, `[ui_dialogs.py:WelcomeSplashDialog]`, `[ui_dialogs.py:MultiSeatInsuranceDialog]`
+- **Modal & Informational Overlays (`ui_dialogs.py`)**: `[ui_dialogs.py:StoryDialogueDialog]`, `[ui_dialogs.py:AngelicDraftDialog]`, `[ui_dialogs.py:SettingsDialog]`, `[ui_dialogs.py:TripometerDialog]`, `[ui_dialogs.py:ShortcutsDialog]`, `[ui_dialogs.py:WelcomeSplashDialog]`, `[ui_dialogs.py:MultiSeatInsuranceDialog]`
 - **Pixel Art UI & Font Rendering (`pixel_ui.py`)**: `[pixel_ui.py:PALETTE]`, `[pixel_ui.py:DEFAULT_FONT_CONFIG]`, `[pixel_ui.py:load_font_config]`, `[pixel_ui.py:reload_font_config]`, `[pixel_ui.py:load_pixel_font]`, `[pixel_ui.py:load_all_pixel_fonts]`, `[pixel_ui.py:get_title_font]`, `[pixel_ui.py:get_header_font]`, `[pixel_ui.py:get_display_font]`, `[pixel_ui.py:get_body_font]`, `[pixel_ui.py:get_button_font]`, `[pixel_ui.py:get_digital_font]`, `[pixel_ui.py:get_badge_font]`, `[pixel_ui.py:get_micro_font]`, `[pixel_ui.py:get_pixel_font]`, `[pixel_ui.py:get_pixel_icon]`, `[pixel_ui.py:get_role_font]`, `[pixel_ui.py:get_element_font]`, `[pixel_ui.py:CanvasPixelPanel]`, `[pixel_ui.py:PixelPlaqueFrame]`, `[pixel_ui.py:PixelDialogueFrame]`, `[pixel_ui.py:CanvasPixelButton]`, `[pixel_ui.py:ChipButtonProxy]`, `[pixel_ui.py:CanvasTextLabelProxy]`, `[pixel_ui.py:PixelButtonWidget]`
 - **Declarative Layout & Geometry (`ui_layout.py`)**: `[ui_layout.py:DEFAULT_UI_CONFIG]`, `[ui_layout.py:UI_CONFIG_FILE]`, `[ui_layout.py:load_ui_config]`, `[ui_layout.py:reload_ui_config]`, `[ui_layout.py:get_ui_layout]`, `[ui_layout.py:get_table_layout]`, `[ui_layout.py:get_rail_button_layout]`, `[ui_layout.py:get_card_layout]`, `[ui_layout.py:get_seat_origin]`, `[ui_layout.py:get_grid_options]`, `[ui_layout.py:get_pack_options]`, `[ui_layout.py:resolve_origin]`, `[ui_layout.py:resolve_offset]`, `[ui_layout.py:get_theme_color]`, `[ui_layout.py:get_widget_style]`, `[ui_layout.py:apply_style]`, `[ui_layout.py:get_image_scaling_config]`, `[ui_layout.py:resolve_pil_resample]`
 

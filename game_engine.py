@@ -9,7 +9,7 @@ settlement) with zero GUI or Tkinter dependencies.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Tuple
 
 from config import (
     BLACKJACK_TARGET,
@@ -22,6 +22,7 @@ from event_bus import EventHub, GameEventType
 from rules import (
     Card,
     Hand,
+    HouseRules,
     Player,
     RoundPhase,
     Seat,
@@ -29,12 +30,21 @@ from rules import (
     build_shoe,
     calculate_insurance_payout,
     calculate_payout,
+    can_double_down_hand,
+    can_surrender_hand,
+    clamp_main_bet,
+    cut_card_threshold,
     dealer_should_hit,
     determine_outcome,
+    effective_minimum_bet,
     evaluate_21_plus_3,
     evaluate_perfect_pairs,
 )
 from state_machine import GameStateMachine
+
+if TYPE_CHECKING:
+    from card_counter import HiLoCardCounter
+    from tripometer import TripometerTracker
 
 
 @dataclass(frozen=True)
@@ -76,9 +86,29 @@ class BlackjackEngine:
         bankroll: int = STARTING_BANKROLL,
         deck_count: int = DEFAULT_DECK_COUNT,
         event_bus: Optional[EventHub] = None,
+        rules: Optional[HouseRules] = None,
+        tripometer: Optional[TripometerTracker] = None,
+        card_counter: Optional[HiLoCardCounter] = None,
+        table_seats: int = 1,
     ):
         self.player: Player = Player(bankroll=bankroll)
-        self.deck_count: int = deck_count
+        if rules is not None:
+            self.house_rules: HouseRules = rules.normalized()
+            self.deck_count: int = self.house_rules.deck_count
+        else:
+            self.house_rules = (
+                HouseRules(deck_count=deck_count).normalized()
+                if deck_count != DEFAULT_DECK_COUNT
+                else HouseRules()
+            )
+            self.deck_count = deck_count
+        self.table_seats: int = max(1, int(table_seats))
+        self.tripometer: Optional[TripometerTracker] = tripometer
+        self.card_counter: Optional[HiLoCardCounter] = card_counter
+        self._engine_round_active: bool = False
+        self._bets_deducted_on_stage: bool = False
+        self._round_start_bankroll: int = bankroll
+
         self.event_bus: EventHub = event_bus or EventHub()
         self.fsm: GameStateMachine = GameStateMachine(
             initial_phase=RoundPhase.BETTING,
@@ -86,7 +116,8 @@ class BlackjackEngine:
         )
 
         self.template_cards: List[Card] = _build_default_template_deck()
-        self.shoe: List[Card] = build_shoe(self.template_cards, self.deck_count)
+        self._shoe: List[Card] = build_shoe(self.template_cards, self.deck_count)
+        self._shoe_from_engine: bool = True
         self.seats: List[Seat] = [Seat(1), Seat(2), Seat(3)]
         self.seats[1].hands = [Hand()]
         self.active_seat_index: int = 2
@@ -98,6 +129,48 @@ class BlackjackEngine:
         self.hole_card_revealed: bool = False
         self.staged_side_bets: dict[str, int] = {"perfect_pairs": 0, "21_plus_3": 0}
         self.active_side_bets: dict[str, int] = {"perfect_pairs": 0, "21_plus_3": 0}
+
+    @property
+    def shoe(self) -> List[Card]:
+        return self._shoe
+
+    @shoe.setter
+    def shoe(self, cards: List[Card]) -> None:
+        self._shoe = list(cards)
+        self._shoe_from_engine = len(self._shoe) >= (len(self.template_cards) * self.deck_count)
+
+    def get_round_bankroll(self) -> int:
+        """Returns invariant pre-deal round bankroll across un-staged and staged chips."""
+        if self._bets_deducted_on_stage:
+            staged_total = sum(s.main_bet + sum(s.side_bets.values()) for s in self.seats)
+            return self.bankroll + staged_total
+        return self.bankroll
+
+    def apply_house_rules(self, rules: HouseRules) -> bool:
+        """
+        Commits new HouseRules when between rounds (BETTING or ROUND_OVER),
+        refunding uncommitted bets, rebuilding the shoe, and resetting attached HiLoCardCounter.
+        """
+        if self.phase not in (RoundPhase.BETTING, RoundPhase.ROUND_OVER):
+            return False
+
+        if self._bets_deducted_on_stage and self.phase == RoundPhase.BETTING:
+            self.clear_all_bets()
+        else:
+            self.staged_bet = 0
+            self.staged_side_bets = {"perfect_pairs": 0, "21_plus_3": 0}
+            if self.phase == RoundPhase.BETTING:
+                for s in self.seats:
+                    s.main_bet = 0
+                    s.side_bets = {"perfect_pairs": 0, "21_plus_3": 0}
+                    s.is_active = False
+
+        self.house_rules = rules.normalized()
+        self.deck_count = self.house_rules.deck_count
+        self._engine_round_active = False
+        self._bets_deducted_on_stage = False
+        self.reshuffle_shoe()
+        return True
 
     @property
     def bankroll(self) -> int:
@@ -195,7 +268,18 @@ class BlackjackEngine:
             seat = self.get_seat(target_seat)
             if not seat:
                 return 0
-            clamped = max(0, min(actual_amount, self.bankroll))
+            self._bets_deducted_on_stage = True
+            r_bankroll = self.get_round_bankroll()
+            if 0 < r_bankroll < self.house_rules.minimum_bet:
+                if any(other.seat_index != seat.seat_index and other.main_bet > 0 for other in self.seats):
+                    return seat.main_bet
+
+            room_to_max = (
+                max(0, self.house_rules.maximum_bet - seat.main_bet)
+                if self.house_rules.maximum_bet > 0
+                else self.bankroll
+            )
+            clamped = max(0, min(actual_amount, self.bankroll, room_to_max))
             self.bankroll -= clamped
             seat.main_bet += clamped
             seat.is_active = (seat.main_bet > 0)
@@ -213,8 +297,9 @@ class BlackjackEngine:
             )
             return seat.main_bet
         else:
+            self._bets_deducted_on_stage = False
             old_bet = self.staged_bet
-            clamped = max(0, min(amount_or_seat, self.bankroll))
+            clamped = clamp_main_bet(amount_or_seat, self.house_rules, self.bankroll)
             self.staged_bet = clamped
             if hasattr(self, "seats") and len(self.seats) >= 2:
                 self.seats[1].main_bet = clamped
@@ -260,19 +345,45 @@ class BlackjackEngine:
         for s in self.seats:
             if s.is_active or s.main_bet > 0 or any(s.side_bets.values()):
                 total_refund += self.clear_bet(s.seat_index)
+        self._bets_deducted_on_stage = False
         return total_refund
 
     def commit_staged_bet(self, bet: Optional[int] = None) -> int:
         """Deducts staged bet from bankroll (if not already deducted) and sets up player hand bet."""
         actual_bet = self.staged_bet if bet is None else bet
         if bet is not None:
-            if actual_bet < MINIMUM_BET or actual_bet > self.bankroll:
+            r_bankroll = self.bankroll
+            eff_min = effective_minimum_bet(self.house_rules, r_bankroll)
+            if (
+                actual_bet < eff_min
+                or actual_bet > self.bankroll
+                or (self.house_rules.maximum_bet > 0 and actual_bet > self.house_rules.maximum_bet)
+            ):
                 raise ValueError(f"Cannot commit invalid bet {actual_bet} with bankroll {self.bankroll}")
             self.bankroll -= actual_bet
+            self._bets_deducted_on_stage = False
             self.current_bet = actual_bet
             self.seats[1].main_bet = actual_bet
             self.seats[1].is_active = True
             self.seats[1].hands = [Hand(bet=actual_bet)]
+        elif self._bets_deducted_on_stage:
+            r_bankroll = self.get_round_bankroll()
+            eff_min = effective_minimum_bet(self.house_rules, r_bankroll)
+            active = [s for s in self.seats if s.is_active and s.main_bet > 0]
+            if not active:
+                raise ValueError("No active bets staged to commit")
+            if 0 < r_bankroll < self.house_rules.minimum_bet:
+                if len(active) > 1 or active[0].main_bet != r_bankroll:
+                    raise ValueError("Sub-minimum bankroll recovery requires single-seat All-In")
+            else:
+                for s in active:
+                    if s.main_bet < eff_min or (
+                        self.house_rules.maximum_bet > 0 and s.main_bet > self.house_rules.maximum_bet
+                    ):
+                        raise ValueError(f"Seat {s.seat_index} bet {s.main_bet} violates table limits")
+            for s in active:
+                if not s.hands:
+                    s.hands = [Hand(bet=s.main_bet)]
         else:
             for s in self.seats:
                 if s.is_active and s.main_bet > 0 and not s.hands:
@@ -391,31 +502,65 @@ class BlackjackEngine:
         return results
 
     def rebuy(self, amount: int = STARTING_BANKROLL) -> int:
-        """Replenishes bankroll if below MINIMUM_BET."""
-        if self.bankroll < MINIMUM_BET and self.staged_bet < MINIMUM_BET:
+        """Replenishes bankroll strictly when total round_bankroll <= 0."""
+        if self.get_round_bankroll() <= 0:
+            self.clear_all_bets()
             self.bankroll = amount
             self.staged_bet = 0
+            self._bets_deducted_on_stage = False
         return self.bankroll
 
     def reshuffle_shoe(self) -> None:
-        """Rebuilds and shuffles the shoe from template cards."""
-        self.shoe = build_shoe(self.template_cards, self.deck_count)
+        """Rebuilds and shuffles the shoe from template cards and resets attached card_counter."""
+        self._shoe = build_shoe(self.template_cards, self.deck_count)
+        self._shoe_from_engine = True
+        if self.card_counter is not None:
+            self.card_counter.reset_shoe(self.deck_count)
         self.event_bus.emit(
             GameEventType.SHOE_RESHUFFLED,
-            {"deck_count": self.deck_count, "cards_remaining": len(self.shoe)},
+            {"deck_count": self.deck_count, "cards_remaining": len(self._shoe)},
+        )
+
+    def _live_true_count(self) -> float:
+        if self.card_counter is not None:
+            return self.card_counter.true_count(len(self._shoe))
+        return 0.0
+
+    def _record_engine_action(self, seat: Seat, s_idx: int, h_idx: int, hand: Hand, action: str) -> None:
+        if not self._engine_round_active or self.tripometer is None or not self.dealer_hand:
+            return
+        is_split_h = len(seat.hands) > 1 or hand.is_split
+        self.tripometer.record_decision(
+            seat_idx=s_idx,
+            hand_idx=h_idx,
+            cards=list(hand.cards),
+            dealer_upcard=self.dealer_hand[0],
+            action=action,
+            live_tc=self._live_true_count(),
+            can_split=(len(seat.hands) == 1 and hand.can_split and self.bankroll >= hand.bet),
+            can_double=can_double_down_hand(hand, self.house_rules, self.bankroll, is_split_hand=is_split_h),
+            can_surrender=can_surrender_hand(hand, self.house_rules, is_split_hand=is_split_h),
+            is_split_hand=is_split_h,
+            auto=False,
         )
 
     def _draw(self, target: str = "player", is_hole: bool = False) -> Card:
-        if not self.shoe:
+        if not self._shoe:
             self.reshuffle_shoe()
-        card = self.shoe.pop()
+        card = self._shoe.pop()
+        if not is_hole and self._engine_round_active and self.card_counter is not None:
+            self.card_counter.observe_card(card)
         self.event_bus.emit(
             GameEventType.CARD_DEALT,
             {"target": target, "card": card, "is_hole": is_hole},
         )
-        # Check cut card penetration
-        cut_threshold = int(len(self.template_cards) * self.deck_count * (1.0 - CUT_CARD_PENETRATION))
-        if len(self.shoe) <= cut_threshold and self.phase in (RoundPhase.BETTING, RoundPhase.ROUND_OVER):
+        # Check cut card penetration (remaining-card threshold, never inverted)
+        cut_threshold = cut_card_threshold(self.deck_count, self.table_seats, CUT_CARD_PENETRATION)
+        if (
+            self._shoe_from_engine
+            and len(self._shoe) <= cut_threshold
+            and self.phase in (RoundPhase.BETTING, RoundPhase.ROUND_OVER)
+        ):
             self.reshuffle_shoe()
         return card
 
@@ -431,6 +576,31 @@ class BlackjackEngine:
         if bet is not None:
             if bet < 0 or bet > self.bankroll:
                 raise ValueError(f"Invalid bet {bet} for bankroll {self.bankroll}")
+            if bet > 0:
+                eff_min = effective_minimum_bet(self.house_rules, self.bankroll)
+                if bet < eff_min or (
+                    self.house_rules.maximum_bet > 0 and bet > self.house_rules.maximum_bet
+                ):
+                    raise ValueError(f"Bet {bet} violates table limits for bankroll {self.bankroll}")
+
+            pre_round_bankroll = self.bankroll
+            cut_threshold = cut_card_threshold(self.deck_count, max(1, self.table_seats), CUT_CARD_PENETRATION)
+            if not self._shoe or (self._shoe_from_engine and len(self._shoe) <= cut_threshold):
+                self.reshuffle_shoe()
+
+            pre_deal_tc = self._live_true_count()
+            self._round_start_bankroll = pre_round_bankroll
+            self._engine_round_active = True
+            self._bets_deducted_on_stage = False
+
+            if self.tripometer is not None:
+                self.tripometer.begin_round(
+                    self.house_rules,
+                    pre_deal_tc=pre_deal_tc,
+                    seat_bets={2: bet},
+                    round_bankroll=pre_round_bankroll,
+                    chips_mode=(bet > 0),
+                )
 
             self.bankroll -= bet
             self.current_bet = bet
@@ -469,6 +639,38 @@ class BlackjackEngine:
             if not active_seats:
                 raise ValueError("No active bets staged on table")
             active_seats.sort(key=lambda s: s.seat_index)
+
+            r_bankroll = self.get_round_bankroll()
+            eff_min = effective_minimum_bet(self.house_rules, r_bankroll)
+            if 0 < r_bankroll < self.house_rules.minimum_bet:
+                if len(active_seats) > 1 or active_seats[0].main_bet != r_bankroll:
+                    raise ValueError("Sub-minimum bankroll recovery requires single-seat All-In")
+            else:
+                for s in active_seats:
+                    if s.main_bet < eff_min or (
+                        self.house_rules.maximum_bet > 0 and s.main_bet > self.house_rules.maximum_bet
+                    ):
+                        raise ValueError(f"Seat {s.seat_index} bet {s.main_bet} violates table limits")
+
+            needed_seats = max(self.table_seats, len(active_seats))
+            cut_threshold = cut_card_threshold(self.deck_count, needed_seats, CUT_CARD_PENETRATION)
+            if not self._shoe or (self._shoe_from_engine and len(self._shoe) <= cut_threshold):
+                self.reshuffle_shoe()
+
+            pre_deal_tc = self._live_true_count()
+            self._round_start_bankroll = r_bankroll
+            self._engine_round_active = True
+            self._bets_deducted_on_stage = False
+
+            if self.tripometer is not None:
+                self.tripometer.begin_round(
+                    self.house_rules,
+                    pre_deal_tc=pre_deal_tc,
+                    seat_bets={s.seat_index: s.main_bet for s in active_seats},
+                    round_bankroll=r_bankroll,
+                    chips_mode=True,
+                )
+
             for s in self.seats:
                 if s.is_active and s.main_bet > 0:
                     s.hands = [Hand(bet=s.main_bet)]
@@ -526,6 +728,14 @@ class BlackjackEngine:
         bet_amount = max_ins if amount is None else amount
         if bet_amount <= 0 or bet_amount > max_ins or bet_amount > self.bankroll:
             raise ValueError(f"Invalid insurance wager {bet_amount}")
+        if self._engine_round_active and self.tripometer is not None:
+            s_idx = self.active_seat_index or 2
+            self.tripometer.record_insurance_decision(
+                seat_idx=s_idx,
+                took_insurance=True,
+                live_tc=self._live_true_count(),
+                can_afford=True,
+            )
         self.bankroll -= bet_amount
         self.insurance_bet = bet_amount
         self.last_insurance_lost = 0
@@ -540,19 +750,34 @@ class BlackjackEngine:
         """Declines insurance wager and advances round."""
         if self.phase != RoundPhase.INSURANCE:
             raise ValueError(f"Insurance can only be declined during INSURANCE phase, current: {self.phase.value}")
+        if self._engine_round_active and self.tripometer is not None:
+            active_seats = [s for s in self.seats if s.is_active and s.hands]
+            live_tc = self._live_true_count()
+            for s in active_seats:
+                req = s.main_bet // 2
+                can_aff = (req > 0 and self.bankroll >= req)
+                self.tripometer.record_insurance_decision(
+                    seat_idx=s.seat_index,
+                    took_insurance=False,
+                    live_tc=live_tc,
+                    can_afford=can_aff,
+                )
         self.insurance_bet = 0
         self.last_insurance_lost = 0
         self.event_bus.emit(GameEventType.INSURANCE_DECLINED, {})
         self._conclude_insurance_phase()
 
     def _conclude_insurance_phase(self) -> None:
-        p_hand = self.player_hands[0]
+        active_seats = [s for s in self.seats if s.is_active and s.hands]
         d_hand = self.dealer_hand
         dealer_has_bj = (len(d_hand) == 2 and d_hand.score == BLACKJACK_TARGET)
         if not dealer_has_bj and self.insurance_bet > 0:
             self.last_insurance_lost = self.insurance_bet
             self.insurance_bet = 0
-        if dealer_has_bj or p_hand.score >= BLACKJACK_TARGET:
+        all_players_done = bool(active_seats) and all(
+            s.hands[0].score >= BLACKJACK_TARGET for s in active_seats
+        )
+        if dealer_has_bj or all_players_done:
             self.reveal_hole_card()
             self.fsm.transition_to(RoundPhase.RESOLUTION)
         else:
@@ -563,6 +788,8 @@ class BlackjackEngine:
         if not self.hole_card_revealed and len(self.dealer_hand) >= 2:
             self.hole_card_revealed = True
             hole = self.dealer_hand[1]
+            if self._engine_round_active and self.card_counter is not None:
+                self.card_counter.observe_card(hole)
             self.event_bus.emit(GameEventType.HOLE_CARD_REVEALED, {"card": hole})
             return hole
         return None
@@ -641,6 +868,7 @@ class BlackjackEngine:
 
         seat = self.get_seat(s_idx)
         hand = seat.hands[h_idx]
+        self._record_engine_action(seat, s_idx, h_idx, hand, "HIT")
         card = self._draw("player")
         hand.add_card(card)
         self.event_bus.emit(
@@ -682,7 +910,9 @@ class BlackjackEngine:
             h_idx = self.active_hand_index
 
         seat = self.get_seat(s_idx)
-        seat.hands[h_idx].is_stood = True
+        hand = seat.hands[h_idx]
+        self._record_engine_action(seat, s_idx, h_idx, hand, "STAND")
+        hand.is_stood = True
         self.advance_turn()
 
     def double_down(
@@ -704,8 +934,10 @@ class BlackjackEngine:
 
         seat = self.get_seat(s_idx)
         hand = seat.hands[h_idx]
-        if not hand.can_double or self.bankroll < hand.bet:
-            raise ValueError("Hand is not eligible for double down")
+        is_split_h = len(seat.hands) > 1 or hand.is_split
+        if not can_double_down_hand(hand, self.house_rules, self.bankroll, is_split_hand=is_split_h):
+            raise ValueError("Hand is not eligible for double down under current HouseRules")
+        self._record_engine_action(seat, s_idx, h_idx, hand, "DOUBLE")
         self.bankroll -= hand.bet
         hand.bet *= 2
         hand.is_doubled = True
@@ -745,6 +977,7 @@ class BlackjackEngine:
         hand = seat.hands[h_idx]
         if not hand.can_split or self.bankroll < hand.bet:
             raise ValueError("Hand is not eligible to split")
+        self._record_engine_action(seat, s_idx, h_idx, hand, "SPLIT")
         self.bankroll -= hand.bet
         c1, c2 = hand[0], hand[1]
         h1 = Hand([c1, self._draw("player")], bet=hand.bet, is_split=True)
@@ -773,6 +1006,10 @@ class BlackjackEngine:
 
         seat = self.get_seat(s_idx)
         hand = seat.hands[h_idx]
+        is_split_h = len(seat.hands) > 1 or hand.is_split
+        if not can_surrender_hand(hand, self.house_rules, is_split_hand=is_split_h):
+            raise ValueError("Late Surrender is not allowed for this hand under current HouseRules")
+        self._record_engine_action(seat, s_idx, h_idx, hand, "SURRENDER")
         hand.is_surrendered = True
         hand.is_stood = True
         refund = hand.bet // 2
@@ -787,11 +1024,11 @@ class BlackjackEngine:
             self.advance_turn()
 
     def dealer_step(self) -> Optional[Card]:
-        """Draws one dealer card if dealer score < 17; returns None when dealer stands."""
+        """Draws one dealer card if dealer must hit under S17/H17 rules; returns None when standing."""
         self.reveal_hole_card()
         if self.all_seats_busted():
             return None
-        if dealer_should_hit(self.dealer_hand):
+        if dealer_should_hit(self.dealer_hand, hits_soft_17=self.house_rules.dealer_hits_soft_17):
             card = self._draw("dealer", is_hole=False)
             self.dealer_hand.add_card(card)
             if self.dealer_hand.is_bust:
@@ -806,7 +1043,7 @@ class BlackjackEngine:
     ) -> List[RoundResult]:
         """Completes any remaining dealer draws, settles all player hands, and updates bankroll."""
         if not self.all_seats_busted() and self.phase == RoundPhase.DEALER_TURN:
-            while dealer_should_hit(self.dealer_hand):
+            while dealer_should_hit(self.dealer_hand, hits_soft_17=self.house_rules.dealer_hits_soft_17):
                 self.dealer_step()
             if self.phase != RoundPhase.RESOLUTION:
                 self.fsm.transition_to(RoundPhase.RESOLUTION)
@@ -837,6 +1074,7 @@ class BlackjackEngine:
         messages: List[str] = []
         payouts: List[int] = []
         profits: List[int] = []
+        settled_telemetry: list[dict[str, Any]] = []
 
         active_seats = [s for s in self.seats if s.is_active and s.hands]
         if not active_seats and len(self.seats) >= 2 and self.seats[1].hands:
@@ -855,7 +1093,11 @@ class BlackjackEngine:
                         is_split=is_split_round or hand.is_split,
                         player_score_override=score_override,
                     )
-                payout = calculate_payout(outcome, hand.bet)
+                payout = calculate_payout(
+                    outcome,
+                    hand.bet,
+                    blackjack_payout=self.house_rules.blackjack_payout,
+                )
                 profit = payout - hand.bet
                 hand.outcome = outcome
                 hand.net_payout = payout
@@ -875,6 +1117,16 @@ class BlackjackEngine:
                 messages.append(msg)
                 payouts.append(payout)
                 profits.append(profit)
+                settled_telemetry.append(
+                    {
+                        "seat_idx": seat.seat_index,
+                        "hand_idx": idx,
+                        "wager": hand.bet,
+                        "cards": list(hand.cards),
+                        "outcome": outcome,
+                        "net_profit": profit if chips_mode else 0,
+                    }
+                )
                 self.event_bus.emit(
                     GameEventType.HAND_RESOLVED,
                     {
@@ -888,6 +1140,15 @@ class BlackjackEngine:
 
         total_profit = sum(profits)
         net_round = total_profit + ins_profit
+
+        if self._engine_round_active and self.tripometer is not None:
+            actual_net = (self.bankroll - self._round_start_bankroll) if chips_mode else 0
+            self.tripometer.finalize_round(
+                settled_hands=settled_telemetry,
+                dealer_cards=list(self.dealer_hand.cards),
+                net_round_profit=actual_net,
+            )
+        self._engine_round_active = False
 
         self.event_bus.emit(
             GameEventType.ROUND_RESOLVED,

@@ -45,7 +45,7 @@ from pixel_ui import (
 )
 from save_manager import BootcampProgress
 from ui_canvases import MahoganyRailCanvas
-from ui_chip_renderer import draw_single_25d_chip
+from ui_chip_renderer import draw_25d_grade_medallion, draw_single_25d_chip
 
 
 def get_pixel_font(size_px: int = 14, bold: bool = False) -> Tuple[str, int, str]:
@@ -252,204 +252,16 @@ class BootcampCanvasRenderer:
         compact: bool = False,
     ) -> List[int]:
         """
-        Renders a high-fidelity 2.5D Casino Chip Medallion with drop shadow, 3D ribbed cylinder wall,
-        8 radial casino edge-spot inserts, recessed inner bezel, stitched inlay, and embossed letter grade.
+        Renders a high-fidelity 2.5D Casino Chip Medallion via the shared `ui_chip_renderer` module.
         """
-        style = BOOTCAMP_GRADE_CHIP_STYLES.get(grade, BOOTCAMP_GRADE_CHIP_STYLES["C"])
-        tags = ("grade_medallion", f"grade_medallion_{grade}")
-        items: List[int] = []
-
-        if compact:
-            rx, ry, depth = 21, 11, 5
-            sh_dx, sh_dy = 2, 3
-            stripe_w = 3
-            edge_deg_half = 11.0
-            face_font = get_header_font(16)
-        else:
-            rx = max(28, int(27 * scale))
-            ry = max(17, int(16 * scale))
-            depth = max(7, int(7 * scale))
-            sh_dx, sh_dy = 4, 5
-            stripe_w = max(4, int(3.5 * scale))
-            edge_deg_half = 10.0
-            face_font = get_display_font(36) if scale >= 1.8 else get_title_font(24)
-
-        # 1. 2.5D Drop Shadow on table/plaque surface
-        items.append(
-            self.canvas.create_oval(
-                x - rx + sh_dx - 1,
-                y - ry + depth + sh_dy - 1,
-                x + rx + sh_dx + 1,
-                y + ry + depth + sh_dy + 1,
-                fill="#060a08",
-                outline="#040705",
-                width=1,
-                tags=tags,
-            )
+        return draw_25d_grade_medallion(
+            self.canvas,
+            x=x,
+            y=y,
+            grade=grade,
+            scale=scale,
+            compact=compact,
         )
-
-        # 2. 3D Cylinder Side Wall & Base Rim
-        items.append(
-            self.canvas.create_oval(
-                x - rx,
-                y - ry + depth,
-                x + rx,
-                y + ry + depth,
-                fill=style["rim"],
-                outline="#080808",
-                width=2 if not compact else 1,
-                tags=tags,
-            )
-        )
-        items.append(
-            self.canvas.create_rectangle(
-                x - rx,
-                y,
-                x + rx,
-                y + depth,
-                fill=style["rim"],
-                outline=style["rim"],
-                tags=tags,
-            )
-        )
-        items.append(
-            self.canvas.create_line(
-                x - rx, y, x - rx, y + depth, fill="#080808", width=1, tags=tags
-            )
-        )
-        items.append(
-            self.canvas.create_line(
-                x + rx, y, x + rx, y + depth, fill="#080808", width=1, tags=tags
-            )
-        )
-
-        # 3. Visible 3D Cylinder Wall Vertical Edge Stripes along the front lower arc
-        for fx in (-0.80, -0.42, 0.0, 0.42, 0.80):
-            sx = x + int(fx * rx)
-            arc_y = y + int(ry * math.sqrt(max(0.0, 1.0 - fx * fx)))
-            items.append(
-                self.canvas.create_line(
-                    sx,
-                    arc_y - 1,
-                    sx,
-                    arc_y + depth,
-                    fill=style["stripe"],
-                    width=stripe_w,
-                    tags=tags,
-                )
-            )
-
-        if not compact:
-            # Mid-cylinder stacked medallion groove on large trophy chip
-            items.append(
-                self.canvas.create_arc(
-                    x - rx,
-                    y - ry + depth // 2,
-                    x + rx,
-                    y + ry + depth // 2,
-                    start=180,
-                    extent=180,
-                    style="arc",
-                    outline="#111111",
-                    width=1,
-                    tags=tags,
-                )
-            )
-
-        # 4. Top Chip Face & Outer Metallic Bevel
-        outer_border = "#ffd700" if grade in ("S", "A", "B") else "#cfd8dc"
-        items.append(
-            self.canvas.create_oval(
-                x - rx,
-                y - ry,
-                x + rx,
-                y + ry,
-                fill=style["bg"],
-                outline=outer_border,
-                width=2 if not compact else 1,
-                tags=tags,
-            )
-        )
-
-        # 5. 8 Radial Casino Edge-Spot Wedges around the perimeter
-        r_outer = 0.94
-        r_inner = 0.70
-        for deg in (0, 45, 90, 135, 180, 225, 270, 315):
-            a1 = math.radians(deg - edge_deg_half)
-            a2 = math.radians(deg + edge_deg_half)
-            pts = [
-                x + int(rx * r_inner * math.cos(a1)),
-                y + int(ry * r_inner * math.sin(a1)),
-                x + int(rx * r_outer * math.cos(a1)),
-                y + int(ry * r_outer * math.sin(a1)),
-                x + int(rx * r_outer * math.cos(a2)),
-                y + int(ry * r_outer * math.sin(a2)),
-                x + int(rx * r_inner * math.cos(a2)),
-                y + int(ry * r_inner * math.sin(a2)),
-            ]
-            items.append(
-                self.canvas.create_polygon(
-                    *pts,
-                    fill=style["stripe"],
-                    outline=style["rim"],
-                    width=1,
-                    tags=tags,
-                )
-            )
-
-        # 6. Recessed Inner Medallion Center Disc & Stitched Casino Inlay Ring
-        irx, iry = max(12, int(rx * 0.66)), max(7, int(ry * 0.66))
-        items.append(
-            self.canvas.create_oval(
-                x - irx,
-                y - iry,
-                x + irx,
-                y + iry,
-                fill=style["bg"],
-                outline=style["stripe"],
-                width=2 if not compact else 1,
-                tags=tags,
-            )
-        )
-        drx, dry = max(9, int(rx * 0.54)), max(5, int(ry * 0.54))
-        if not compact:
-            items.append(
-                self.canvas.create_oval(
-                    x - drx,
-                    y - dry,
-                    x + drx,
-                    y + dry,
-                    outline=style["fg"],
-                    dash=(3, 2),
-                    width=1,
-                    tags=tags,
-                )
-            )
-
-        # 7. Embossed Grade Stamp with 3D Drop Shadow
-        sh_off = 1 if compact else 2
-        shadow_col = "#ffffff" if style["fg"] == "#111111" else "#090503"
-        items.append(
-            self.canvas.create_text(
-                x + sh_off,
-                y + sh_off,
-                text=grade,
-                fill=shadow_col,
-                font=face_font,
-                tags=tags,
-            )
-        )
-        items.append(
-            self.canvas.create_text(
-                x,
-                y,
-                text=grade,
-                fill=style["fg"],
-                font=face_font,
-                tags=tags,
-            )
-        )
-        return items
 
     def _draw_card_sprite(self, cx: int, cy: int, rank: str, suit: str) -> None:
         """Draws a card face sprite (or high-contrast fallback plaque) centered at `(cx, cy)`."""

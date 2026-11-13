@@ -36,11 +36,12 @@ The application is structured into decoupled domain rules, puppet presentation c
 ```mermaid
 graph TD
     subgraph Core Domain [Core Rules, Engine & Domain]
-        rules[rules.py: Card, Hand, RoundPhase, BasicStrategyDecision]
+        rules[rules.py: Card, Hand, HouseRules, RoundPhase, BasicStrategyDecision]
         fsm[state_machine.py: GameStateMachine, InvalidStateTransitionError]
         bus[event_bus.py: EventHub, GameEvent, GameEventType]
         engine[game_engine.py: BlackjackEngine, RoundResult]
-        counter[card_counter.py: HiLoCardCounter]
+        counter[card_counter.py: HiLoCardCounter, MIT_KELLY_UNIT_RAMP]
+        trip[tripometer.py: TripometerTracker, TripometerData, HandHistoryRecord]
         bootcamp_dom[counting_bootcamp.py: BootcampCurriculumDAG, BootcampDrillSession]
     end
 
@@ -72,6 +73,7 @@ graph TD
 
     subgraph Modal Views [Toplevel Dialogs]
         settings_dlg[ui_dialogs.py: SettingsDialog]
+        trip_dlg[ui_dialogs.py: TripometerDialog]
         shortcuts_dlg[ui_dialogs.py: ShortcutsDialog]
         splash_dlg[ui_dialogs.py: WelcomeSplashDialog]
         story_dlg[ui_dialogs.py: StoryDialogueDialog]
@@ -89,6 +91,7 @@ graph TD
     app --> bus
     app --> engine
     app --> counter
+    app --> trip
     app --> haunted
     app --> save
     app --> audio
@@ -105,8 +108,13 @@ graph TD
     engine --> rules
     engine --> fsm
     engine --> bus
+    engine --> trip
+    trip --> rules
+    trip --> counter
+    trip --> save
 
     app --> settings_dlg
+    app --> trip_dlg
     app --> shortcuts_dlg
     app --> splash_dlg
     app --> story_dlg
@@ -157,15 +165,25 @@ graph TD
 | :--- | :--- |
 | **Knows**: `player`, `seats` (Seats 1..3), active shoe, `dealer_hand`, `bankroll` (canonical delegation), active turn indices (`active_seat_index`, `active_hand_index`), `state_machine`, and `event_bus`.<br>**Does**: Coordinates multi-seat progression: clockwise dealing (First Base $\to$ Center $\to$ Third Base), inactive seat skipping, split hand traversal, independent surrender without premature round termination, dealer turn skipping on all-seat bust/surrender, and per-hand resolution (`RoundResult` carrying `seat_index`). | Collaborates with [Seat](../rules.py), [Hand](../rules.py), [GameStateMachine](../state_machine.py), and [EventHub](../event_bus.py). |
 
+#### `HouseRules` & `VENUE_PRESETS` ([rules.py](../rules.py))
+| Responsibility | Collaboration |
+| :--- | :--- |
+| **Knows**: Frozen table rule configuration: `preset_name`, `deck_count` (`1`, `2`, `4`, `6`, `8`), `dealer_hits_soft_17` (`S17` vs. `H17`), `blackjack_payout` (`(3, 2)` vs. `(6, 5)`), `double_after_split` (`DAS`), `double_restriction` (`"any"`, `"9_10_11"`, `"10_11"`), `surrender_allowed`, `minimum_bet` (\$5--\$1,000), and `maximum_bet` (`None` or \$25--\$5,000), plus 6 curated casino venue presets (`VENUE_PRESETS`).<br>**Does**: Normalizes and clamps untrusted JSON payloads (`normalized`, `from_dict`), formats compact rule badges (`short_badge`: e.g. `"6D · H17 · 3:2 · DAS · LS"`), estimates baseline house edge (`estimate_house_edge_pct`), computes bankroll-safe minimum bets (`effective_minimum_bet`), clamps main bets (`clamp_main_bet`), and parameterizes `dealer_should_hit`, `calculate_payout`, `can_double_down_hand`, `can_surrender_hand`, `cut_card_threshold`, and `get_basic_strategy_decision`. | Collaborates with [BlackjackEngine](../game_engine.py), [HiLoCardCounter](../card_counter.py), [TripometerTracker](../tripometer.py), [SaveManager](../save_manager.py), [SettingsDialog](../ui_dialogs.py), and [BlackjackApp](../blackjack.py). |
+
 #### `BasicStrategyDecision` ([rules.py](../rules.py#L226))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Optimal mathematical Blackjack decisions (`HIT`, `STAND`, `DOUBLE`, `SPLIT`, `SURRENDER`).<br>**Does**: Evaluates player hand vs. dealer upcard according to standard casino multi-deck basic strategy charts (hard totals, soft totals, pair splitting). | Collaborates with [Card](../rules.py#L44) and [BlackjackApp](../blackjack.py). |
+| **Knows**: Optimal mathematical Blackjack decisions (`HIT`, `STAND`, `DOUBLE`, `SPLIT`, `SURRENDER`).<br>**Does**: Evaluates player hand vs. dealer upcard according to rule-aware casino basic strategy charts (adapting pair splits for `DAS`, soft/hard doubles for `H17` and `double_restriction`, and late surrender for `H17` `15 vs A` / `17 vs A`). | Collaborates with [Card](../rules.py#L44), [HouseRules](../rules.py), [TripometerTracker](../tripometer.py), and [BlackjackApp](../blackjack.py). |
 
 #### `HiLoCardCounter` ([card_counter.py](../card_counter.py#L23))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Running count (RC), total face-up cards observed, initial shoe deck count (`DEFAULT_DECK_COUNT = 4` decks / 208 cards), and remaining deck estimation.<br>**Knows**: Consumes observed face-up cards and applies standard Hi-Lo card counting weights ($2\text{--}6 \to +1$, $7\text{--}9 \to 0$, $10\text{--}\text{A} \to -1$).<br>**Does**: Computes estimated remaining remaining decks ($\max(0.5, \text{cards} / 52.0)$), converts RC to True Count ($\text{TC} = \text{RC} / \text{Decks}$), and calculates player mathematical edge percentage (`get_player_advantage`: $-0.5\% + 0.5\% \times \text{TC}$).<br>**Does**: Provides betting unit recommendations based on Kelly criterion / True Count thresholds. | Collaborates with [Card](../rules.py#L44), [CardCountingHud](../card_counting_hud.py#L58), and [BlackjackApp](../blackjack.py). |
+| **Knows**: Running count (RC), total face-up cards observed, configurable shoe deck count (`1`--`8` decks), remaining deck estimation, Illustrious 18 + Fab 4 surrender index thresholds, and `MIT_KELLY_UNIT_RAMP`.<br>**Knows**: Consumes observed face-up cards and applies standard Hi-Lo card counting weights ($2\text{--}6 \to +1$, $7\text{--}9 \to 0$, $10\text{--}\text{A} \to -1$).<br>**Does**: Computes estimated remaining decks ($\max(0.5, \text{cards} / 52.0)$), converts RC to True Count ($\text{TC} = \text{RC} / \text{Decks}$), calculates rule-aware player mathematical edge (`estimate_player_advantage` / `get_player_advantage`), evaluates `H17`/`LS`-aware index deviations (`evaluate_hand_deviation`), and computes bankroll- and table-limit-aware Kelly wager targets (`get_kelly_bet_target`). | Collaborates with [Card](../rules.py#L44), [HouseRules](../rules.py), [TripometerTracker](../tripometer.py), [CardCountingHud](../card_counting_hud.py#L58), and [BlackjackApp](../blackjack.py). |
+
+#### `TripometerTracker`, `TripometerData` & `HandHistoryRecord` ([tripometer.py](../tripometer.py))
+| Responsibility | Collaboration |
+| :--- | :--- |
+| **Knows**: Cumulative strategy skill counters (`bs_optimal_decisions` / `bs_total_decisions`, `i18_optimal_decisions` / `i18_opportunities`, `kelly_optimal_rounds` / `kelly_total_rounds`), trip net P&L (`trip_net_profit`), and a bounded 50-hand JSON-safe ring buffer (`recent_hands` of `HandHistoryRecord` & `DecisionStepRecord`) with zero Tkinter references.<br>**Does**: Snapshots active `HouseRules` at deal start (`begin_round`), grades Kelly bet sizing within a $\pm 1$-tier tolerance band, evaluates voluntary Hit/Stand/Double/Split/Surrender and affordable Insurance decisions in real time (`record_decision`, `record_insurance_decision`), quarantines supernatural Card 13 / Relic / Hell's Table hands (`mark_supernatural`) without polluting mastery percentages, and commits round summaries atomically on settlement (`finalize_round`). | Collaborates with [HouseRules](../rules.py), [HiLoCardCounter](../card_counter.py), [SaveManager](../save_manager.py), [BlackjackEngine](../game_engine.py), [TripometerDialog](../ui_dialogs.py), and [BlackjackApp](../blackjack.py). |
 
 #### `BootcampCurriculumDAG` & `BootcampDrillSession` ([counting_bootcamp.py](../counting_bootcamp.py))
 | Responsibility | Collaboration |
@@ -241,7 +259,7 @@ graph TD
 #### `SaveManager` ([save_manager.py](../save_manager.py#L182))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Active save file path (`blackjack_save.json`), fallback paths, and in-memory `SaveData` payload.<br>**Does**: Safely serializes and deserializes player records, persistent session bankroll (`current_bankroll`), career telemetry (`lifetime_wagered`, `bankruptcies`, `total_bailout_funds`), unlocked dealers, unlocked costumes, card counting test streaks and telemetry (`counting_quizzes_taken`, `counting_quizzes_correct`, `counting_accuracy_pct`), and all achievement badges (including `shoe_whisperer`, `count_capitalist`, `pair_perfectionist`, and `poker_face`). Gracefully recovers from corrupted JSON files. | Collaborates with [SaveData](../save_manager.py#L140), [Achievements](../save_manager.py#L65), [HighScores](../save_manager.py#L26), and [BlackjackApp](../blackjack.py). |
+| **Knows**: Active save file path (`blackjack_save.json`), fallback paths, and in-memory `SaveData` payload.<br>**Does**: Safely serializes and deserializes player records, persistent session bankroll (`current_bankroll`), career telemetry (`lifetime_wagered`, `bankruptcies`, `total_bailout_funds`), active `HouseRules` (`house_rules`), persistent `TripometerData` (`tripometer`), unlocked dealers, unlocked costumes, card counting test streaks and telemetry (`counting_quizzes_taken`, `counting_quizzes_correct`, `counting_accuracy_pct`), and all achievement badges (including `shoe_whisperer`, `count_capitalist`, `pair_perfectionist`, and `poker_face`). Gracefully recovers from corrupted JSON files and untrusted payloads. | Collaborates with [SaveData](../save_manager.py#L140), [HouseRules](../rules.py), [TripometerData](../tripometer.py), [Achievements](../save_manager.py#L65), [HighScores](../save_manager.py#L26), and [BlackjackApp](../blackjack.py). |
 
 #### `SaveData`, `Achievements`, `HighScores` ([save_manager.py](../save_manager.py#L26))
 | Responsibility | Collaboration |
@@ -260,7 +278,7 @@ graph TD
 #### `TableFeltCanvas` ([ui_canvases.py](../ui_canvases.py#L1675))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Casino table boundaries, gold rule arcs, vignette shading, child widget background slice coordinates, and multi-seat table felt spots (Seats 1..3) from centralized configuration.<br>**Does**: Draws baize felt texture, authentic table markings, 3 crescent betting spots (Option B: Seat 3 at $X=235, Y=285$, Seat 2 at $X=490, Y=298$, Seat 1 at $X=745, Y=285$) with horizontal flanking side bets ($X \pm 82\,\text{px}$) and 3D chip stacks (via `ui_chip_renderer.py`), active turn glowing halos, and executes canvas-level geometric click dispatching (left-click stage, right-click clear) without event bubbling. In 1-seat mode, cleanly suppresses felt spots so the baize remains pristine. | Collaborates with [BlackjackApp](../blackjack.py), [ui_chip_renderer](../ui_chip_renderer.py), and [ui_layout](../ui_layout.py). |
+| **Knows**: Casino table boundaries, dynamic rule arc text (`BLACKJACK PAYS 3 TO 2` vs `6 TO 5`, `DEALER MUST STAND ON ALL 17s` vs `HITS SOFT 17`), 6-tuple `_felt_cache` key, vignette shading, child widget background slice coordinates, and multi-seat table felt spots (Seats 1..3) from centralized configuration.<br>**Does**: Draws baize felt texture, authentic rule-synchronized table markings, 3 crescent betting spots (Option B: Seat 3 at $X=235, Y=285$, Seat 2 at $X=490, Y=298$, Seat 1 at $X=745, Y=285$) with horizontal flanking side bets ($X \pm 82\,\text{px}$) and 3D chip stacks (via `ui_chip_renderer.py`), active turn glowing halos, and executes canvas-level geometric click dispatching (left-click stage, right-click clear) without event bubbling. In 1-seat mode, cleanly suppresses felt spots so the baize remains pristine. | Collaborates with [BlackjackApp](../blackjack.py), [HouseRules](../rules.py), [ui_chip_renderer](../ui_chip_renderer.py), and [ui_layout](../ui_layout.py). |
 
 #### `ChipRenderer` ([ui_chip_renderer.py](../ui_chip_renderer.py))
 | Responsibility | Collaboration |
@@ -275,7 +293,7 @@ graph TD
 #### `TableAnnouncementHUD` ([ui_canvases.py](../ui_canvases.py#L645))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Active table banner messages, status pill labels, and banner typography.<br>**Does**: Presents non-intrusive in-felt status announcements (`"BLACKJACK! 3:2"`, `"DEALER BUSTS"`, `"SERAPH'S GRACE"`, `"MIRACLE DRAW"`) with fade/slide animations and click-to-dismiss. | Collaborates with [BlackjackApp](../blackjack.py). |
+| **Knows**: Active table banner messages, status pill labels, and banner typography.<br>**Does**: Presents non-intrusive in-felt status announcements (`"BLACKJACK! 3:2"`, `"BLACKJACK! 6:5"`, `"DEALER BUSTS"`, `"SERAPH'S GRACE"`, `"MIRACLE DRAW"`) with fade/slide animations and click-to-dismiss. | Collaborates with [BlackjackApp](../blackjack.py). |
 
 #### `HauntedAltarCanvas` ([ui_canvases.py](../ui_canvases.py#L815))
 | Responsibility | Collaboration |
@@ -304,7 +322,12 @@ graph TD
 #### `SettingsDialog` ([ui_dialogs.py](../ui_dialogs.py#L468))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Audio toggles, dialogue voice toggle, Haunted Mode toggle, Card Counting HUD/tag toggles, table play mode selection (Casual, Betting, Training), and table seat configuration (Single-Seat vs 3-Seat Wagering).<br>**Does**: Provides adaptive scrollable configuration controls, validates live config changes, and applies them to [BlackjackApp](../blackjack.py) with confirmation safety for save resets. | Collaborates with [SoundManager](../audio_assets.py#L140) and [BlackjackApp](../blackjack.py). |
+| **Knows**: Two-tab configuration state (`[1] Table & Audio` and `[2] House Rules`): audio/voice toggles, Haunted Mode toggle, Card Counting HUD/tag toggles, table play mode (Casual, Betting, Training), table seat count (1-Seat vs 3-Seat), 6 curated Casino Venue Presets (`VENUE_PRESETS`), custom `HouseRules` parameters (decks, `S17`/`H17`, `3:2`/`6:5`, `DAS`, double restriction, late surrender, min/max bet limits), and live Estimated House Edge % badge.<br>**Does**: Provides adaptive scrollable two-tab configuration controls (`Left`/`Right`/`Tab`/`1`/`2`), blocks rule mutations while a hand is mid-deal/turn, and applies changes to [BlackjackApp](../blackjack.py) with confirmation safety for save resets. | Collaborates with [HouseRules](../rules.py), [SoundManager](../audio_assets.py#L140), and [BlackjackApp](../blackjack.py). |
+
+#### `TripometerDialog` ([ui_dialogs.py](../ui_dialogs.py))
+| Responsibility | Collaboration |
+| :--- | :--- |
+| **Knows**: Live `TripometerTracker` summary metrics (Basic Strategy %, Illustrious 18 %, Kelly Bet Sizing %, Trip Net P&L, and `All Hands` vs `Mistakes Only` filter state) and the 50-hand audit log (`HandHistoryRecord`).<br>**Does**: Renders a non-intrusive scrollable audit modal (`📊 Trip` top-bar button or `T` key) with 3 beveled Grade Plaques, rule-badged hand rows (`"6D · H17 · 3:2 · DAS · LS"`), color-coded decision/betting step feedback, auto-hiding scrollbar, and paired `✔ Done` + confirmation-guarded `🗑 Reset Trip` footer controls. | Collaborates with [TripometerTracker](../tripometer.py) and [BlackjackApp](../blackjack.py). |
 
 #### `MultiSeatInsuranceDialog` ([ui_dialogs.py](../ui_dialogs.py#L282))
 | Responsibility | Collaboration |
@@ -314,7 +337,7 @@ graph TD
 #### `ShortcutsDialog` ([ui_dialogs.py](../ui_dialogs.py#L848))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: All keyboard and mouse shortcut mappings across Gameplay, Wagering (`1`--`5` for \$5--\$1,000 chips, `Left`/`Right` for 3-Seat focus), Card Counting, and System controls (`Shift+W`, `Shift+H`, `F1`/`?`).<br>**Does**: Renders scrollable two-column modal HUD with Kenney graphical keycap icons, auto-hiding scrollbar, and mousewheel bindings. | Collaborates with [KeyboardIconLoader](../audio_assets.py#L210) and [BlackjackApp](../blackjack.py). |
+| **Knows**: All keyboard and mouse shortcut mappings across Gameplay, Wagering (`1`--`5` for \$5--\$1,000 chips, `Left`/`Right` for 3-Seat focus), Card Counting, Strategy Tripometer (`T`), and System controls (`Shift+W`, `Shift+H`, `F1`/`?`).<br>**Does**: Renders scrollable two-column modal HUD with Kenney graphical keycap icons, auto-hiding scrollbar, and mousewheel bindings. | Collaborates with [KeyboardIconLoader](../audio_assets.py#L210) and [BlackjackApp](../blackjack.py). |
 
 #### `WelcomeSplashDialog` ([ui_dialogs.py](../ui_dialogs.py#L1171))
 | Responsibility | Collaboration |
@@ -583,3 +606,5 @@ Consolidated card rendering, table accessories, and acrylic fixtures into standa
 | **4. Pure `GameStateMachine` (FSM)** | [state_machine.py](../state_machine.py) | **Completed** | [`tests/test_state_machine.py`](../tests/test_state_machine.py) |
 | **5. `TableFeltCanvas` Multi-Layer Pipeline** | [ui_canvases.py](../ui_canvases.py#L1737) | **Completed** | [`tests/test_table_felt.py`](../tests/test_table_felt.py) & [`tests/test_architectural_integration.py`](../tests/test_architectural_integration.py) |
 | **6. Card Counting Monte-Carlo Simulation** | [tools/test_counting_simulation.py](../tools/test_counting_simulation.py) | **Completed** | 10,000 deals verified in `tools/test_counting_simulation.py` |
+| **7. Configurable `HouseRules` & Venue Presets** | [rules.py](../rules.py), [game_engine.py](../game_engine.py), [ui_dialogs.py](../ui_dialogs.py) | **Completed** | [`tests/test_house_rules.py`](../tests/test_house_rules.py) & [`tests/test_house_rules_and_tripometer_gui.py`](../tests/test_house_rules_and_tripometer_gui.py) |
+| **8. Persistent Strategy Tripometer (`TripometerTracker`)** | [tripometer.py](../tripometer.py), [ui_dialogs.py](../ui_dialogs.py), [save_manager.py](../save_manager.py) | **Completed** | [`tests/test_tripometer.py`](../tests/test_tripometer.py) & [`tests/test_house_rules_and_tripometer_gui.py`](../tests/test_house_rules_and_tripometer_gui.py) |

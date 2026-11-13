@@ -153,6 +153,12 @@
         "padx": [10, 0],
         "sticky": "e"
       },
+      "trip_button": {
+        "row": 0,
+        "column": 10,
+        "padx": [6, 0],
+        "sticky": "e"
+      },
       "scale_button": {
         "row": 0,
         "column": 11,

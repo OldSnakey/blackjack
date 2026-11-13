@@ -21,6 +21,9 @@ import random
 from dataclasses import dataclass
 from typing import Any, Optional
 from config import DEFAULT_DECK_COUNT
+from rules import HouseRules, effective_minimum_bet, estimate_house_edge_pct
+
+MIT_KELLY_UNIT_RAMP: tuple[int, ...] = (1, 2, 4, 8, 12)
 
 
 @dataclass(frozen=True)
@@ -410,13 +413,87 @@ class HiLoCardCounter:
         decks = self.decks_remaining(cards_remaining)
         return round(self.running_count / decks, 1)
 
-    def get_player_advantage(self, cards_remaining: int) -> float:
+    def estimate_player_advantage(self, true_count: float, rules: Optional[HouseRules] = None) -> float:
         """
-        Estimates player advantage percentage based on True Count:
-        Advantage (%) = -0.5% + (0.5% * TC)
+        Estimates player advantage percentage based on True Count and active HouseRules:
+        Advantage (%) = (0.5% * TC) - baseline_house_edge_pct
+        """
+        base_edge = estimate_house_edge_pct(rules) if rules is not None else 0.5
+        return round((0.5 * float(true_count)) - base_edge, 2)
+
+    def get_player_advantage(self, cards_remaining: int, rules: Optional[HouseRules] = None) -> float:
+        """
+        Estimates player advantage percentage based on remaining shoe depth and optional HouseRules.
         """
         tc = self.true_count(cards_remaining)
-        return round(-0.5 + (0.5 * tc), 2)
+        return self.estimate_player_advantage(tc, rules=rules)
+
+    @staticmethod
+    def get_kelly_tier_bet(
+        rules: HouseRules,
+        tier: int,
+        round_bankroll: int,
+        active_seats: int = 1,
+    ) -> int:
+        """
+        Computes per-seat dollar wager for a specific MIT Kelly ramp tier (0..4)
+        after applying sub-minimum recovery, table maximums, per-seat bankroll splits,
+        and $5 chip rounding.
+        """
+        if round_bankroll <= 0:
+            return 0
+        if 0 < round_bankroll < rules.minimum_bet:
+            return clamp_submin if (clamp_submin := (
+                min(round_bankroll, rules.maximum_bet) if rules.maximum_bet > 0 else round_bankroll
+            )) > 0 else round_bankroll
+
+        clamped_tier = max(0, min(len(MIT_KELLY_UNIT_RAMP) - 1, int(tier)))
+        eff_min = effective_minimum_bet(rules, round_bankroll)
+        raw_bet = MIT_KELLY_UNIT_RAMP[clamped_tier] * eff_min
+        seats = max(1, int(active_seats))
+        per_seat_affordable = round_bankroll // seats
+        max_cap = (
+            min(per_seat_affordable, rules.maximum_bet)
+            if rules.maximum_bet > 0
+            else per_seat_affordable
+        )
+        if max_cap <= 0:
+            return 0
+        clamped = min(raw_bet, max_cap)
+        if clamped >= 5:
+            rounded = (clamped // 5) * 5
+            if eff_min <= max_cap:
+                return max(eff_min, rounded)
+            return rounded
+        return clamped
+
+    @staticmethod
+    def get_kelly_bet_target(
+        rules: HouseRules,
+        true_count: float,
+        round_bankroll: int,
+        active_seats: int = 1,
+    ) -> tuple[int, int, float]:
+        """
+        Evaluates the house-edge-adjusted MIT 1-12 unit Kelly ramp:
+        Returns (per_seat_dollar_bet, ramp_tier_index, player_edge_pct).
+        """
+        house_edge = estimate_house_edge_pct(rules)
+        player_edge_pct = round((float(true_count) * 0.5) - house_edge, 4)
+
+        if player_edge_pct < 0.50:
+            tier = 0
+        elif player_edge_pct < 1.00:
+            tier = 1
+        elif player_edge_pct < 1.50:
+            tier = 2
+        elif player_edge_pct < 2.00:
+            tier = 3
+        else:
+            tier = 4
+
+        bet = HiLoCardCounter.get_kelly_tier_bet(rules, tier, round_bankroll, active_seats=active_seats)
+        return bet, tier, round(player_edge_pct, 2)
 
     def get_recommended_bet(self, base_bet: int, true_count: float) -> int:
         """
@@ -440,18 +517,33 @@ class HiLoCardCounter:
 
         return int(base_bet * units)
 
-    def evaluate_rule(self, rule_id: str, true_count: float) -> StrategyDeviation:
+    def evaluate_rule(
+        self,
+        rule_id: str,
+        true_count: float,
+        surrender_fallback: bool = False,
+    ) -> StrategyDeviation:
         """
         Evaluates an individual Illustrious 18 rule against a given True Count.
         """
         rule = ILLUSTRIOUS_18_MAP[rule_id]
         is_at_or_above = round(true_count, 1) >= round(rule.index_tc, 1)
-        rec_action = rule.action_at_or_above if is_at_or_above else rule.action_below
-        is_active = (rec_action != rule.basic_action)
+        below_action = (
+            "SURRENDER"
+            if (surrender_fallback and rule_id in ("16_vs_10", "15_vs_10", "16_vs_9"))
+            else rule.action_below
+        )
+        base_action = (
+            "SURRENDER"
+            if (surrender_fallback and rule_id in ("16_vs_10", "15_vs_10", "16_vs_9"))
+            else rule.basic_action
+        )
+        rec_action = rule.action_at_or_above if is_at_or_above else below_action
+        is_active = (rec_action != base_action)
 
         # Build condition string
         sign = "+" if rule.index_tc > 0 else ""
-        if rule.action_below != rule.basic_action:
+        if below_action != base_action:
             # Negative index deviation triggers when TC < index
             cond_str = f"TC < {sign}{rule.index_tc:g}"
         else:
@@ -464,7 +556,7 @@ class HiLoCardCounter:
             label=rule.label,
             index_tc=rule.index_tc,
             recommended_action=rec_action,
-            basic_action=rule.basic_action,
+            basic_action=base_action,
             is_deviation_active=is_active,
             condition_str=cond_str,
             badge_text=badge_text,
@@ -480,6 +572,9 @@ class HiLoCardCounter:
         can_double: bool = True,
         can_split: bool = True,
         is_insurance_phase: bool = False,
+        can_surrender: bool = False,
+        is_split_hand: bool = False,
+        rules: Optional[HouseRules] = None,
     ) -> Optional[StrategyDeviation]:
         """
         Determines if the active hand matchup against dealer upcard triggers any Illustrious 18 index play.
@@ -517,6 +612,23 @@ class HiLoCardCounter:
         if score > 21:
             return None
 
+        hand_is_split = bool(is_split_hand or getattr(player_hand, "is_split", False))
+        effective_surrender = bool(
+            can_surrender
+            and num_cards == 2
+            and not hand_is_split
+            and (rules.allow_surrender if rules is not None else True)
+        )
+
+        effective_double = bool(can_double and num_cards == 2)
+        if effective_double and rules is not None:
+            if hand_is_split and not rules.allow_das:
+                effective_double = False
+            elif rules.double_restriction == "9_10_11" and score not in (9, 10, 11):
+                effective_double = False
+            elif rules.double_restriction == "10_11" and score not in (10, 11):
+                effective_double = False
+
         # 2. Check 10-10 pair split (10-10 vs 5, 10-10 vs 6)
         if num_cards == 2 and can_split and (values[0] == 10 and values[1] == 10):
             if up_val == 5:
@@ -528,13 +640,13 @@ class HiLoCardCounter:
         # Hard 16
         if score == 16:
             if up_val == 10:
-                return self.evaluate_rule("16_vs_10", tc)
+                return self.evaluate_rule("16_vs_10", tc, surrender_fallback=effective_surrender)
             if up_val == 9:
-                return self.evaluate_rule("16_vs_9", tc)
+                return self.evaluate_rule("16_vs_9", tc, surrender_fallback=effective_surrender)
 
         # Hard 15
         if score == 15 and up_val == 10:
-            return self.evaluate_rule("15_vs_10", tc)
+            return self.evaluate_rule("15_vs_10", tc, surrender_fallback=effective_surrender)
 
         # Hard 13
         if score == 13:
@@ -556,9 +668,11 @@ class HiLoCardCounter:
             if up_val == 6:
                 return self.evaluate_rule("12_vs_6", tc)
 
-        # Doubling deviations (require exactly 2 cards and can_double)
-        if num_cards == 2 and can_double:
+        # Doubling deviations (require exactly 2 cards and effective_double)
+        if num_cards == 2 and effective_double:
             if score == 11 and up_val == 11:
+                if rules is not None and (rules.dealer_hits_soft_17 or rules.deck_count <= 2):
+                    return None
                 return self.evaluate_rule("11_vs_A", tc)
             if score == 10:
                 if up_val == 10:
@@ -582,6 +696,9 @@ class HiLoCardCounter:
         can_double: bool = True,
         can_split: bool = True,
         is_insurance_phase: bool = False,
+        can_surrender: bool = False,
+        is_split_hand: bool = False,
+        rules: Optional[HouseRules] = None,
     ) -> Optional[StrategyDeviation]:
         """
         Convenience wrapper returning the StrategyDeviation ONLY when it is active (overriding basic strategy).
@@ -594,6 +711,9 @@ class HiLoCardCounter:
             can_double=can_double,
             can_split=can_split,
             is_insurance_phase=is_insurance_phase,
+            can_surrender=can_surrender,
+            is_split_hand=is_split_hand,
+            rules=rules,
         )
         if dev and dev.is_deviation_active:
             return dev

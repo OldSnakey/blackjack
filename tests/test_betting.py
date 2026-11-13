@@ -1,5 +1,8 @@
+import shutil
+import tempfile
 import unittest
 import tkinter
+from pathlib import Path
 from blackjack import (
     BlackjackApp,
     Card,
@@ -104,9 +107,14 @@ class TestBettingGuiAndState(unittest.TestCase):
     """Integration and state tests for Chips Mode, bankroll management, and GUI controls."""
 
     def setUp(self):
+        self._temp_dir = tempfile.mkdtemp(prefix="bj_betting_test_")
         self.root = tkinter.Tk()
         self.root.withdraw()
-        self.app = BlackjackApp(self.root)
+        self.app = BlackjackApp(
+            self.root,
+            sound_enabled=False,
+            save_path=Path(self._temp_dir) / "test_save.json",
+        )
 
     def tearDown(self):
         try:
@@ -114,6 +122,7 @@ class TestBettingGuiAndState(unittest.TestCase):
                 self.app._on_close()
         except tkinter.TclError:
             pass
+        shutil.rmtree(self._temp_dir, ignore_errors=True)
 
     def test_default_chips_mode(self):
         """By default, Chips Mode is ON and betting controls are visible."""
@@ -214,13 +223,21 @@ class TestBettingGuiAndState(unittest.TestCase):
         self.assertEqual(self.app.all_in_button["state"], "disabled")
 
     def test_all_in_disabled_if_bankroll_below_minimum(self):
-        """All In is disabled if remaining bankroll is below the minimum bet."""
+        """All In allows sub-minimum recovery ($1-$4) while remaining disabled at $0 bankroll."""
         self.app.chips_mode_var.set(True)
         self.app.new_game()
         self.app.bankroll_var.set(3)
         self.app.current_bet_var.set(0)
         self.app._update_betting_controls()
 
+        self.assertEqual(self.app.all_in_button["state"], "normal")
+        self.assertEqual(self.app.rebuy_button["state"], "disabled")
+        self.app._all_in()
+        self.assertEqual(self.app.current_bet_var.get(), 3)
+
+        self.app.bankroll_var.set(0)
+        self.app.current_bet_var.set(0)
+        self.app._update_betting_controls()
         self.assertEqual(self.app.all_in_button["state"], "disabled")
         self.app._all_in()
         self.assertEqual(self.app.current_bet_var.get(), 0)

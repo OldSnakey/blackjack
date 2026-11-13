@@ -77,6 +77,7 @@ DEFAULT_UI_CONFIG: dict[str, Any] = {
             "spacer": {"column": 7, "weight": 1},
             "sound_button": {"row": 0, "column": 8, "padx": [15, 0]},
             "help_button": {"row": 0, "column": 9, "padx": [10, 0]},
+            "trip_button": {"row": 0, "column": 10, "padx": [6, 0], "sticky": "e"},
             "scale_button": {"row": 0, "column": 11, "padx": [6, 0]},
             "fullscreen_button": {"row": 0, "column": 12, "padx": [6, 0]},
             "settings_button": {"row": 0, "column": 13, "padx": [6, 0]},

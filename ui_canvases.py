@@ -1207,6 +1207,7 @@ class TableAnnouncementHUD(tkinter.Frame):
         self.lore_font_size = lore_size
         self.lore_font_slant = lore_slant
         self.wraplength = wraplength
+        self.payout_ratio: tuple[int, int] = (3, 2)
         self.current_raw_message = ""
         self._dismiss_timer_id: Optional[str] = None
 
@@ -1277,6 +1278,24 @@ class TableAnnouncementHUD(tkinter.Frame):
         self.outcome_label.bind("<Button-1>", lambda e: self.dismiss())
         self.lore_label.bind("<Button-1>", lambda e: self.dismiss())
 
+    def set_payout_ratio(self, payout_ratio: tuple[int, int]) -> None:
+        """Updates the active Natural Blackjack payout ratio used for banner formatting."""
+        if (
+            isinstance(payout_ratio, (tuple, list))
+            and len(payout_ratio) == 2
+            and (int(payout_ratio[0]), int(payout_ratio[1])) in {(3, 2), (6, 5)}
+        ):
+            self.payout_ratio = (int(payout_ratio[0]), int(payout_ratio[1]))
+        else:
+            self.payout_ratio = (3, 2)
+        if self.current_raw_message:
+            self.set_message(self.current_raw_message)
+
+    def format_blackjack_banner(self) -> str:
+        """Returns formatted Natural Blackjack banner string for active payout_ratio."""
+        num, den = self.payout_ratio
+        return f"BLACKJACK! {num}:{den}"
+
     def dismiss(self):
         """Dismisses the floating dialog overlay immediately."""
         if self._dismiss_timer_id:
@@ -1323,6 +1342,10 @@ class TableAnnouncementHUD(tkinter.Frame):
         else:
             outcome_text = text
             lore_text = ""
+
+        norm_upper = outcome_text.strip().upper()
+        if norm_upper in ("BLACKJACK!", "BLACKJACK! 3:2", "BLACKJACK! 6:5"):
+            outcome_text = self.format_blackjack_banner()
 
         self.outcome_label.configure(text=outcome_text)
         self._update_outcome_color(outcome_text)
@@ -2478,7 +2501,9 @@ class TableFeltCanvas(tkinter.Canvas):
         self._bg_hex = background
         self._felt_photo: Optional[Any] = None
         self._felt_img: Optional[Any] = None
-        self._felt_cache: dict[tuple[str, int, int, float], Any] = {}
+        self.payout_ratio: tuple[int, int] = (3, 2)
+        self.dealer_hits_soft_17: bool = False
+        self._felt_cache: dict[tuple[Any, ...], Any] = {}
         self._shoe_visible: bool = False
         self._shoe_remaining: int = 208
         self._shoe_total: int = 208
@@ -2601,16 +2626,49 @@ class TableFeltCanvas(tkinter.Canvas):
             font_large = font_small = None
 
         if font_large and font_small:
-            draw.text((cx, ribbon_y + int(8 * scale_mult)), "BLACKJACK PAYS 3 TO 2", fill=gold, font=font_large, anchor="mm")
-            draw.text((cx, ribbon_y + int(24 * scale_mult)), "Dealer must stand on 17 and must draw to 16", fill=cfg["rules_fg"], font=font_small, anchor="mm")
+            num, den = self.payout_ratio
+            bj_text = f"BLACKJACK PAYS {num} TO {den}"
+            soft17_text = (
+                "Dealer hits soft 17 and stands on hard 17"
+                if self.dealer_hits_soft_17
+                else "Dealer must stand on 17 and must draw to 16"
+            )
+            draw.text((cx, ribbon_y + int(8 * scale_mult)), bj_text, fill=gold, font=font_large, anchor="mm")
+            draw.text((cx, ribbon_y + int(24 * scale_mult)), soft17_text, fill=cfg["rules_fg"], font=font_small, anchor="mm")
             draw.text((cx, ribbon_y + int(38 * scale_mult)), "INSURANCE PAYS 2 TO 1", fill=gold, font=font_small, anchor="mm")
 
         return felt_img
 
+    def set_house_rules_display(self, payout_ratio: tuple[int, int], dealer_hits_soft_17: bool) -> None:
+        """Updates table felt typography for Blackjack payout and Soft-17 rules."""
+        norm_ratio = (
+            (int(payout_ratio[0]), int(payout_ratio[1]))
+            if isinstance(payout_ratio, (tuple, list))
+            and len(payout_ratio) == 2
+            and (int(payout_ratio[0]), int(payout_ratio[1])) in {(3, 2), (6, 5)}
+            else (3, 2)
+        )
+        h17 = bool(dealer_hits_soft_17)
+        if self.payout_ratio != norm_ratio or self.dealer_hits_soft_17 != h17:
+            self.payout_ratio = norm_ratio
+            self.dealer_hits_soft_17 = h17
+            self._redraw_felt()
+            try:
+                self.sync_children_felt()
+            except Exception:
+                pass
+
     def _redraw_felt(self):
         w = max(20, self.canvas_width)
         h = max(20, self.canvas_height)
-        key = (self.current_theme, w, h, self.scale_factor)
+        key = (
+            self.current_theme,
+            w,
+            h,
+            self.scale_factor,
+            self.payout_ratio,
+            self.dealer_hits_soft_17,
+        )
 
         if key in self._felt_cache:
             self._felt_img, self._felt_photo = self._felt_cache[key]

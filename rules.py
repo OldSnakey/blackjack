@@ -230,6 +230,330 @@ class Seat:
         return sum(h.bet for h in self.hands) if self.hands else self.main_bet
 
 
+# ============================================================================
+# Configurable Casino House Rules & Venue Presets
+# ============================================================================
+
+ALLOWED_DECK_COUNTS: tuple[int, ...] = (1, 2, 4, 6, 8)
+ALLOWED_PAYOUTS: tuple[tuple[int, int], ...] = ((3, 2), (6, 5))
+ALLOWED_DOUBLE_RESTRICTIONS: tuple[str, ...] = ("any", "9_10_11", "10_11")
+ALLOWED_MIN_BETS: tuple[int, ...] = (5, 10, 15, 25, 50, 100, 250, 500, 1000)
+ALLOWED_MAX_BETS: tuple[int, ...] = (0, 100, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000)
+
+VENUE_PRESET_LABELS: dict[str, str] = {
+    "classic_4_deck": "Classic 4-Deck",
+    "vegas_strip": "Vegas Strip 6D",
+    "downtown_pitch": "Downtown 2D Pitch",
+    "reno_single_deck": "Reno Single Deck",
+    "high_roller_vip": "High-Roller VIP",
+    "tourist_trap_6_5": "6:5 Tourist Trap",
+    "custom": "Custom Rules",
+}
+
+
+def _nearest_int_option(val: Any, allowed: tuple[int, ...], default: int) -> int:
+    try:
+        ival = int(val)
+    except (TypeError, ValueError):
+        return default
+    if ival in allowed:
+        return ival
+    return min(allowed, key=lambda opt: abs(opt - ival))
+
+
+def _sanitize_payout_tuple(raw: Any) -> tuple[int, int]:
+    if isinstance(raw, (tuple, list)) and len(raw) == 2:
+        try:
+            pair = (int(raw[0]), int(raw[1]))
+            if pair in ALLOWED_PAYOUTS:
+                return pair
+        except (TypeError, ValueError):
+            pass
+    return (3, 2)
+
+
+@dataclass(frozen=True)
+class HouseRules:
+    """Immutable casino table configuration and betting limits."""
+    preset_id: str = "classic_4_deck"
+    deck_count: int = 4
+    dealer_hits_soft_17: bool = False
+    blackjack_payout: tuple[int, int] = (3, 2)
+    allow_das: bool = True
+    double_restriction: str = "any"
+    allow_surrender: bool = True
+    minimum_bet: int = 5
+    maximum_bet: int = 0
+
+    def _rule_signature(self) -> tuple[Any, ...]:
+        return (
+            self.deck_count,
+            self.dealer_hits_soft_17,
+            self.blackjack_payout,
+            self.allow_das,
+            self.double_restriction,
+            self.allow_surrender,
+            self.minimum_bet,
+            self.maximum_bet,
+        )
+
+    def normalized(self) -> HouseRules:
+        """Returns a sanitized HouseRules instance enforcing all field and limit invariants."""
+        decks = _nearest_int_option(self.deck_count, ALLOWED_DECK_COUNTS, 4)
+        h17 = bool(self.dealer_hits_soft_17)
+        payout = _sanitize_payout_tuple(self.blackjack_payout)
+        das = bool(self.allow_das)
+        dbl = str(self.double_restriction) if str(self.double_restriction) in ALLOWED_DOUBLE_RESTRICTIONS else "any"
+        surr = bool(self.allow_surrender)
+        min_b = _nearest_int_option(self.minimum_bet, ALLOWED_MIN_BETS, 5)
+
+        try:
+            raw_max = int(self.maximum_bet)
+        except (TypeError, ValueError):
+            raw_max = 0
+
+        if raw_max <= 0:
+            max_b = 0
+        else:
+            max_b = _nearest_int_option(raw_max, ALLOWED_MAX_BETS[1:], 0)
+            if max_b != 0 and max_b < min_b:
+                max_b = next((opt for opt in ALLOWED_MAX_BETS[1:] if opt >= min_b), min_b)
+
+        candidate_sig = (decks, h17, payout, das, dbl, surr, min_b, max_b)
+        resolved_preset = "custom"
+        if self.preset_id in VENUE_PRESETS and VENUE_PRESETS[self.preset_id]._rule_signature() == candidate_sig:
+            resolved_preset = self.preset_id
+        else:
+            for pid, preset in VENUE_PRESETS.items():
+                if preset._rule_signature() == candidate_sig:
+                    resolved_preset = pid
+                    break
+
+        return HouseRules(
+            preset_id=resolved_preset,
+            deck_count=decks,
+            dealer_hits_soft_17=h17,
+            blackjack_payout=payout,
+            allow_das=das,
+            double_restriction=dbl,
+            allow_surrender=surr,
+            minimum_bet=min_b,
+            maximum_bet=max_b,
+        )
+
+    def short_badge(self) -> str:
+        """Compact rule summary string for Tripometer logs and UI headers."""
+        s17_tag = "H17" if self.dealer_hits_soft_17 else "S17"
+        num, den = _sanitize_payout_tuple(self.blackjack_payout)
+        das_tag = "DAS" if self.allow_das else "NDAS"
+        dbl_tag = "" if self.double_restriction == "any" else (
+            " D9-11" if self.double_restriction == "9_10_11" else " D10-11"
+        )
+        ls_tag = " LS" if self.allow_surrender else ""
+        return f"{self.deck_count}D {s17_tag} {num}:{den} {das_tag}{dbl_tag}{ls_tag}"
+
+    def to_dict(self) -> dict[str, Any]:
+        norm = self.normalized()
+        return {
+            "preset_id": norm.preset_id,
+            "deck_count": norm.deck_count,
+            "dealer_hits_soft_17": norm.dealer_hits_soft_17,
+            "blackjack_payout": [norm.blackjack_payout[0], norm.blackjack_payout[1]],
+            "allow_das": norm.allow_das,
+            "double_restriction": norm.double_restriction,
+            "allow_surrender": norm.allow_surrender,
+            "minimum_bet": norm.minimum_bet,
+            "maximum_bet": norm.maximum_bet,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Optional[dict[str, Any]]) -> HouseRules:
+        if not isinstance(data, dict):
+            return cls()
+        raw = cls(
+            preset_id=str(data.get("preset_id", "classic_4_deck")),
+            deck_count=data.get("deck_count", 4),  # type: ignore[arg-type]
+            dealer_hits_soft_17=bool(data.get("dealer_hits_soft_17", False)),
+            blackjack_payout=_sanitize_payout_tuple(data.get("blackjack_payout", (3, 2))),
+            allow_das=bool(data.get("allow_das", True)),
+            double_restriction=str(data.get("double_restriction", "any")),
+            allow_surrender=bool(data.get("allow_surrender", True)),
+            minimum_bet=data.get("minimum_bet", 5),  # type: ignore[arg-type]
+            maximum_bet=data.get("maximum_bet", 0),  # type: ignore[arg-type]
+        )
+        return raw.normalized()
+
+
+VENUE_PRESETS: dict[str, HouseRules] = {
+    "classic_4_deck": HouseRules(
+        preset_id="classic_4_deck",
+        deck_count=4,
+        dealer_hits_soft_17=False,
+        blackjack_payout=(3, 2),
+        allow_das=True,
+        double_restriction="any",
+        allow_surrender=True,
+        minimum_bet=5,
+        maximum_bet=0,
+    ),
+    "vegas_strip": HouseRules(
+        preset_id="vegas_strip",
+        deck_count=6,
+        dealer_hits_soft_17=False,
+        blackjack_payout=(3, 2),
+        allow_das=True,
+        double_restriction="any",
+        allow_surrender=True,
+        minimum_bet=25,
+        maximum_bet=2500,
+    ),
+    "downtown_pitch": HouseRules(
+        preset_id="downtown_pitch",
+        deck_count=2,
+        dealer_hits_soft_17=True,
+        blackjack_payout=(3, 2),
+        allow_das=True,
+        double_restriction="any",
+        allow_surrender=False,
+        minimum_bet=10,
+        maximum_bet=500,
+    ),
+    "reno_single_deck": HouseRules(
+        preset_id="reno_single_deck",
+        deck_count=1,
+        dealer_hits_soft_17=True,
+        blackjack_payout=(3, 2),
+        allow_das=False,
+        double_restriction="10_11",
+        allow_surrender=False,
+        minimum_bet=10,
+        maximum_bet=500,
+    ),
+    "high_roller_vip": HouseRules(
+        preset_id="high_roller_vip",
+        deck_count=6,
+        dealer_hits_soft_17=False,
+        blackjack_payout=(3, 2),
+        allow_das=True,
+        double_restriction="any",
+        allow_surrender=True,
+        minimum_bet=100,
+        maximum_bet=10000,
+    ),
+    "tourist_trap_6_5": HouseRules(
+        preset_id="tourist_trap_6_5",
+        deck_count=8,
+        dealer_hits_soft_17=True,
+        blackjack_payout=(6, 5),
+        allow_das=False,
+        double_restriction="any",
+        allow_surrender=False,
+        minimum_bet=15,
+        maximum_bet=500,
+    ),
+}
+
+
+def estimate_house_edge_pct(rules: HouseRules) -> float:
+    """
+    Estimates baseline casino house edge (%) under optimal Basic Strategy.
+    """
+    deck_deltas = {
+        1: 0.00,
+        2: 0.19,
+        4: 0.41,
+        6: 0.46,
+        8: 0.48,
+    }
+    edge = 0.17 + deck_deltas.get(rules.deck_count, 0.41)
+    if rules.dealer_hits_soft_17:
+        edge += 0.22
+    if _sanitize_payout_tuple(rules.blackjack_payout) == (6, 5):
+        edge += 1.39
+    if not rules.allow_das:
+        edge += 0.14
+    if rules.double_restriction == "9_10_11":
+        edge += 0.09
+    elif rules.double_restriction == "10_11":
+        edge += 0.18
+    if rules.allow_surrender:
+        edge -= 0.08
+    return round(max(0.05, min(3.50, edge)), 2)
+
+
+def can_double_down_hand(
+    hand: Hand,
+    rules: HouseRules,
+    available_bankroll: int,
+    is_split_hand: bool = False,
+) -> bool:
+    """Stateless eligibility helper for doubling down under active HouseRules."""
+    if isinstance(hand, Hand):
+        if not hand.can_double:
+            return False
+        bet = hand.bet
+        split_flag = hand.is_split or is_split_hand
+    else:
+        if len(hand) != 2:
+            return False
+        bet = 0
+        split_flag = is_split_hand
+
+    if available_bankroll < bet:
+        return False
+    if split_flag and not rules.allow_das:
+        return False
+
+    if rules.double_restriction == "9_10_11":
+        return (not is_soft_hand(hand)) and (score_hand(hand) in (9, 10, 11))
+    if rules.double_restriction == "10_11":
+        return (not is_soft_hand(hand)) and (score_hand(hand) in (10, 11))
+    return True
+
+
+def can_surrender_hand(
+    hand: Hand,
+    rules: HouseRules,
+    is_split_hand: bool = False,
+) -> bool:
+    """Stateless eligibility helper for Late Surrender under active HouseRules."""
+    if not rules.allow_surrender:
+        return False
+    if isinstance(hand, Hand):
+        if hand.is_split or is_split_hand or hand.is_doubled or hand.is_stood or hand.is_surrendered:
+            return False
+        return len(hand.cards) == 2
+    return (not is_split_hand) and len(hand) == 2
+
+
+def effective_minimum_bet(rules: HouseRules, round_bankroll: int) -> int:
+    """
+    Returns effective minimum wager given invariant round_bankroll.
+    Permits sub-minimum All-In recovery when 0 < round_bankroll < rules.minimum_bet.
+    """
+    if 0 < round_bankroll < rules.minimum_bet:
+        return round_bankroll
+    return rules.minimum_bet
+
+
+def clamp_main_bet(amount: int, rules: HouseRules, max_affordable: int) -> int:
+    """Clamps an initial main bet against available funds and table maximum_bet (0 = No Limit)."""
+    cap = min(max_affordable, rules.maximum_bet) if rules.maximum_bet > 0 else max_affordable
+    return max(0, min(amount, cap))
+
+
+def min_cards_before_deal(deck_count: int, table_seats: int = 1) -> int:
+    """Minimum remaining cards required before starting a round for the active seat count."""
+    seats = max(1, int(table_seats))
+    return max(15, 6 * seats + 9)
+
+
+def cut_card_threshold(deck_count: int, table_seats: int = 1, penetration: float = 0.25) -> int:
+    """Remaining-card threshold at which the shoe reaches the cut card and reshuffles."""
+    decks = max(1, int(deck_count))
+    return max(int(52 * decks * penetration), min_cards_before_deal(decks, table_seats))
+
+
 def score_hand(hand) -> int:
     """
     Calculates the best Blackjack score for a hand.
@@ -261,12 +585,18 @@ def is_soft_hand(hand) -> bool:
     return bool(1 in values and score + 10 <= BLACKJACK_TARGET)
 
 
-def dealer_should_hit(dealer_hand) -> bool:
+def dealer_should_hit(dealer_hand, hits_soft_17: bool = False) -> bool:
     """
     Determines if the dealer must draw another card.
-    Under standard casino S17 rules, the dealer must hit on any score below 17.
+    Under S17 (hits_soft_17=False), the dealer hits strictly below 17.
+    Under H17 (hits_soft_17=True), the dealer also hits on Soft 17.
     """
-    return score_hand(dealer_hand) < DEALER_STAND_THRESHOLD
+    score = score_hand(dealer_hand)
+    if score < DEALER_STAND_THRESHOLD:
+        return True
+    if hits_soft_17 and score == DEALER_STAND_THRESHOLD and is_soft_hand(dealer_hand):
+        return True
+    return False
 
 
 def can_split(player_hand) -> bool:
@@ -306,13 +636,14 @@ def determine_outcome(
     """
     player_score = player_score_override if player_score_override is not None else score_hand(player_hand)
     dealer_score = score_hand(dealer_hand)
+    effective_is_split = bool(is_split or getattr(player_hand, "is_split", False))
 
     # 1. Player Bust
     if player_score > BLACKJACK_TARGET:
         return "PLAYER_BUST", "You bust, dealer wins!"
 
     # Check for natural blackjacks (2 cards totaling 21 on initial deal, un-split)
-    player_natural = (not is_split and len(player_hand) == 2 and player_score == BLACKJACK_TARGET)
+    player_natural = (not effective_is_split and len(player_hand) == 2 and player_score == BLACKJACK_TARGET)
     dealer_natural = (len(dealer_hand) == 2 and dealer_score == BLACKJACK_TARGET)
 
     if player_natural and dealer_natural:
@@ -335,7 +666,11 @@ def determine_outcome(
         return "PUSH", "It's a draw"
 
 
-def calculate_payout(outcome: str, bet: int) -> int:
+def calculate_payout(
+    outcome: str,
+    bet: int,
+    blackjack_payout: tuple[int, int] = (3, 2),
+) -> int:
     """
     Calculates the total payout (return of wager plus winnings) for a given outcome and bet.
 
@@ -343,15 +678,17 @@ def calculate_payout(outcome: str, bet: int) -> int:
         outcome: Outcome code from determine_outcome ('NATURAL_BLACKJACK', 'PLAYER_WINS',
                  'DEALER_BUST', 'PUSH', 'SURRENDER', 'DEALER_WINS', 'PLAYER_BUST').
         bet: The amount wagered on this hand (integer >= 0).
+        blackjack_payout: Profit ratio tuple (num, den) for Natural Blackjack ((3, 2) or (6, 5)).
 
     Returns:
         int: Total return to the player (0 for loss, bet for push, 2*bet for standard win,
-             bet + int(bet * 1.5) for 3:2 natural blackjack, bet // 2 for surrender).
+             bet + (bet * num) // den for natural blackjack, bet // 2 for surrender).
     """
     if bet <= 0:
         return 0
     if outcome == "NATURAL_BLACKJACK":
-        return bet + int(bet * 1.5)
+        num, den = _sanitize_payout_tuple(blackjack_payout)
+        return bet + (bet * num) // den
     elif outcome in ("PLAYER_WINS", "DEALER_BUST"):
         return bet * 2
     elif outcome == "PUSH":
@@ -361,6 +698,25 @@ def calculate_payout(outcome: str, bet: int) -> int:
     else:
         # 'DEALER_WINS', 'PLAYER_BUST', or any other loss outcome
         return 0
+
+
+def evaluate_outcome_with_bet(
+    player_hand,
+    dealer_hand,
+    bet: int,
+    is_split_hand: bool = False,
+    blackjack_payout: tuple[int, int] = (3, 2),
+    player_score_override: Optional[int] = None,
+) -> tuple[str, str, int]:
+    """Evaluates outcome and payout together while enforcing split-21 and payout-ratio rules."""
+    outcome, message = determine_outcome(
+        player_hand,
+        dealer_hand,
+        is_split=is_split_hand,
+        player_score_override=player_score_override,
+    )
+    payout = calculate_payout(outcome, bet, blackjack_payout=blackjack_payout)
+    return outcome, message, payout
 
 
 def calculate_insurance_payout(dealer_has_blackjack: bool, insurance_bet: int, main_bet: int = 0) -> int:
@@ -629,9 +985,11 @@ def get_basic_strategy_decision(
     can_double: bool = True,
     can_split: bool = False,
     can_surrender: bool = True,
+    rules: Optional[HouseRules] = None,
+    is_split_hand: bool = False,
 ) -> Optional[BasicStrategyDecision]:
     """
-    Evaluates statistically optimal Blackjack basic strategy (4-8 decks, Dealer stands on 17).
+    Evaluates statistically optimal Blackjack basic strategy, adapting to HouseRules when supplied.
 
     Returns:
         BasicStrategyDecision with optimal action ('HIT', 'STAND', 'DOUBLE', 'SPLIT', 'SURRENDER'),
@@ -652,6 +1010,24 @@ def get_basic_strategy_decision(
     if score > BLACKJACK_TARGET:
         return None
     num_cards = len(player_hand)
+    is_soft = (1 in values and sum(values) + 10 <= 21)
+    is_split_hand = bool(is_split_hand or getattr(player_hand, "is_split", False))
+
+    if rules is None:
+        effective_surrender = bool(can_surrender and not is_split_hand)
+        effective_double = bool(can_double)
+        das_allowed = bool(can_double)
+    else:
+        effective_surrender = bool(can_surrender and rules.allow_surrender and not is_split_hand)
+        das_allowed = bool(rules.allow_das)
+        restriction_ok = True
+        if rules.double_restriction == "9_10_11":
+            restriction_ok = (not is_soft) and (score in (9, 10, 11))
+        elif rules.double_restriction == "10_11":
+            restriction_ok = (not is_soft) and (score in (10, 11))
+        effective_double = bool(
+            can_double and (not is_split_hand or rules.allow_das) and restriction_ok
+        )
 
     # 1. Check Pair Splitting (if exactly 2 cards and can_split)
     if num_cards == 2 and can_split:
@@ -659,8 +1035,10 @@ def get_basic_strategy_decision(
         # Aces
         if p_val == 1:
             return BasicStrategyDecision("SPLIT", "Split Pair", "A,A vs any")
-        # 8s
+        # 8s (under H17 + Late Surrender, 8,8 vs Ace surrenders before splitting)
         if p_val == 8:
+            if rules is not None and rules.dealer_hits_soft_17 and up_val == 11 and effective_surrender:
+                return BasicStrategyDecision("SURRENDER", "Surrender", "8,8 vs A (H17)")
             return BasicStrategyDecision("SPLIT", "Split Pair", "8,8 vs any")
         # 10s
         if p_val == 10:
@@ -675,59 +1053,67 @@ def get_basic_strategy_decision(
             if 2 <= up_val <= 7:
                 return BasicStrategyDecision("SPLIT", "Split Pair", f"7,7 vs {up_str}")
             return BasicStrategyDecision("HIT", "Hit", f"7,7 vs {up_str}")
-        # 6s
+        # 6s (6,6 vs 2 requires DAS)
         if p_val == 6:
-            if 2 <= up_val <= 6:
+            low_up = 2 if das_allowed else 3
+            if low_up <= up_val <= 6:
                 return BasicStrategyDecision("SPLIT", "Split Pair", f"6,6 vs {up_str}")
             return BasicStrategyDecision("HIT", "Hit", f"6,6 vs {up_str}")
         # 5s - Never split 5s!
         if p_val == 5:
-            if can_double and 2 <= up_val <= 9:
+            if effective_double and 2 <= up_val <= 9:
                 return BasicStrategyDecision("DOUBLE", "Double Down", f"5,5 vs {up_str}")
             return BasicStrategyDecision("HIT", "Hit", f"5,5 vs {up_str}")
-        # 4s
+        # 4s (4,4 vs 5-6 requires DAS)
         if p_val == 4:
-            if 5 <= up_val <= 6 and can_double:
+            if 5 <= up_val <= 6 and das_allowed:
                 return BasicStrategyDecision("SPLIT", "Split Pair", f"4,4 vs {up_str}")
             return BasicStrategyDecision("HIT", "Hit", f"4,4 vs {up_str}")
-        # 2s and 3s
+        # 2s and 3s (2,2 and 3,3 vs 2-3 require DAS)
         if p_val in (2, 3):
-            if 2 <= up_val <= 7:
+            low_up = 2 if das_allowed else 4
+            if low_up <= up_val <= 7:
                 return BasicStrategyDecision("SPLIT", "Split Pair", f"{p_val},{p_val} vs {up_str}")
             return BasicStrategyDecision("HIT", "Hit", f"{p_val},{p_val} vs {up_str}")
 
-    # 2. Check Surrender (if 2 cards, can_surrender)
-    if num_cards == 2 and can_surrender:
+    # 2. Check Surrender (if 2 cards, hard hand, effective_surrender)
+    if num_cards == 2 and effective_surrender and not is_soft:
         if score == 16 and up_val in (9, 10, 11):
             return BasicStrategyDecision("SURRENDER", "Surrender", f"16 vs {up_str}")
         if score == 15 and up_val == 10:
             return BasicStrategyDecision("SURRENDER", "Surrender", "15 vs 10")
+        if rules is not None and rules.dealer_hits_soft_17:
+            if score == 15 and up_val == 11:
+                return BasicStrategyDecision("SURRENDER", "Surrender", "15 vs A (H17)")
+            if score == 17 and up_val == 11:
+                return BasicStrategyDecision("SURRENDER", "Surrender", "17 vs A (H17)")
 
     # 3. Check Soft Hands (contains an Ace counted as 11)
-    is_soft = (1 in values and sum(values) + 10 <= 21)
     if is_soft:
         if score >= 20:
             return BasicStrategyDecision("STAND", "Stand", f"Soft {score}")
         if score == 19:
-            if up_val == 6 and can_double and num_cards == 2:
+            double_s19_vs_6 = True if rules is None else bool(rules.dealer_hits_soft_17)
+            if double_s19_vs_6 and up_val == 6 and effective_double and num_cards == 2:
                 return BasicStrategyDecision("DOUBLE", "Double Down", "Soft 19 vs 6")
             return BasicStrategyDecision("STAND", "Stand", "Soft 19")
         if score == 18:
-            if 3 <= up_val <= 6 and can_double and num_cards == 2:
+            dbl_low = 2 if (rules is not None and rules.dealer_hits_soft_17) else 3
+            if dbl_low <= up_val <= 6 and effective_double and num_cards == 2:
                 return BasicStrategyDecision("DOUBLE", "Double Down", f"Soft 18 vs {up_str}")
-            if up_val in (2, 7, 8):
+            if 2 <= up_val <= 8:
                 return BasicStrategyDecision("STAND", "Stand", f"Soft 18 vs {up_str}")
             return BasicStrategyDecision("HIT", "Hit", f"Soft 18 vs {up_str}")
         if score == 17:
-            if 3 <= up_val <= 6 and can_double and num_cards == 2:
+            if 3 <= up_val <= 6 and effective_double and num_cards == 2:
                 return BasicStrategyDecision("DOUBLE", "Double Down", f"Soft 17 vs {up_str}")
             return BasicStrategyDecision("HIT", "Hit", f"Soft 17 vs {up_str}")
         if score in (15, 16):
-            if 4 <= up_val <= 6 and can_double and num_cards == 2:
+            if 4 <= up_val <= 6 and effective_double and num_cards == 2:
                 return BasicStrategyDecision("DOUBLE", "Double Down", f"Soft {score} vs {up_str}")
             return BasicStrategyDecision("HIT", "Hit", f"Soft {score} vs {up_str}")
         if score in (13, 14):
-            if 5 <= up_val <= 6 and can_double and num_cards == 2:
+            if 5 <= up_val <= 6 and effective_double and num_cards == 2:
                 return BasicStrategyDecision("DOUBLE", "Double Down", f"Soft {score} vs {up_str}")
             return BasicStrategyDecision("HIT", "Hit", f"Soft {score} vs {up_str}")
 
@@ -743,15 +1129,20 @@ def get_basic_strategy_decision(
             return BasicStrategyDecision("STAND", "Stand", f"Hard 12 vs {up_str}")
         return BasicStrategyDecision("HIT", "Hit", f"Hard 12 vs {up_str}")
     if score == 11:
-        if can_double and num_cards == 2:
+        double_11_vs_ace = (
+            True
+            if rules is None
+            else bool(rules.dealer_hits_soft_17 or rules.deck_count <= 2)
+        )
+        if effective_double and num_cards == 2 and (up_val <= 10 or double_11_vs_ace):
             return BasicStrategyDecision("DOUBLE", "Double Down", f"11 vs {up_str}")
         return BasicStrategyDecision("HIT", "Hit", f"11 vs {up_str}")
     if score == 10:
-        if can_double and num_cards == 2 and 2 <= up_val <= 9:
+        if effective_double and num_cards == 2 and 2 <= up_val <= 9:
             return BasicStrategyDecision("DOUBLE", "Double Down", f"10 vs {up_str}")
         return BasicStrategyDecision("HIT", "Hit", f"10 vs {up_str}")
     if score == 9:
-        if can_double and num_cards == 2 and 3 <= up_val <= 6:
+        if effective_double and num_cards == 2 and 3 <= up_val <= 6:
             return BasicStrategyDecision("DOUBLE", "Double Down", f"9 vs {up_str}")
         return BasicStrategyDecision("HIT", "Hit", f"9 vs {up_str}")
 

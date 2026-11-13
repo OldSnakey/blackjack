@@ -17,6 +17,9 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from rules import HouseRules
+from tripometer import TripometerData
+
 logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -126,6 +129,8 @@ class SaveData:
     play_mode: str = "betting"  # "casual" | "betting" | "training"
     onboarding_completed: bool = False
     bootcamp: BootcampProgress = field(default_factory=create_default_bootcamp_progress)
+    house_rules: Dict[str, Any] = field(default_factory=lambda: HouseRules().to_dict())
+    tripometer: Dict[str, Any] = field(default_factory=lambda: TripometerData().to_dict())
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -139,6 +144,8 @@ class SaveData:
             "play_mode": self.play_mode,
             "onboarding_completed": self.onboarding_completed,
             "bootcamp": asdict(self.bootcamp),
+            "house_rules": HouseRules.from_dict(self.house_rules).to_dict(),
+            "tripometer": TripometerData.from_dict(self.tripometer).to_dict(),
         }
 
     @classmethod
@@ -222,6 +229,12 @@ class SaveData:
             play_mode=str(data.get("play_mode", "betting")),
             onboarding_completed=bool(data.get("onboarding_completed", False)),
             bootcamp=default_bc,
+            house_rules=HouseRules.from_dict(
+                data.get("house_rules") if isinstance(data.get("house_rules"), dict) else None
+            ).to_dict(),
+            tripometer=TripometerData.from_dict(
+                data.get("tripometer") if isinstance(data.get("tripometer"), dict) else None
+            ).to_dict(),
         )
 
 
@@ -408,6 +421,36 @@ class SaveManager:
         """Persists player preference for Chips Mode vs Casual Mode."""
         self.data.chips_mode = enabled
         self.save()
+
+    # --- House Rules & Strategy Tripometer Persistence ---
+
+    def get_house_rules(self) -> HouseRules:
+        """Returns sanitized active HouseRules from persistent save data."""
+        return HouseRules.from_dict(self.data.house_rules)
+
+    def save_house_rules(self, rules: HouseRules, save_now: bool = True) -> None:
+        """Persists normalized HouseRules to save data."""
+        self.data.house_rules = rules.normalized().to_dict()
+        if save_now:
+            self.save()
+
+    def get_tripometer_data(self) -> TripometerData:
+        """Returns sanitized TripometerData from persistent save data."""
+        return TripometerData.from_dict(self.data.tripometer)
+
+    def save_tripometer_data(self, trip_data: TripometerData, save_now: bool = True) -> None:
+        """Persists TripometerData to save data."""
+        self.data.tripometer = trip_data.to_dict()
+        if save_now:
+            self.save()
+
+    def reset_tripometer(self, save_now: bool = True) -> TripometerData:
+        """Resets Tripometer telemetry without modifying bankroll, career highscores, or unlocks."""
+        fresh = TripometerData()
+        self.data.tripometer = fresh.to_dict()
+        if save_now:
+            self.save()
+        return fresh
 
     def evaluate_round_achievements(
         self,

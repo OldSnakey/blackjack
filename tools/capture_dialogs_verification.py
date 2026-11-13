@@ -1,9 +1,9 @@
 """
 Capture verification tool for refactored dialogs:
-- SettingsDialog (two-tier preferences, complete records, scroll container)
-- ShortcutsDialog Tab 0 (Gameplay & Betting)
-- ShortcutsDialog Tab 1 (System & Controls)
-- WardrobeDialog Tab 2 (Hall of Fame 8 plaques in scrollable container)
+- SettingsDialog Tab 0 (Table & Audio) & Tab 1 (House Rules)
+- TripometerDialog (Empty state & Populated audit log state)
+- ShortcutsDialog Tab 0 (Gameplay & Betting) & Tab 1 (System & Controls)
+- WardrobeDialog Tab 2 (Hall of Fame plaques in scrollable container)
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
 from blackjack import BlackjackApp
-from save_manager import SaveManager
+from rules import Card, VENUE_PRESETS
 
 
 def capture_hwnd_to_image(hwnd: int) -> Image.Image:
@@ -94,8 +94,7 @@ def main():
     root.lift()
     root.focus_force()
 
-    app = BlackjackApp(root, chips_mode=False, sound_enabled=False)
-    app.save_manager = SaveManager(save_path=save_file)
+    app = BlackjackApp(root, chips_mode=True, sound_enabled=False, save_path=save_file)
     app.save_manager.data.highscores.peak_bankroll = 15500
     app.save_manager.data.highscores.total_hands_played = 120
     app.save_manager.data.highscores.total_hands_won = 68
@@ -105,14 +104,18 @@ def main():
     app.save_manager.data.achievements.exorcist = True
     app.save_manager.data.achievements.apprentice_counter = True
 
+    for _ in range(15):
+        root.update()
+        time.sleep(0.02)
+
     artifact_dirs = [
         BASE_DIR / "verification",
-        Path(r"C:\Users\wrehm\.gemini\antigravity\brain\4d4b5af8-c42c-4aa6-a12b-db9778a254c0"),
+        Path(r"C:\Users\wrehm\.gemini\antigravity\brain\6946b530-e64f-4dcb-931a-cb4cacaca12f"),
     ]
     for d in artifact_dirs:
         d.mkdir(parents=True, exist_ok=True)
 
-    # 1. Capture Settings Dialog
+    # 1. Capture Settings Dialog (Tab 0: Table & Audio, Tab 1: House Rules)
     app._open_settings_dialog()
     for _ in range(15):
         root.update()
@@ -120,15 +123,185 @@ def main():
 
     settings = app._settings_dialog
     if settings and settings.winfo_exists():
+        settings._switch_tab(0)
+        root.update()
+        time.sleep(0.05)
         screenshot = capture_hwnd_to_image(settings.winfo_id())
         for d in artifact_dirs:
             out_path = d / "verified_settings_dialog.png"
             screenshot.convert("RGB").save(str(out_path), "PNG")
             print(f"SAVED: {out_path}")
+
+        settings._switch_tab(1)
+        root.update()
+        time.sleep(0.05)
+        screenshot = capture_hwnd_to_image(settings.winfo_id())
+        for d in artifact_dirs:
+            out_path = d / "verified_settings_house_rules_tab.png"
+            screenshot.convert("RGB").save(str(out_path), "PNG")
+            print(f"SAVED: {out_path}")
     app._close_settings_dialog()
     root.update()
 
-    # 2. Capture Shortcuts Dialog Tab 0 (Gameplay & Betting)
+    # 2. Capture Tripometer Dialog (Empty State)
+    app._open_tripometer_dialog()
+    for _ in range(15):
+        root.update()
+        time.sleep(0.02)
+
+    trip_dlg = app._tripometer_dialog
+    if trip_dlg and trip_dlg.winfo_exists():
+        screenshot = capture_hwnd_to_image(trip_dlg.winfo_id())
+        for d in artifact_dirs:
+            out_path = d / "verified_tripometer_empty.png"
+            screenshot.convert("RGB").save(str(out_path), "PNG")
+            print(f"SAVED: {out_path}")
+    app._close_tripometer_dialog()
+    root.update()
+
+    # 3. Populate sample Tripometer rounds and capture Populated State
+    rules_classic = VENUE_PRESETS["classic_4_deck"]
+    rules_vegas = VENUE_PRESETS["vegas_strip"]
+
+    # Round 1: Optimal Basic Strategy Double (11 vs 6 @ TC +2.0, Kelly 2u=$10)
+    app.tripometer.begin_round(rules_classic, pre_deal_tc=2.0, seat_bets={0: 10}, round_bankroll=1000, chips_mode=True)
+    app.tripometer.record_decision(
+        seat_idx=0,
+        hand_idx=0,
+        cards=[Card(6, "", "6", "spade"), Card(5, "", "5", "heart")],
+        dealer_upcard=Card(6, "", "6", "diamond"),
+        action="DOUBLE",
+        live_tc=2.0,
+        can_split=False,
+        can_double=True,
+        can_surrender=True,
+    )
+    app.tripometer.finalize_round(
+        settled_hands=[
+            {
+                "seat_idx": 0,
+                "hand_idx": 0,
+                "cards": [Card(6, "", "6", "spade"), Card(5, "", "5", "heart"), Card(10, "", "king", "club")],
+                "wager": 20,
+                "outcome": "PLAYER_WINS",
+                "net_profit": 20,
+            }
+        ],
+        dealer_cards=[Card(6, "", "6", "diamond"), Card(10, "", "queen", "heart"), Card(8, "", "8", "club")],
+        net_round_profit=20,
+    )
+
+    # Round 2: Optimal Illustrious 18 Deviation (16 vs 10 Stand @ TC +3.0, Kelly 4u=$20)
+    app.tripometer.begin_round(rules_classic, pre_deal_tc=3.0, seat_bets={0: 20}, round_bankroll=1020, chips_mode=True)
+    app.tripometer.record_decision(
+        seat_idx=0,
+        hand_idx=0,
+        cards=[Card(10, "", "10", "club"), Card(6, "", "6", "diamond")],
+        dealer_upcard=Card(10, "", "jack", "spade"),
+        action="STAND",
+        live_tc=3.0,
+        can_split=False,
+        can_double=True,
+        can_surrender=False,
+    )
+    app.tripometer.finalize_round(
+        settled_hands=[
+            {
+                "seat_idx": 0,
+                "hand_idx": 0,
+                "cards": [Card(10, "", "10", "club"), Card(6, "", "6", "diamond")],
+                "wager": 20,
+                "outcome": "PLAYER_WINS",
+                "net_profit": 20,
+            }
+        ],
+        dealer_cards=[Card(10, "", "jack", "spade"), Card(6, "", "6", "club"), Card(9, "", "9", "heart")],
+        net_round_profit=20,
+    )
+
+    # Round 3: Two optimal BS decisions in one round (12 vs 2 Hit -> 18 vs 2 Stand @ TC +0.5, Kelly 1u=$5)
+    app.tripometer.begin_round(rules_classic, pre_deal_tc=0.5, seat_bets={0: 5}, round_bankroll=1040, chips_mode=True)
+    app.tripometer.record_decision(
+        seat_idx=0,
+        hand_idx=0,
+        cards=[Card(8, "", "8", "spade"), Card(4, "", "4", "heart")],
+        dealer_upcard=Card(2, "", "2", "club"),
+        action="HIT",
+        live_tc=0.5,
+        can_split=False,
+        can_double=True,
+        can_surrender=True,
+    )
+    app.tripometer.record_decision(
+        seat_idx=0,
+        hand_idx=0,
+        cards=[Card(8, "", "8", "spade"), Card(4, "", "4", "heart"), Card(6, "", "6", "diamond")],
+        dealer_upcard=Card(2, "", "2", "club"),
+        action="STAND",
+        live_tc=0.5,
+        can_split=False,
+        can_double=False,
+        can_surrender=False,
+    )
+    app.tripometer.finalize_round(
+        settled_hands=[
+            {
+                "seat_idx": 0,
+                "hand_idx": 0,
+                "cards": [Card(8, "", "8", "spade"), Card(4, "", "4", "heart"), Card(6, "", "6", "diamond")],
+                "wager": 5,
+                "outcome": "PLAYER_WINS",
+                "net_profit": 5,
+            }
+        ],
+        dealer_cards=[Card(2, "", "2", "club"), Card(10, "", "king", "diamond"), Card(10, "", "10", "spade")],
+        net_round_profit=5,
+    )
+
+    # Round 4: Suboptimal Overbet + Basic Strategy Mistake (Stand on 14 vs 10 @ TC -1.0 instead of Surrender)
+    app.tripometer.begin_round(rules_vegas, pre_deal_tc=-1.0, seat_bets={0: 100}, round_bankroll=1045, chips_mode=True)
+    app.tripometer.record_decision(
+        seat_idx=0,
+        hand_idx=0,
+        cards=[Card(8, "", "8", "heart"), Card(6, "", "6", "spade")],
+        dealer_upcard=Card(10, "", "10", "diamond"),
+        action="STAND",
+        live_tc=-1.0,
+        can_split=False,
+        can_double=True,
+        can_surrender=True,
+    )
+    app.tripometer.finalize_round(
+        settled_hands=[
+            {
+                "seat_idx": 0,
+                "hand_idx": 0,
+                "cards": [Card(8, "", "8", "heart"), Card(6, "", "6", "spade")],
+                "wager": 100,
+                "outcome": "DEALER_WINS",
+                "net_profit": -100,
+            }
+        ],
+        dealer_cards=[Card(10, "", "10", "diamond"), Card(8, "", "8", "spade")],
+        net_round_profit=-100,
+    )
+
+    app._open_tripometer_dialog()
+    for _ in range(15):
+        root.update()
+        time.sleep(0.02)
+
+    trip_dlg = app._tripometer_dialog
+    if trip_dlg and trip_dlg.winfo_exists():
+        screenshot = capture_hwnd_to_image(trip_dlg.winfo_id())
+        for d in artifact_dirs:
+            out_path = d / "verified_tripometer_populated.png"
+            screenshot.convert("RGB").save(str(out_path), "PNG")
+            print(f"SAVED: {out_path}")
+    app._close_tripometer_dialog()
+    root.update()
+
+    # 4. Capture Shortcuts Dialog Tab 0 (Gameplay & Betting)
     app._show_shortcuts_overlay()
     for _ in range(15):
         root.update()
