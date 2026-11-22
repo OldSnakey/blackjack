@@ -534,6 +534,55 @@ class TestDealerWardrobeDialog(unittest.TestCase):
             if dialog.winfo_exists():
                 dialog._on_close()
 
+    def test_hof_plaques_display_trophies_locked_silhouettes_and_larger_titles(self):
+        """Hall of Fame plaques render per-achievement '?' silhouettes when locked, full trophies when unlocked, strip leading emojis, and use bigger Tiny5 Duo titles."""
+        self.app.save_manager.data.achievements.exorcist = True
+        self.app.save_manager.data.achievements.high_roller = False
+
+        self.app._on_click_stage_hanger()
+        dialog = self.app._wardrobe_dialog
+        self.assertIsNotNone(dialog)
+        try:
+            dialog._switch_tab(1)
+            dialog.update_idletasks()
+            dialog.update()
+
+            ex_info = dialog.plaque_widgets["exorcist"]
+            hr_info = dialog.plaque_widgets["high_roller"]
+
+            # Trophy canvas image item exists on every plaque
+            self.assertIn("trophy_image_id", ex_info)
+            self.assertIn("title_text_id", ex_info)
+            self.assertIn("trophy_pedestal", ex_info)
+
+            ex_canvas = ex_info["frame"]
+            hr_canvas = hr_info["frame"]
+
+            # Leading emoji stripped from rendered title and font upgraded to Tiny5 Duo >= 24px
+            ex_title = ex_canvas.itemcget(ex_info["title_text_id"], "text")
+            self.assertEqual(ex_title, "The Exorcist")
+            title_font = dialog.tk.splitlist(ex_canvas.itemcget(ex_info["title_text_id"], "font"))
+            self.assertEqual(title_font[0], "Tiny5 Duo")
+            self.assertGreaterEqual(abs(int(title_font[1])), 24)
+
+            # Locked vs unlocked trophy image swaps dynamically on refresh
+            img_locked_before = hr_canvas.itemcget(hr_info["trophy_image_id"], "image")
+            self.assertTrue(bool(img_locked_before))
+            self.app.save_manager.data.achievements.high_roller = True
+            dialog._refresh_hof_display()
+            img_unlocked_after = hr_canvas.itemcget(hr_info["trophy_image_id"], "image")
+            self.assertNotEqual(img_locked_before, img_unlocked_after)
+
+            # Verify no overlap between trophy pedestal and title text
+            ped_bbox = ex_canvas.bbox("trophy_pedestal_exorcist")
+            title_bbox = ex_canvas.bbox(ex_info["title_text_id"])
+            self.assertIsNotNone(ped_bbox)
+            self.assertIsNotNone(title_bbox)
+            self.assertGreaterEqual(title_bbox[0], ped_bbox[2], "Title text overlaps trophy pedestal")
+        finally:
+            if dialog.winfo_exists():
+                dialog._on_close()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -23,8 +23,9 @@ from __future__ import annotations
 import os
 import tkinter
 from typing import Any, Callable, Dict, List, Optional
-from PIL import ImageTk
+from PIL import Image, ImageTk
 
+import config
 from dealer_actor import CHARACTERS, CharacterProfile, CostumeVariant
 from pixel_ui import (
     CanvasPixelButton,
@@ -1134,14 +1135,14 @@ class WardrobeDialog(InWindowScreenHost):
             "id": "apprentice_counter",
             "title": "🧮 Apprentice Counter",
             "desc": "Answer 5 consecutive card counting drill quizzes correctly.",
-            "reward": "Selene (Cyber Croupier) Persona",
+            "reward": "Selene Persona",
             "criteria": "5 Counting Quiz Streak",
         },
         {
             "id": "master_counter",
             "title": "🦇 Master Counter",
             "desc": "Achieve a flawless streak of 20 consecutive correct card counting drill quizzes.",
-            "reward": "Vladimir (Crimson Nocturne) Persona",
+            "reward": "Vladimir Persona",
             "criteria": "20 Counting Quiz Streak",
         },
         {
@@ -1872,9 +1873,19 @@ class WardrobeDialog(InWindowScreenHost):
         plaque_w = max(436 * s, (content_w - 24 * s) // 2)
         plaque_h = max(92 * s, min(168 * s, (avail_hof_h - 24 * s) // 3))
 
-        plaque_hdr_font = ("Tiny5", -24 if compact else (-16 * s if s == 1 else -32), "bold")
+        plaque_hdr_font = ("Tiny5 Duo", -32 if compact else (-24 if s == 1 else -48), "bold")
         plaque_bdg_font = ("Tiny5", -24 if compact else (-16 * s), "bold")
         plaque_desc_font = ("Tiny5", -24 if compact else (-16 * s), "normal")
+
+        trophy_scale = 2 if s >= 2 else 1
+        ped_size = 76 if s == 1 else (144 if compact else 152)
+        ped_x = 12 if s == 1 else (16 if compact else 24)
+        text_x = ped_x + ped_size + (14 if s == 1 else (18 if compact else 22))
+        text_w = max(200 * s, plaque_w - text_x - 14 * s)
+        title_y = 8 if s == 1 else (14 if compact else 18)
+        reward_y = title_y + (4 if s == 1 else (6 if compact else 10))
+        desc_y = 34 if s == 1 else (title_y + (38 if compact else 56))
+        status_y = plaque_h - (22 if s == 1 else (34 if compact else 44))
 
         for p_idx, p_cfg in enumerate(self.HOF_PAGE_CONFIG):
             p_frame = tkinter.Frame(plaques_container, background="#0d1f14")
@@ -1890,6 +1901,7 @@ class WardrobeDialog(InWindowScreenHost):
             for slot_idx, spec in enumerate(page_specs):
                 row = slot_idx // 2
                 col = slot_idx % 2
+                ach_id = spec["id"]
 
                 p_canvas = tkinter.Canvas(
                     p_frame,
@@ -1915,37 +1927,69 @@ class WardrobeDialog(InWindowScreenHost):
                     scale=2 * s,
                     recessed=True,
                     anchor="nw",
-                    tag=f"plaque_{spec['id']}",
+                    tag=f"plaque_{ach_id}",
                 )
 
-                p_canvas.create_text(
-                    14 * s,
-                    10 * s,
-                    text=spec["title"],
+                ped_y = max(6 * s, (plaque_h - ped_size) // 2)
+                trophy_pedestal = CanvasPixelPanel(
+                    p_canvas,
+                    x=ped_x,
+                    y=ped_y,
+                    width=ped_size,
+                    height=ped_size,
+                    bg="#071a0e",
+                    border="#040d07",
+                    inner_hi="#143320",
+                    inner_sh="#030a05",
+                    rivet_color=None,
+                    scale=2 * s,
+                    recessed=True,
+                    anchor="nw",
+                    tag=f"trophy_pedestal_{ach_id}",
+                )
+
+                init_photo = self._get_achievement_trophy_photo(ach_id, unlocked=False, scale=trophy_scale, master=p_canvas)
+                trophy_image_id = p_canvas.create_image(
+                    ped_x + ped_size // 2,
+                    ped_y + ped_size // 2,
+                    image=init_photo if init_photo is not None else "",
+                    anchor="center",
+                    tags=(f"trophy_img_{ach_id}",),
+                )
+
+                clean_title = self._clean_achievement_title(spec["title"])
+                title_text_id = p_canvas.create_text(
+                    text_x,
+                    title_y,
+                    text=clean_title,
                     font=plaque_hdr_font,
                     fill="#ffd700",
                     anchor="nw",
                 )
-                p_canvas.create_text(
+                reward_text_id = p_canvas.create_text(
                     plaque_w - 14 * s,
-                    10 * s,
+                    reward_y,
                     text=f"[{spec['reward']}]",
                     font=plaque_bdg_font,
                     fill="#80cbc4",
                     anchor="ne",
                 )
+                title_bbox = p_canvas.bbox(title_text_id)
+                reward_bbox = p_canvas.bbox(reward_text_id)
+                if title_bbox and reward_bbox and (title_bbox[2] + 10 * s > reward_bbox[0]):
+                    p_canvas.coords(reward_text_id, plaque_w - 14 * s, status_y)
                 p_canvas.create_text(
-                    14 * s,
-                    34 * s if s == 1 else (30 * s if compact else 34 * s),
+                    text_x,
+                    desc_y,
                     text=spec["desc"],
                     font=plaque_desc_font,
                     fill="#d8e2dc",
-                    width=plaque_w - 28 * s,
+                    width=text_w,
                     anchor="nw",
                 )
                 status_text_id = p_canvas.create_text(
-                    14 * s,
-                    plaque_h - (22 * s if compact else 26 * s),
+                    text_x,
+                    status_y,
                     text="🔒 LOCKED",
                     font=plaque_bdg_font,
                     fill="#ff8a80",
@@ -1954,9 +1998,13 @@ class WardrobeDialog(InWindowScreenHost):
 
                 status_lbl_shim = _CanvasTextShim(p_canvas, status_text_id)
 
-                self.plaque_widgets[spec["id"]] = {
+                self.plaque_widgets[ach_id] = {
                     "frame": p_canvas,
                     "panel": panel,
+                    "trophy_pedestal": trophy_pedestal,
+                    "trophy_image_id": trophy_image_id,
+                    "trophy_scale": trophy_scale,
+                    "title_text_id": title_text_id,
                     "status_lbl": status_lbl_shim,
                     "status_text_id": status_text_id,
                     "spec": spec,
@@ -2135,19 +2183,74 @@ class WardrobeDialog(InWindowScreenHost):
 
         achs = save_data.achievements
         for ach_id, p_info in self.plaque_widgets.items():
-            unlocked = getattr(achs, ach_id, False)
+            unlocked = bool(getattr(achs, ach_id, False))
             spec = p_info["spec"]
             panel = p_info.get("panel")
+            pedestal = p_info.get("trophy_pedestal")
+            p_canvas = p_info.get("frame")
+            trophy_img_id = p_info.get("trophy_image_id")
+            trophy_scale = int(p_info.get("trophy_scale", 1))
             lbl = p_info["status_lbl"]
+
+            if p_canvas is not None and trophy_img_id is not None:
+                photo = self._get_achievement_trophy_photo(
+                    ach_id, unlocked=unlocked, scale=trophy_scale, master=p_canvas
+                )
+                if photo is not None:
+                    p_canvas.itemconfigure(trophy_img_id, image=photo)
 
             if unlocked:
                 if panel:
                     panel.update_palette(border="#ffd700", inner_hi="#ffe082")
+                if pedestal:
+                    pedestal.update_palette(border="#d4af37", inner_hi="#ffd54f")
                 lbl.configure(text="✓ UNLOCKED", fg="#5ce6b5")
             else:
                 if panel:
                     panel.update_palette(border="#06140b", inner_hi="#1f4d30")
+                if pedestal:
+                    pedestal.update_palette(border="#040d07", inner_hi="#143320")
                 lbl.configure(text=f"🔒 LOCKED: {spec['criteria']}", fg="#ff8a80")
+
+    @staticmethod
+    def _clean_achievement_title(raw_title: str) -> str:
+        """Strips the leading decorative emoji glyph from an achievement title for clean plaque display."""
+        txt = str(raw_title or "").strip()
+        if " " in txt:
+            head, tail = txt.split(" ", 1)
+            if not any(ch.isascii() and ch.isalnum() for ch in head):
+                return tail.strip()
+        return txt
+
+    def _get_achievement_trophy_photo(
+        self,
+        ach_id: str,
+        *,
+        unlocked: bool,
+        scale: int = 1,
+        master: Optional[tkinter.Misc] = None,
+    ) -> Optional[ImageTk.PhotoImage]:
+        """Loads and caches the 1x (64x64) or 2x (128x128) crunchy pixel-art achievement trophy or locked '?' silhouette."""
+        s_tag = "2x" if int(scale) >= 2 else "1x"
+        state_tag = "u" if unlocked else "l"
+        cache_key = f"trophy_{ach_id}_{state_tag}_{s_tag}"
+        cached = self._photo_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        prefix = "" if unlocked else "locked_"
+        suffix = "_2x" if int(scale) >= 2 else ""
+        path = config.ACHIEVEMENTS_ASSETS_DIR / f"{prefix}{ach_id}{suffix}.png"
+        if not path.exists():
+            return None
+        try:
+            with Image.open(path) as im:
+                rgba = im.convert("RGBA")
+            photo = ImageTk.PhotoImage(rgba, master=master or self)
+            self._photo_cache[cache_key] = photo
+            return photo
+        except Exception:
+            return None
 
     refresh_hof_records = _refresh_hof_display
 
