@@ -573,7 +573,7 @@ class TestHouseRulesAndTripometerGUI(unittest.TestCase):
                     16,
                     f"Tripometer label '{lbl.cget('text')}' font size {f_size}px < 16px minimum",
                 )
-                if "boldpixels" not in f_family.lower():
+                if "boldpixels" not in f_family.lower() and "tiny5" not in f_family.lower():
                     self.assertEqual(
                         f_weight,
                         "normal",

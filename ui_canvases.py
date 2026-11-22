@@ -68,14 +68,14 @@ from ui_layout import (
 )
 
 # Parameterized Typography & HUD Constants
-HUD_OUTCOME_FONT_FAMILY = "m6x11plus"
-HUD_OUTCOME_FONT_SIZE = 18
-HUD_OUTCOME_FONT_WEIGHT = "normal"
+HUD_OUTCOME_FONT_FAMILY = "Tiny5 Duo"
+HUD_OUTCOME_FONT_SIZE = 32
+HUD_OUTCOME_FONT_WEIGHT = "bold"
 
-HUD_LORE_FONT_FAMILY = "m5x7"
-HUD_LORE_FONT_SIZE = 16
-HUD_LORE_FONT_SLANT = "roman"
-HUD_DEFAULT_WRAPLENGTH = 600
+HUD_LORE_FONT_FAMILY = "Tiny5"
+HUD_LORE_FONT_SIZE = 24
+HUD_LORE_FONT_SLANT = "normal"
+HUD_DEFAULT_WRAPLENGTH = 680
 
 
 # ============================================================================
@@ -288,7 +288,7 @@ class ChipVisualizer(tkinter.Canvas):
         wm_cfg = spot_cfg.get("watermark", {"offset_x": 0, "offset_y": 1})
         wm_x, wm_y = resolve_offset(wm_cfg, (cx, cy), sx, sy)
         self.create_text(
-            wm_x, wm_y, text="BETTING SPOT", fill="#bfa040",
+            wm_x, wm_y, text="MAIN BET", fill="#bfa040",
             font=get_element_font("betting_spot_watermark", scale=s_font), tags=("watermark", "spot_interactive")
         )
         badge_cfg = spot_cfg.get("bet_badge", {"offset_x": 0, "offset_y": -34})
@@ -343,10 +343,11 @@ class ChipVisualizer(tkinter.Canvas):
         )
         # 5. Bankroll badge (at bottom)
         bankroll_badge_cfg = get_ui_layout("chip_visualizer", "bankroll_badge")
-        badge_font = get_element_font("chip_bankroll_badge", scale=s_font)
+        eff_bdg_scale = 1.0 if h < int(160 * s_font) else s_font
+        badge_font = get_element_font("chip_bankroll_badge", scale=eff_bdg_scale)
         f_sz_bdg = abs(badge_font[1]) if isinstance(badge_font, tuple) and len(badge_font) > 1 else int(10 * s_font)
         bdg_x, bdg_y = resolve_origin(bankroll_badge_cfg, w, h, sx, sy, content_offset=content_offset)
-        badge_y = min(h - int(f_sz_bdg / 2) - 1, bdg_y)
+        badge_y = min(h - int(f_sz_bdg / 2) - 1, max(bdg_y, h - int(f_sz_bdg / 2) - 2))
         self.create_text(
             bdg_x, badge_y, text="", fill="#ffd54f",
             font=badge_font, tags="bankroll_badge"
@@ -550,10 +551,16 @@ class ChipVisualizer(tkinter.Canvas):
         usable_w = max(40, w - 2 * margin_x)
         spacing = usable_w / max(1, num_cols - 1)
         _, base_y = resolve_origin(piles_cfg, w, h, sx, sy, content_offset=content_offset)
-        lbl_font = get_element_font("chip_denomination_label", scale=s_font)
+        is_compact_h = h < int(160 * s_font)
+        if is_compact_h:
+            base_y = max(int(h * 0.56), base_y - int(8 * sy))
+        eff_lbl_scale = 1.0 if is_compact_h else s_font
+        lbl_font = get_element_font("chip_denomination_label", scale=eff_lbl_scale)
         f_sz = abs(lbl_font[1]) if isinstance(lbl_font, tuple) and len(lbl_font) > 1 else int(11 * s_font)
-        denom_lbl_cfg = piles_cfg.get("denomination_label", {"offset_x": 0, "offset_y": 17})
+        denom_lbl_cfg = piles_cfg.get("denomination_label", {"offset_x": 0, "offset_y": 20})
         _, lbl_y = resolve_offset(denom_lbl_cfg, (0, base_y), sx, sy)
+        if is_compact_h:
+            lbl_y = base_y + int(15 * sy)
         step_y = int(piles_cfg.get("chip_vertical_step", 3) * sy)
 
         for idx, denom in enumerate(denoms):
@@ -1276,6 +1283,17 @@ class TableAnnouncementHUD(tkinter.Frame):
     ):
         super().__init__(master, background=background, **kwargs)
         self.scale = 1.0
+        self.display_profile = None
+        self._manual_typography_override = (
+            outcome_family != HUD_OUTCOME_FONT_FAMILY
+            or outcome_size != HUD_OUTCOME_FONT_SIZE
+            or outcome_weight != HUD_OUTCOME_FONT_WEIGHT
+            or lore_family != HUD_LORE_FONT_FAMILY
+            or lore_size != HUD_LORE_FONT_SIZE
+        )
+        self._tier_short_px = abs(int(outcome_size))
+        self._tier_long_px = 24
+        self._tier_lore_px = abs(int(lore_size))
         self.outcome_font_family = outcome_family
         self.outcome_font_size = outcome_size
         self.outcome_font_weight = outcome_weight
@@ -1385,6 +1403,16 @@ class TableAnnouncementHUD(tkinter.Frame):
         if self.winfo_manager() == "place":
             self.place_forget()
 
+    def destroy(self):
+        """Cancels any pending auto-dismiss timer before widget destruction."""
+        if self._dismiss_timer_id:
+            try:
+                self.after_cancel(self._dismiss_timer_id)
+            except Exception:
+                pass
+            self._dismiss_timer_id = None
+        super().destroy()
+
     def set_message(self, full_text: str):
         """
         Parses incoming result string. If delimited by ' | ', cleanly separates
@@ -1425,6 +1453,27 @@ class TableAnnouncementHUD(tkinter.Frame):
         if norm_upper in ("BLACKJACK!", "BLACKJACK! 3:2", "BLACKJACK! 6:5"):
             outcome_text = self.format_blackjack_banner()
 
+        if not getattr(self, "_manual_typography_override", False):
+            char_len = len(outcome_text)
+            if char_len <= 28:
+                dyn_out_font = ("Tiny5 Duo", -abs(int(self._tier_short_px)), "bold")
+            elif char_len <= 46:
+                dyn_out_font = ("Tiny5", -abs(int(self._tier_short_px)), "bold")
+            else:
+                dyn_out_font = ("Tiny5", -abs(int(self._tier_long_px)), "bold")
+            dyn_lore_font = ("Tiny5", -abs(int(self._tier_lore_px)), "normal")
+            self.outcome_font_family, self.outcome_font_size, self.outcome_font_weight = (
+                dyn_out_font[0],
+                abs(dyn_out_font[1]),
+                dyn_out_font[2],
+            )
+            self.lore_font_family, self.lore_font_size = dyn_lore_font[0], abs(dyn_lore_font[1])
+            self.outcome_label.configure(font=dyn_out_font, wraplength=self.wraplength)
+            self.lore_label.configure(font=dyn_lore_font, wraplength=self.wraplength)
+        else:
+            dyn_out_font = (self.outcome_font_family, -abs(self.outcome_font_size), self.outcome_font_weight)
+            dyn_lore_font = (self.lore_font_family, -abs(self.lore_font_size), self.lore_font_slant)
+
         self.outcome_label.configure(text=outcome_text)
         self._update_outcome_color(outcome_text)
         if lore_text:
@@ -1438,19 +1487,26 @@ class TableAnnouncementHUD(tkinter.Frame):
         s = getattr(self, "scale", 1.0)
         try:
             import tkinter.font
-            f_out = tkinter.font.Font(font=(self.outcome_font_family, -abs(self.outcome_font_size), self.outcome_font_weight))
-            tw = f_out.measure(outcome_text)
-            th = f_out.metrics("linespace")
+            f_out = tkinter.font.Font(font=dyn_out_font)
+            raw_out_w = f_out.measure(outcome_text)
+            line_h = f_out.metrics("linespace")
+            if raw_out_w > self.wraplength and self.wraplength > 100:
+                n_lines = max(2, int(math.ceil(raw_out_w / float(self.wraplength - 24))))
+                tw = min(self.wraplength, raw_out_w)
+                th = line_h * n_lines
+            else:
+                tw = raw_out_w
+                th = line_h
             if lore_text:
-                f_lore = tkinter.font.Font(font=(self.lore_font_family, -abs(self.lore_font_size), self.lore_font_slant))
-                tw = max(tw, f_lore.measure(lore_text))
-                th += f_lore.metrics("linespace") + int(6 * s)
+                f_lore = tkinter.font.Font(font=dyn_lore_font)
+                tw = max(tw, min(self.wraplength, f_lore.measure(lore_text)))
+                th += f_lore.metrics("linespace") + int(8 * s)
         except Exception:
-            tw = max(len(outcome_text), len(lore_text)) * 10
-            th = 24
+            tw = max(len(outcome_text), len(lore_text)) * 12
+            th = 32
 
-        w = max(int(260 * s), tw + int(48 * s))
-        h = max(int(44 * s), th + (int(20 * s) if lore_text else int(16 * s)))
+        w = max(int(300 * s), tw + int(56 * s))
+        h = max(int(54 * s), th + (int(26 * s) if lore_text else int(22 * s)))
         self.badge_canvas.configure(width=w, height=h)
         self.panel.resize(w // 2, h // 2, w, h, scale=max(2, int(2 * s)))
 
@@ -1476,11 +1532,13 @@ class TableAnnouncementHUD(tkinter.Frame):
 
         if not self.winfo_manager() or self.winfo_manager() == "place":
             if getattr(self.master, "table_seats", 1) == 3:
-                target_rely = 0.25
+                target_rely = 0.24
             elif getattr(self, "insurance_overlay_active", False):
-                target_rely = 0.28
+                target_rely = 0.27
+            elif lore_text:
+                target_rely = 0.29
             else:
-                target_rely = 0.35
+                target_rely = 0.33
             self.place(relx=0.5, rely=target_rely, anchor="center")
             self.lift()
 
@@ -1550,8 +1608,11 @@ class TableAnnouncementHUD(tkinter.Frame):
         lore_size: int | None = None,
         lore_slant: str | None = None,
         wraplength: int | None = None,
+        _internal_scale: bool = False,
     ):
         """Allows hot-swapping font parameters and wraplength dynamically."""
+        if not _internal_scale:
+            self._manual_typography_override = True
         if outcome_family is not None:
             self.outcome_font_family = outcome_family
         if outcome_size is not None:
@@ -1577,23 +1638,65 @@ class TableAnnouncementHUD(tkinter.Frame):
         )
 
     def set_display_profile(self, profile: Any) -> None:
-        """Applies integer `art_scale` from an active `DisplayProfile`."""
+        """Applies exact 8px-grid outcome/prompt/lore tiers from an active `DisplayProfile`."""
         self.display_profile = profile
-        self.set_scale(float(getattr(profile, "art_scale", 1)))
+        self._manual_typography_override = False
+        art_s = int(getattr(profile, "art_scale", 1))
+        tbl_fs = float(getattr(profile, "table_font_scale", float(art_s)))
+        if art_s >= 2:
+            self.scale = 2.0
+            self._tier_short_px = 64
+            self._tier_long_px = 48
+            self._tier_lore_px = 48
+            wrap = 1360
+        elif tbl_fs >= 1.35:
+            self.scale = 1.25
+            self._tier_short_px = 40
+            self._tier_long_px = 32
+            self._tier_lore_px = 32
+            wrap = 980
+        else:
+            self.scale = 1.0
+            self._tier_short_px = 32
+            self._tier_long_px = 24
+            self._tier_lore_px = 24
+            wrap = 680
+        self.set_typography(
+            outcome_family="Tiny5 Duo",
+            outcome_size=self._tier_short_px,
+            outcome_weight="bold",
+            lore_family="Tiny5",
+            lore_size=self._tier_lore_px,
+            lore_slant="normal",
+            wraplength=wrap,
+            _internal_scale=True,
+        )
+        if self.current_raw_message:
+            self.set_message(self.current_raw_message)
 
     def set_scale(self, scale: float):
         """Scales outcome/lore typography and wraplength proportionally."""
         self.scale = scale
+        self._manual_typography_override = False
+        if scale >= 1.75:
+            self._tier_short_px, self._tier_long_px, self._tier_lore_px, wrap = 64, 48, 48, 1360
+        elif scale >= 1.2:
+            self._tier_short_px, self._tier_long_px, self._tier_lore_px, wrap = 40, 32, 32, 980
+        else:
+            self._tier_short_px, self._tier_long_px, self._tier_lore_px, wrap = 32, 24, 24, 680
         self.set_typography(
-            outcome_size=int(HUD_OUTCOME_FONT_SIZE * scale),
-            lore_size=int(HUD_LORE_FONT_SIZE * scale),
-            wraplength=int(600 * scale),
+            outcome_size=self._tier_short_px,
+            lore_size=self._tier_lore_px,
+            wraplength=wrap,
+            _internal_scale=True,
         )
         if hasattr(self, "badge"):
             try:
                 self.badge.configure(padx=int(22 * scale), pady=int(8 * scale))
             except Exception:
                 pass
+        if self.current_raw_message:
+            self.set_message(self.current_raw_message)
 
     def set_theme_color(self, bg_color: str, border_color: str | None = None):
         """Cascades table felt background color to announcement HUD and badge."""
@@ -2764,16 +2867,25 @@ class TableFeltCanvas(tkinter.Canvas):
         """Updates TableFeltCanvas scale, pit_max_width, and profile reference atomically."""
         self._display_profile = profile
         new_scale = float(getattr(profile, "art_scale", 1))
+        new_font_scale = float(getattr(profile, "table_font_scale", new_scale))
         new_pit_max = int(getattr(profile, "pit_max_width", 1920))
-        changed = (self.scale_factor != new_scale) or (self.pit_max_width != new_pit_max)
+        old_font_scale = float(getattr(self, "_table_font_scale", self.scale_factor))
+        changed = (
+            (self.scale_factor != new_scale)
+            or (self.pit_max_width != new_pit_max)
+            or (abs(old_font_scale - new_font_scale) > 0.05)
+        )
         self.scale_factor = new_scale
+        self._table_font_scale = new_font_scale
         self.pit_max_width = new_pit_max
         if changed:
+            self._felt_cache.clear()
             self._redraw_felt()
             if getattr(self, "_shoe_visible", False):
                 self.draw_shoe_tray(self._shoe_remaining, self._shoe_total, getattr(self, "_shoe_cut_notice", False))
             if self.table_seats > 1:
                 self.draw_betting_spots()
+                self.draw_chip_tray()
 
     def set_scale(self, scale_factor: float):
         if self.scale_factor != scale_factor:
@@ -2900,15 +3012,24 @@ class TableFeltCanvas(tkinter.Canvas):
         pit_w = max(240, pit_right - pit_left)
 
         gold = cfg["gold"]
-        rx = min(int(pit_w * 0.30), int(370 * art_scale))
-        ry = min(max(int(36 * art_scale), int(h * 0.16)), int(96 * art_scale))
+        tbl_fs = float(
+            getattr(
+                getattr(self, "_display_profile", None),
+                "table_font_scale",
+                getattr(self, "_table_font_scale", float(art_scale)),
+            )
+        )
+        is_fhd = (art_scale == 1 and tbl_fs >= 1.35)
+        rx = min(int(pit_w * 0.30), int((430 if is_fhd else 370) * art_scale))
+        ry = min(max(int(36 * art_scale), int(h * 0.16)), int((112 if is_fhd else 96) * art_scale))
 
         compact_v = h < int(450 * art_scale)
-        large_px = 16 * art_scale
-        small_px = 16 * art_scale
-        step_1 = int((15 if compact_v else 18) * art_scale)
-        step_2 = int((29 if compact_v else 34) * art_scale)
-        text_top_y = mid_y - int((18 if compact_v else 22) * art_scale)
+        large_px = 32 if is_fhd else (24 * art_scale)
+        small_px = 24 if is_fhd else (16 * art_scale)
+        ins_px = 24 if is_fhd else (16 * art_scale)
+        step_1 = 28 if is_fhd else int((18 if compact_v else 21) * art_scale)
+        step_2 = 54 if is_fhd else int((35 if compact_v else 40) * art_scale)
+        text_top_y = mid_y - (26 if is_fhd else int((19 if compact_v else 23) * art_scale))
 
         if rx > 30 and ry > 16:
             box_w = rx * 2 + int(16 * art_scale)
@@ -2930,7 +3051,7 @@ class TableFeltCanvas(tkinter.Canvas):
                 arc_down = arc_layer.resize((box_w, box_h), resampling_ns.BILINEAR)
                 self._SHARED_ARC_CACHE[arc_key] = arc_down
             paste_x = cx - box_w // 2
-            target_apex_y = text_top_y + step_2 + int(16 * art_scale)
+            target_apex_y = text_top_y + step_2 + int((22 if is_fhd else 18) * art_scale)
             paste_y = max(0, target_apex_y - (ry + int(8 * art_scale)))
             felt_img.paste(arc_down, (paste_x, paste_y), arc_down)
 
@@ -2941,10 +3062,11 @@ class TableFeltCanvas(tkinter.Canvas):
             pass
 
         try:
-            font_large = self._get_cached_pil_font("BoldPixels.ttf", large_px)
-            font_small = self._get_cached_pil_font("m5x7.ttf", small_px)
+            font_large = self._get_cached_pil_font("Tiny5SC-Bold.ttf", large_px)
+            font_small = self._get_cached_pil_font("Tiny5-Regular.ttf", small_px)
+            font_ins = self._get_cached_pil_font("Tiny5SC-Bold.ttf", ins_px)
         except Exception:
-            font_large = font_small = None
+            font_large = font_small = font_ins = None
 
         if font_large and font_small:
             num, den = self.payout_ratio
@@ -2956,7 +3078,7 @@ class TableFeltCanvas(tkinter.Canvas):
             )
             draw.text((cx, text_top_y), bj_text, fill=gold, font=font_large, anchor="mm")
             draw.text((cx, text_top_y + step_1), soft17_text, fill=cfg["rules_fg"], font=font_small, anchor="mm")
-            draw.text((cx, text_top_y + step_2), "INSURANCE PAYS 2 TO 1", fill=gold, font=font_small, anchor="mm")
+            draw.text((cx, text_top_y + step_2), "INSURANCE PAYS 2 TO 1", fill=gold, font=font_ins or font_small, anchor="mm")
 
         return felt_img
 
@@ -3093,11 +3215,13 @@ class TableFeltCanvas(tkinter.Canvas):
         if self.canvas_width < 350:
             return
         s = self.scale_factor
+        tbl_fs = float(getattr(self, "_table_font_scale", s))
+        shoe_w_mult = 1.35 if (s < 1.5 and tbl_fs >= 1.35) else 1.0
         w = self.canvas_width
         _, _, pit_right = resolve_pit_bounds(w, getattr(self, "pit_max_width", w))
 
         shoe_cfg = get_ui_layout("table_felt", "shoe_tray")
-        sw = int(shoe_cfg.get("width", 94) * s)
+        sw = int(shoe_cfg.get("width", 126) * s * shoe_w_mult)
         sh = int(shoe_cfg.get("height", 28) * s)  # Compact, sleek profile sitting right at the horizon rail
         sx = pit_right - sw - int(shoe_cfg.get("offset_right", 14) * s)
         sy = int(shoe_cfg.get("offset_top", 3) * s)   # Flush with the top horizon rail
@@ -3145,7 +3269,7 @@ class TableFeltCanvas(tkinter.Canvas):
             inner_border_col = ""
         text_col = plaque_cfg.get("cut_text_color" if cut_notice else "text_color", "#ffd700")
         font_elem = plaque_cfg.get("font_element", "shoe_counter")
-        f_shoe = get_element_font(font_elem, scale=s)
+        f_shoe = get_element_font(font_elem, scale=tbl_fs)
 
         # Outer beveled plaque border (only drawn if a fill or outline is configured)
         if bg_col or border_col:
@@ -3201,10 +3325,12 @@ class TableFeltCanvas(tkinter.Canvas):
     def get_shoe_mouth_coords(self) -> tuple[int, int]:
         """Calculates the (x, y) exit mouth coordinates of the acrylic card shoe inside pit_right."""
         s = self.scale_factor
+        tbl_fs = float(getattr(self, "_table_font_scale", s))
+        shoe_w_mult = 1.35 if (s < 1.5 and tbl_fs >= 1.35) else 1.0
         w = max(20, self.canvas_width)
         _, _, pit_right = resolve_pit_bounds(w, getattr(self, "pit_max_width", w))
         shoe_cfg = get_ui_layout("table_felt", "shoe_tray")
-        sw = int(shoe_cfg.get("width", 94) * s)
+        sw = int(shoe_cfg.get("width", 126) * s * shoe_w_mult)
         sx = pit_right - sw - int(shoe_cfg.get("offset_right", 14) * s)
         sy = int(shoe_cfg.get("offset_top", 3) * s)
         # Exit mouth is on the left side of the shoe tray
@@ -3426,6 +3552,8 @@ class TableFeltCanvas(tkinter.Canvas):
 
         from ui_chip_renderer import draw_felt_chip_stack
         s = getattr(self, "scale_factor", 1.0)
+        tbl_fs = float(getattr(self, "_table_font_scale", s))
+        spot_mult = 1.25 if (s < 1.5 and tbl_fs >= 1.35) else 1.0
         visible_seats = [1, 2, 3]
 
         for s_idx in visible_seats:
@@ -3437,8 +3565,8 @@ class TableFeltCanvas(tkinter.Canvas):
 
             # 1. Left Flanking Spot: Perfect Pairs (cx - sb_offset_x)
             pp_x = cx - sb_offset_x
-            pp_rx, pp_ry = int(30 * s), int(14 * s)
-            pp_in_rx, pp_in_ry = int(26 * s), int(11 * s)
+            pp_rx, pp_ry = int(32 * s * spot_mult), int(15 * s * spot_mult)
+            pp_in_rx, pp_in_ry = int(28 * s * spot_mult), int(12 * s * spot_mult)
             self.create_oval(
                 pp_x - pp_rx, side_y - pp_ry, pp_x + pp_rx, side_y + pp_ry,
                 outline="#d4af37", width=max(1, int(1.5 * s)), dash=(3, 3), fill="",
@@ -3455,13 +3583,13 @@ class TableFeltCanvas(tkinter.Canvas):
             else:
                 self.create_text(
                     pp_x, side_y, text="PAIRS", fill="#d4b44a",
-                    font=get_element_font("betting_spot_watermark", scale=s),
+                    font=get_element_font("betting_spot_watermark", scale=tbl_fs),
                     tags=("betting_spot", f"spot_pp_txt_{s_idx}")
                 )
 
             # 2. Center Main Betting Spot (cx, cy)
-            rx, ry = int(48 * s), int(18 * s)
-            rx_in, ry_in = int(42 * s), int(14 * s)
+            rx, ry = int(50 * s * spot_mult), int(19 * s * spot_mult)
+            rx_in, ry_in = int(44 * s * spot_mult), int(15 * s * spot_mult)
             self.create_oval(
                 cx - rx, cy - ry, cx + rx, cy + ry,
                 outline="#d4af37", width=max(1, int(2 * s)), dash=(4, 3), fill="",
@@ -3478,14 +3606,14 @@ class TableFeltCanvas(tkinter.Canvas):
             else:
                 self.create_text(
                     cx, cy, text=f"SEAT {s_idx}", fill="#d4b44a",
-                    font=get_element_font("betting_spot_watermark", scale=s),
+                    font=get_element_font("betting_spot_watermark", scale=tbl_fs),
                     tags=("betting_spot", f"spot_txt_{s_idx}")
                 )
 
             # 3. Right Flanking Spot: 21+3 (cx + sb_offset_x)
             t13_x = cx + sb_offset_x
-            t13_rx, t13_ry = int(30 * s), int(14 * s)
-            t13_in_rx, t13_in_ry = int(26 * s), int(11 * s)
+            t13_rx, t13_ry = int(32 * s * spot_mult), int(15 * s * spot_mult)
+            t13_in_rx, t13_in_ry = int(28 * s * spot_mult), int(12 * s * spot_mult)
             self.create_oval(
                 t13_x - t13_rx, side_y - t13_ry, t13_x + t13_rx, side_y + t13_ry,
                 outline="#d4af37", width=max(1, int(1.5 * s)), dash=(3, 3), fill="",
@@ -3502,7 +3630,7 @@ class TableFeltCanvas(tkinter.Canvas):
             else:
                 self.create_text(
                     t13_x, side_y, text="21+3", fill="#d4b44a",
-                    font=get_element_font("betting_spot_watermark", scale=s),
+                    font=get_element_font("betting_spot_watermark", scale=tbl_fs),
                     tags=("betting_spot", f"spot_t13_txt_{s_idx}")
                 )
 
@@ -3644,6 +3772,8 @@ class TableFeltCanvas(tkinter.Canvas):
         avail = self.available_bankroll
 
         s = getattr(self, "scale_factor", 1.0)
+        tbl_fs = float(getattr(self, "_table_font_scale", s))
+        tray_mult = 1.2 if (s < 1.5 and tbl_fs >= 1.35) else 1.0
         from config import CHIP_STYLES
         from rules import breakdown_bankroll_piles
         from ui_chip_renderer import draw_single_25d_chip
@@ -3651,11 +3781,11 @@ class TableFeltCanvas(tkinter.Canvas):
         w = max(100, self.winfo_width() if self.winfo_width() > 1 else self.canvas_width)
         h = max(100, self.winfo_height() if self.winfo_height() > 1 else self.canvas_height)
         cx = w // 2
-        base_y = max(int(260 * s), h - int(46 * s))
+        base_y = max(int(260 * s), h - int((48 if tray_mult > 1.0 else 44) * s))
 
         denoms = (5, 25, 100, 500, 1000)
         piles = breakdown_bankroll_piles(avail)
-        spacing = int(48 * s)
+        spacing = int(52 * s * tray_mult)
         total_span = spacing * (len(denoms) - 1)
         start_x = cx - (total_span // 2)
 
@@ -3681,7 +3811,7 @@ class TableFeltCanvas(tkinter.Canvas):
 
             # Denomination label below
             short_lbl = "$1K" if denom == 1000 else f"${denom}"
-            lbl_y = base_y + int(19 * s)
+            lbl_y = base_y + int(18 * s)
             self.create_text(
                 col_x, lbl_y, text=short_lbl, fill="#ffd700",
                 font=get_element_font("chip_denomination_label", scale=s),
@@ -3689,7 +3819,7 @@ class TableFeltCanvas(tkinter.Canvas):
             )
 
         # Bankroll and instruction badge below denomination labels
-        badge_y = base_y + int(34 * s)
+        badge_y = base_y + int((35 if tray_mult > 1.0 else 33) * s)
         self.create_text(
             cx, badge_y,
             text=f"CHIPS: ${avail:,}  (L-Click: Bet on active seat | R-Click: Deduct)",
@@ -3710,12 +3840,14 @@ class TableFeltCanvas(tkinter.Canvas):
 
     def _get_chip_tray_col_coords(self) -> tuple[int, int, int, tuple[int, ...]]:
         s = getattr(self, "scale_factor", 1.0)
+        tbl_fs = float(getattr(self, "_table_font_scale", s))
+        tray_mult = 1.2 if (s < 1.5 and tbl_fs >= 1.35) else 1.0
         w = max(100, self.winfo_width() if self.winfo_width() > 1 else self.canvas_width)
         h = max(100, self.winfo_height() if self.winfo_height() > 1 else self.canvas_height)
         cx = w // 2
-        base_y = max(int(260 * s), h - int(46 * s))
+        base_y = max(int(260 * s), h - int((48 if tray_mult > 1.0 else 44) * s))
         denoms = (5, 25, 100, 500, 1000)
-        spacing = int(48 * s)
+        spacing = int(52 * s * tray_mult)
         total_span = spacing * (len(denoms) - 1)
         start_x = cx - (total_span // 2)
         return start_x, base_y, spacing, denoms

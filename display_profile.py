@@ -50,6 +50,25 @@ class DisplayProfile:
     divider_h: int
     pit_max_width: int
     is_fullscreen: bool = False
+    table_text_step: int = 0
+
+    @property
+    def table_font_scale(self) -> float:
+        """Scale multiplier for live-table typography (1.0 on 720p/800p, 1.5 on 1080p, 2.0 on 1440p/4K)."""
+        if self.art_scale >= 2:
+            return 2.0
+        if self.table_text_step > 0 or self.name == "fhd_1080p" or self.window_w >= 1600:
+            return 1.5
+        return 1.0
+
+    def table_px(self, base_8px: int) -> int:
+        """Resolves a base 8px-grid font size (16/24/32) onto the active profile's exact Tiny5 integer grid."""
+        b = abs(int(base_8px))
+        if self.art_scale >= 2:
+            return b * 2
+        if self.table_text_step > 0 or self.name == "fhd_1080p" or self.window_w >= 1600:
+            return b + (self.table_text_step if self.table_text_step > 0 else 8)
+        return b
 
     @property
     def window_wh(self) -> tuple[int, int]:
@@ -332,10 +351,11 @@ def make_profile_preset(
             font_scale=1,
             stage_w=1000,
             stage_h=220,
-            rail_h=72,
+            rail_h=80,
             divider_h=4,
             pit_max_width=1920,
             is_fullscreen=fs_flag,
+            table_text_step=8,
         )
     if name == "qhd_1440p":
         return DisplayProfile(

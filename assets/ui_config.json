@@ -54,7 +54,7 @@
       "font_scale": 1,
       "stage_w": 1000,
       "stage_h": 220,
-      "rail_h": 72,
+      "rail_h": 80,
       "divider_h": 4,
       "pit_max_width": 1920,
       "multi_seat_dx": 345
@@ -144,31 +144,46 @@
         "bankroll_label": {
           "row": 1,
           "column": 0,
-          "pady": [2, 2],
+          "pady": [
+            2,
+            2
+          ],
           "sticky": "ew"
         },
         "staged_bet_label": {
           "row": 2,
           "column": 0,
-          "pady": [1, 2],
+          "pady": [
+            1,
+            2
+          ],
           "sticky": "ew"
         },
         "stats_frame": {
           "row": 3,
           "column": 0,
-          "pady": [2, 2],
+          "pady": [
+            2,
+            2
+          ],
           "sticky": "ew"
         },
         "house_rules_pill": {
           "row": 4,
           "column": 0,
-          "pady": [2, 1],
+          "pady": [
+            2,
+            1
+          ],
           "sticky": "ew"
         },
         "tour_goal_label": {
           "row": 5,
           "column": 0,
-          "pady": [1, 0],
+          "pady": [
+            1,
+            0
+          ],
           "sticky": "ew"
         }
       }
@@ -234,7 +249,10 @@
       "font_element": "insurance_prompt_label",
       "background": "#0c2917",
       "foreground": "#ffd700",
-      "padx": [0, 16]
+      "padx": [
+        0,
+        16
+      ]
     },
     "take_button": {
       "font_element": "insurance_prompt_button",
@@ -365,13 +383,13 @@
     "bankroll_piles": {
       "origin": {
         "x_ratio": 0.5,
-        "y_ratio": 0.65
+        "y_ratio": 0.64
       },
       "margin_x": 24,
       "chip_vertical_step": 3,
       "denomination_label": {
         "offset_x": 0,
-        "offset_y": 18
+        "offset_y": 20
       },
       "hitbox": {
         "pad_x": 4,
@@ -502,7 +520,10 @@
     },
     "pumpkin": {
       "side": "left",
-      "padx": [0, 6],
+      "padx": [
+        0,
+        6
+      ],
       "pady": 2
     },
     "avatar": {
@@ -522,7 +543,10 @@
     },
     "speech_label": {
       "anchor": "w",
-      "pady": [2, 0],
+      "pady": [
+        2,
+        0
+      ],
       "padx": 6,
       "wraplength": 270
     },
@@ -588,15 +612,27 @@
       "column": 0,
       "rowspan": 3,
       "sticky": "nw",
-      "padx": [8, 4],
-      "pady": [8, 6]
+      "padx": [
+        8,
+        4
+      ],
+      "pady": [
+        8,
+        6
+      ]
     },
     "dealer_header": {
       "row": 0,
       "column": 1,
       "sticky": "nw",
-      "padx": [8, 6],
-      "pady": [6, 0]
+      "padx": [
+        8,
+        6
+      ],
+      "pady": [
+        6,
+        0
+      ]
     },
     "dealer_cards": {
       "row": 0,
@@ -608,21 +644,36 @@
       "row": 1,
       "column": 1,
       "sticky": "nw",
-      "padx": [8, 6],
-      "pady": [6, 0]
+      "padx": [
+        8,
+        6
+      ],
+      "pady": [
+        6,
+        0
+      ]
     },
     "player_cards": {
       "row": 1,
       "column": 1,
       "padx": 10,
-      "pady": [6, 1]
+      "pady": [
+        6,
+        1
+      ]
     },
     "accessories": {
       "row": 0,
       "column": 2,
       "sticky": "ne",
-      "padx": [4, 8],
-      "pady": [56, 2]
+      "padx": [
+        4,
+        8
+      ],
+      "pady": [
+        56,
+        2
+      ]
     },
     "haunted_altar": {
       "side": "top",
@@ -637,10 +688,13 @@
       "row": 3,
       "column": 0,
       "sticky": "ew",
-      "pady": [0, 0]
+      "pady": [
+        0,
+        0
+      ]
     },
     "dock": {
-      "btn_height": 38,
+      "btn_height": 44,
       "scale_2x_height_multiplier": 2.0,
       "dock_gap": 12,
       "side_margin": 24,
@@ -649,13 +703,13 @@
           "width": 140
         },
         "all_in": {
-          "width": 104
+          "width": 108
         },
         "deal_hand": {
           "width": 156
         },
         "rebuy": {
-          "width": 132
+          "width": 140
         }
       },
       "play_buttons": {
@@ -663,31 +717,34 @@
           "width": 104
         },
         "stand": {
-          "width": 104
+          "width": 108
         },
         "double": {
-          "width": 104
+          "width": 112
         },
         "split": {
           "width": 104
         },
         "surrender": {
-          "width": 124
+          "width": 136
         }
       },
       "anchor_buttons": {
         "new_game": {
-          "width": 124
+          "width": 136
         },
         "miracle": {
-          "width": 144
+          "width": 148
         }
       },
       "cursed_stakes": {
         "grid_placement": {
           "row": 0,
           "column": 8,
-          "padx": [6, 8],
+          "padx": [
+            6,
+            8
+          ],
           "pady": 3,
           "sticky": "e"
         }
@@ -716,19 +773,22 @@
     "zone": "left_felt_wing",
     "orientation": "vertical",
     "max_width_1x": 206,
-    "header_pady": [2, 4],
+    "header_pady": [
+      2,
+      4
+    ],
     "relic_item_padx": 4,
     "relic_item_pady": 2,
     "icon_padx": 4
   },
   "table_felt": {
     "shoe_tray": {
-      "width": 94,
+      "width": 126,
       "height": 28,
       "offset_right": 14,
       "offset_top": 3,
       "plaque": {
-        "height": 20,
+        "height": 22,
         "offset_y": 3,
         "background": "transparent",
         "border": "transparent",

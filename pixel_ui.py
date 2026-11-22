@@ -48,9 +48,15 @@ PALETTE = {
 # Centralized Font Registry & JSON Configuration
 # ============================================================================
 
+BOLD_CAPABLE_FAMILIES: frozenset[str] = frozenset({"Tiny5", "Tiny5 Duo", "Tiny5 SC"})
+TINY5_8PX_FAMILIES: frozenset[str] = frozenset({"Tiny5", "Tiny5 Duo", "Tiny5 SC"})
+
 DEFAULT_FONT_CONFIG = {
-    "version": "1.0",
+    "version": "1.1",
     "fonts": {
+        "Tiny5": {"file": "Tiny5-Regular.ttf", "extra_files": ["Tiny5-Bold.ttf", "Tiny5-Italic.ttf"], "family": "Tiny5", "supports_bold": True},
+        "Tiny5 Duo": {"file": "Tiny5Duo-Regular.ttf", "extra_files": ["Tiny5Duo-Bold.ttf"], "family": "Tiny5 Duo", "supports_bold": True},
+        "Tiny5 SC": {"file": "Tiny5SC-Regular.ttf", "extra_files": ["Tiny5SC-Bold.ttf"], "family": "Tiny5 SC", "supports_bold": True},
         "BoldPixels": {"file": "BoldPixels.ttf", "family": "BoldPixels"},
         "m5x7": {"file": "m5x7.ttf", "family": "m5x7"},
         "m6x11": {"file": "m6x11.ttf", "family": "m6x11"},
@@ -62,69 +68,69 @@ DEFAULT_FONT_CONFIG = {
         "3x5_Block_Adjusted": {"file": "3x5_Block_Adjusted-Regular.ttf", "family": "3x5_Block_Adjusted"},
     },
     "roles": {
-        "title": {"family": "BoldPixels", "base_size": 32, "weight": "normal", "fallback": "m5x7"},
-        "header": {"family": "m6x11plus", "base_size": 18, "weight": "normal", "fallback": "m5x7"},
-        "display": {"family": "Round9x13", "base_size": 32, "weight": "normal", "fallback": "m5x7"},
-        "body": {"family": "m5x7", "base_size": 16, "weight": "normal", "fallback": "Courier"},
-        "button": {"family": "m6x11plus", "base_size": 18, "weight": "normal", "fallback": "m5x7"},
-        "digital": {"family": "Volt5x5", "base_size": 16, "weight": "normal", "fallback": "m5x7"},
-        "badge": {"family": "m6x11", "base_size": 16, "weight": "normal", "fallback": "m5x7"},
-        "micro": {"family": "3x5_Block_Adjusted", "base_size": 12, "weight": "normal", "fallback": "m5x7"},
+        "title": {"family": "BoldPixels", "base_size": 32, "weight": "normal", "fallback": "Tiny5 Duo"},
+        "header": {"family": "Tiny5", "base_size": 24, "weight": "bold", "fallback": "m6x11plus"},
+        "display": {"family": "Round9x13", "base_size": 32, "weight": "normal", "fallback": "Tiny5 Duo"},
+        "body": {"family": "Tiny5", "base_size": 16, "weight": "normal", "fallback": "m5x7"},
+        "button": {"family": "Tiny5", "base_size": 24, "weight": "bold", "fallback": "m6x11plus"},
+        "digital": {"family": "Volt5x5", "base_size": 16, "weight": "normal", "fallback": "Tiny5"},
+        "badge": {"family": "Tiny5", "base_size": 16, "weight": "bold", "fallback": "m6x11"},
+        "micro": {"family": "3x5_Block_Adjusted", "base_size": 12, "weight": "normal", "fallback": "Tiny5"},
     },
     "elements": {
-        "top_bar_button": {"role": "button", "family": "m5x7", "base_size": 16, "description": "System buttons on top bar (Rules, Settings, Shortcuts, Wardrobe, Mute, Scale)"},
-        "top_bar_status": {"role": "button", "family": "m5x7", "base_size": 16, "description": "Scale and status readouts on top bar (e.g. 🔍 1x / 2x)"},
-        "scoreboard_title": {"role": "header", "family": "m6x11plus", "base_size": 18, "description": "Headers for Dealer, Player, Ties in top bar scoreboard"},
-        "scoreboard_value": {"role": "display", "family": "Round9x13", "base_size": 32, "description": "Win, Loss, and Tie numeric counters in top bar"},
-        "bankroll_label": {"role": "display", "family": "m5x7", "base_size": 32, "description": "Player bankroll display on top bar"},
-        "shoe_counter": {"role": "header", "family": "m5x7", "base_size": 16, "description": "Deck shoe card counter display on table felt"},
-        "hand_title": {"role": "header", "family": "m6x11", "base_size": 16, "description": "Banners for dealer, player, and split hand areas"},
-        "hand_score": {"role": "display", "family": "Round9x13", "base_size": 32, "description": "Hand score plaques (19, 21, BUST, etc.)"},
-        "action_button": {"role": "button", "family": "m5x7", "base_size": 32, "description": "Primary action rail buttons (Hit, Stand, Double, Split, Surrender, New Game)"},
-        "cursed_stakes_button": {"role": "button", "family": "m5x7", "base_size": 32, "description": "Cursed stakes / High roller toggle button"},
-        "strategy_hint": {"role": "body", "description": "Real-time basic strategy advice banner text"},
-        "betting_button": {"role": "button", "family": "m5x7", "base_size": 32, "description": "Bet staging action buttons (Deal, Clear, Rebet, All-In, Rebuy)"},
-        "betting_chip_button": {"role": "button", "description": "Quick chip increment buttons in casual mode"},
-        "betting_spot_watermark": {"role": "badge", "family": "m6x11", "base_size": 16, "description": "Felt watermark text inside betting circle"},
-        "chip_bet_badge": {"role": "header", "family": "m6x11plus", "base_size": 18, "description": "Current staged bet readout above betting spot"},
-        "chip_bankroll_badge": {"role": "badge", "family": "m6x11", "base_size": 16, "description": "Reserve tray bankroll header (CHIPS: $... L-Click + | R-Click -)"},
-        "chip_denomination_label": {"role": "badge", "family": "m6x11", "base_size": 16, "description": "Denomination label under each reserve pile ($5, $25, $100, $500, $1K)"},
-        "chip_face_value": {"role": "micro", "family": "3x5_Block_Adjusted", "base_size": 12, "description": "Denomination and multiplier text stamped on individual chip sprites"},
-        "chip_floating_payout": {"role": "digital", "description": "Animated floating payout text (+$150)"},
-        "chip_push_banner": {"role": "header", "description": "Push announcement banner on betting spot"},
-        "insurance_prompt_label": {"role": "header", "family": "m6x11plus", "base_size": 18, "description": "Insurance inquiry text prompt"},
-        "insurance_prompt_button": {"role": "button", "family": "m6x11plus", "base_size": 18, "description": "Take / Decline Insurance action buttons"},
-        "dealer_nameplate": {"role": "header", "family": "m6x11plus", "base_size": 18, "description": "Dealer character nameplate on narrative dialogue stage"},
-        "dealer_speech": {"role": "header", "family": "m6x11plus", "base_size": 18, "description": "Dialogue box typewriter speech and narrative subtitles"},
-        "table_announcement": {"role": "title", "description": "Centered floating banner announcements (BLACKJACK!, DEALER BUSTS, PUSH)"},
-        "hilo_trainer_title": {"family": "m6x11plus", "base_size": 18, "weight": "normal", "description": "Hi-Lo Card Counting Trainer header tab"},
-        "hilo_trainer_label": {"family": "m6x11", "base_size": 16, "weight": "normal", "description": "Trainer HUD metric title badges (RC, TC, DECKS, EDGE, BET)"},
-        "hilo_trainer_value": {"family": "m6x11plus", "base_size": 18, "weight": "normal", "description": "Trainer HUD numeric readouts"},
-        "hilo_trainer_button": {"family": "m6x11", "base_size": 16, "weight": "normal", "description": "Trainer HUD control buttons (Quiz, Assisted, Close)"},
-        "hilo_trainer_advice": {"family": "m6x11plus", "base_size": 18, "weight": "normal", "description": "Trainer drill hint and betting recommendation text"},
-        "hilo_floating_badge": {"role": "display", "description": "Transient floating count particle badges (+1, -1, 0) above cards"},
-        "soul_meter_title": {"role": "title", "description": "Soul Wager Altar HUD banner title"},
-        "soul_meter_markers": {"role": "digital", "description": "Soul Meter threshold percentage markers (50%, 75%)"},
-        "soul_meter_bounds": {"role": "badge", "description": "Soul Meter extremity labels (ABYSS 0%, LIGHT 100%)"},
-        "soul_meter_status": {"role": "header", "description": "Soul Meter dynamic status text"},
-        "soul_meter_hint": {"role": "body", "description": "Soul Meter bottom instruction text"},
-        "dialog_title": {"role": "title", "description": "Modal dialog top window titles"},
-        "dialog_tab": {"role": "header", "description": "Modal dialog tab navigation bar buttons"},
-        "dialog_header": {"role": "header", "description": "Modal dialog section headers and mode card titles"},
-        "dialog_body": {"role": "body", "description": "Modal dialog explanatory body text, rules, and bios"},
-        "dialog_badge": {"role": "badge", "description": "Modal dialog shortcut key badges ([Space], [Esc], etc.)"},
-        "dialog_button": {"role": "button", "description": "Modal dialog action and dismissal buttons"},
-        "dialog_action_label": {"family": "m6x11plus", "base_size": 18, "weight": "normal", "fallback": "m5x7", "description": "Shortcuts and controls action verb label"},
-        "dialog_hint_label": {"family": "m6x11plus", "base_size": 18, "weight": "normal", "fallback": "m5x7", "description": "Shortcuts and controls secondary description and hint label"},
-        "dialog_tip_label": {"family": "m6x11plus", "base_size": 18, "weight": "normal", "fallback": "m5x7", "description": "Dialog bottom footer navigation tip banner"},
-        "story_dialog_speaker": {"role": "title", "family": "BoldPixels", "base_size": 32, "description": "Speaker name in narrative story dialogue modal"},
-        "story_dialog_body": {"role": "header", "family": "m6x11plus", "base_size": 18, "description": "Story narrative text in story dialogue modal"},
-        "story_dialog_button": {"role": "button", "family": "m6x11plus", "base_size": 18, "description": "Dismiss / proceed button in story dialogue modal"},
-        "angelic_draft_subtitle": {"role": "header", "family": "m6x11plus", "base_size": 18, "description": "Angelic draft dialog subtitle instruction"},
-        "angelic_draft_title": {"role": "header", "family": "m6x11plus", "base_size": 18, "description": "Relic card title in angelic blessing draft dialog"},
-        "angelic_draft_tagline": {"role": "badge", "family": "m6x11", "base_size": 16, "description": "Relic card tagline in angelic blessing draft dialog"},
-        "angelic_draft_description": {"role": "header", "family": "m6x11plus", "base_size": 18, "description": "Relic card power description in angelic blessing draft dialog"},
-        "angelic_draft_button": {"role": "button", "family": "m6x11plus", "base_size": 18, "description": "Equip relic button in angelic blessing draft dialog"}
+        "top_bar_button": {"role": "badge", "family": "Tiny5", "base_size": 16, "weight": "bold", "description": "System buttons in RightStageWing"},
+        "top_bar_status": {"role": "badge", "family": "Tiny5", "base_size": 16, "weight": "normal", "description": "Status readouts in StageWings"},
+        "scoreboard_title": {"role": "badge", "family": "Tiny5 SC", "base_size": 16, "weight": "bold", "description": "Headers in LeftStageWing"},
+        "scoreboard_value": {"role": "display", "family": "Round9x13", "base_size": 32, "weight": "normal", "description": "Numeric counters"},
+        "bankroll_label": {"role": "header", "family": "Tiny5", "base_size": 24, "weight": "bold", "description": "Player bankroll display in LeftStageWing"},
+        "shoe_counter": {"role": "badge", "family": "Tiny5", "base_size": 16, "weight": "bold", "description": "Deck shoe card counter display on table felt"},
+        "hand_title": {"role": "badge", "family": "Tiny5 SC", "base_size": 16, "weight": "bold", "description": "Banners for dealer, player, and split hand areas"},
+        "hand_score": {"role": "display", "family": "Round9x13", "base_size": 32, "weight": "normal", "description": "Hand score plaques (19, 21, BUST, etc.)"},
+        "action_button": {"role": "button", "family": "Tiny5", "base_size": 24, "weight": "bold", "description": "Primary action rail buttons (Hit, Stand, Double, Split, Surrender, New Game)"},
+        "cursed_stakes_button": {"role": "button", "family": "Tiny5", "base_size": 24, "weight": "bold", "description": "Cursed stakes / High roller toggle button"},
+        "strategy_hint": {"role": "body", "family": "Tiny5", "base_size": 16, "weight": "normal", "description": "Real-time basic strategy advice banner text"},
+        "betting_button": {"role": "button", "family": "Tiny5", "base_size": 24, "weight": "bold", "description": "Bet staging action buttons (Deal, Clear, Rebet, All-In, Rebuy)"},
+        "betting_chip_button": {"role": "button", "family": "Tiny5", "base_size": 24, "weight": "bold", "description": "Quick chip increment buttons"},
+        "betting_spot_watermark": {"role": "badge", "family": "Tiny5 SC", "base_size": 16, "weight": "bold", "description": "Felt watermark text inside betting circle"},
+        "chip_bet_badge": {"role": "badge", "family": "Tiny5", "base_size": 16, "weight": "bold", "description": "Current staged bet readout above betting spot"},
+        "chip_bankroll_badge": {"role": "badge", "family": "Tiny5", "base_size": 16, "weight": "normal", "description": "Reserve tray bankroll header"},
+        "chip_denomination_label": {"role": "badge", "family": "Tiny5", "base_size": 16, "weight": "bold", "description": "Denomination label under each reserve pile"},
+        "chip_face_value": {"role": "micro", "family": "3x5_Block_Adjusted", "base_size": 12, "weight": "normal", "description": "Denomination and multiplier text stamped on individual chip sprites"},
+        "chip_floating_payout": {"role": "header", "family": "Tiny5 Duo", "base_size": 24, "weight": "bold", "description": "Animated floating payout text (+$150)"},
+        "chip_push_banner": {"role": "header", "family": "Tiny5", "base_size": 24, "weight": "bold", "description": "Push announcement banner on betting spot"},
+        "insurance_prompt_label": {"role": "header", "family": "Tiny5", "base_size": 24, "weight": "bold", "description": "Insurance inquiry text prompt"},
+        "insurance_prompt_button": {"role": "button", "family": "Tiny5", "base_size": 24, "weight": "bold", "description": "Take / Decline Insurance action buttons"},
+        "dealer_nameplate": {"role": "badge", "family": "Tiny5", "base_size": 16, "weight": "bold", "description": "Dealer character nameplate on narrative dialogue stage"},
+        "dealer_speech": {"role": "body", "family": "Tiny5", "base_size": 16, "weight": "normal", "description": "Dialogue box typewriter speech and narrative subtitles"},
+        "table_announcement": {"role": "header", "family": "Tiny5 Duo", "base_size": 32, "weight": "bold", "description": "Centered floating banner announcements"},
+        "hilo_trainer_title": {"family": "Tiny5 SC", "base_size": 16, "weight": "bold", "description": "Hi-Lo Card Counting Trainer header tab"},
+        "hilo_trainer_label": {"family": "Tiny5", "base_size": 16, "weight": "normal", "description": "Trainer HUD metric title badges"},
+        "hilo_trainer_value": {"family": "Tiny5", "base_size": 24, "weight": "bold", "description": "Trainer HUD numeric readouts"},
+        "hilo_trainer_button": {"family": "Tiny5", "base_size": 16, "weight": "bold", "description": "Trainer HUD control buttons"},
+        "hilo_trainer_advice": {"family": "Tiny5", "base_size": 16, "weight": "bold", "description": "Trainer drill hint and betting recommendation text"},
+        "hilo_floating_badge": {"role": "header", "family": "Tiny5 Duo", "base_size": 24, "weight": "bold", "description": "Transient floating count particle badges"},
+        "soul_meter_title": {"role": "header", "family": "Tiny5 SC", "base_size": 24, "weight": "bold", "description": "Soul Wager Altar HUD banner title"},
+        "soul_meter_markers": {"role": "badge", "family": "Tiny5", "base_size": 16, "weight": "normal", "description": "Soul Meter threshold percentage markers"},
+        "soul_meter_bounds": {"role": "badge", "family": "Tiny5", "base_size": 16, "weight": "bold", "description": "Soul Meter extremity labels"},
+        "soul_meter_status": {"role": "header", "family": "Tiny5", "base_size": 24, "weight": "bold", "description": "Soul Meter dynamic status text"},
+        "soul_meter_hint": {"role": "body", "family": "Tiny5", "base_size": 16, "weight": "normal", "description": "Soul Meter bottom instruction text"},
+        "dialog_title": {"role": "title", "family": "BoldPixels", "base_size": 32, "weight": "normal", "description": "Modal dialog top window titles"},
+        "dialog_tab": {"role": "header", "family": "Tiny5", "base_size": 24, "weight": "bold", "description": "Modal dialog tab navigation bar buttons"},
+        "dialog_header": {"role": "header", "family": "Tiny5", "base_size": 24, "weight": "bold", "description": "Modal dialog section headers and mode card titles"},
+        "dialog_body": {"role": "body", "family": "Tiny5", "base_size": 16, "weight": "normal", "description": "Modal dialog explanatory body text, rules, and bios"},
+        "dialog_badge": {"role": "badge", "family": "Tiny5", "base_size": 16, "weight": "bold", "description": "Modal dialog shortcut key badges"},
+        "dialog_button": {"role": "button", "family": "Tiny5", "base_size": 24, "weight": "bold", "description": "Modal dialog action and dismissal buttons"},
+        "dialog_action_label": {"family": "Tiny5", "base_size": 16, "weight": "bold", "fallback": "m6x11plus", "description": "Shortcuts and controls action verb label"},
+        "dialog_hint_label": {"family": "Tiny5", "base_size": 16, "weight": "normal", "fallback": "m6x11plus", "description": "Shortcuts and controls secondary description and hint label"},
+        "dialog_tip_label": {"family": "Tiny5", "base_size": 16, "weight": "normal", "fallback": "m6x11plus", "description": "Dialog bottom footer navigation tip banner"},
+        "story_dialog_speaker": {"role": "title", "family": "BoldPixels", "base_size": 32, "weight": "normal", "description": "Speaker name in narrative story dialogue modal"},
+        "story_dialog_body": {"role": "header", "family": "Tiny5", "base_size": 24, "weight": "normal", "description": "Story narrative text in story dialogue modal"},
+        "story_dialog_button": {"role": "button", "family": "Tiny5", "base_size": 24, "weight": "bold", "description": "Dismiss / proceed button in story dialogue modal"},
+        "angelic_draft_subtitle": {"role": "header", "family": "Tiny5", "base_size": 24, "weight": "normal", "description": "Angelic draft dialog subtitle instruction"},
+        "angelic_draft_title": {"role": "header", "family": "Tiny5", "base_size": 24, "weight": "bold", "description": "Relic card title in angelic blessing draft dialog"},
+        "angelic_draft_tagline": {"role": "badge", "family": "Tiny5", "base_size": 16, "weight": "bold", "description": "Relic card tagline in angelic blessing draft dialog"},
+        "angelic_draft_description": {"role": "body", "family": "Tiny5", "base_size": 16, "weight": "normal", "description": "Relic card power description in angelic blessing draft dialog"},
+        "angelic_draft_button": {"role": "button", "family": "Tiny5", "base_size": 24, "weight": "bold", "description": "Equip relic button in angelic blessing draft dialog"}
     }
 }
 
@@ -180,10 +186,32 @@ _OS_FONTS_REGISTERED: bool = False
 _LAST_OS_FONT_MODE: str = "uninitialized"
 
 
-def snap_pixel_font_size(base_pt: int, font_scale: float | int = 1) -> int:
-    """Snaps bitmap pixel-font point sizes strictly to integer 1x or 2x multiples."""
-    mult = 2 if float(font_scale) >= 1.75 else 1
-    return max(6, abs(int(base_pt)) * mult)
+def snap_pixel_font_size(base_pt: int, font_scale: float | int = 1, family: Optional[str] = None) -> int:
+    """Snaps pixel-font sizes strictly onto each family's native integer pixel grid (8px for Tiny5, 1x/2x for others)."""
+    fs = float(font_scale)
+    b = max(6, abs(int(base_pt)))
+    if fs >= 1.75:
+        return b * 2
+    if fs >= 1.35 and (family in TINY5_8PX_FAMILIES or (family is None and b % 8 == 0 and b in (16, 24, 32))):
+        if family in TINY5_8PX_FAMILIES:
+            return b + 8
+    return b
+
+
+def _clamp_family_grid_size(px: int, family: str) -> int:
+    """Ensures Tiny5 family sizes always land on exact 8px multiples (16, 24, 32, 40, 48, 64) even with size_override."""
+    val = max(6, abs(int(px)))
+    if family in TINY5_8PX_FAMILIES:
+        return max(16, int(round(val / 8.0)) * 8)
+    return val
+
+
+def _sanitize_pixel_weight(family: str, weight: str) -> str:
+    """Preserves 'bold' strictly for families with dedicated -Bold.ttf files (or OS fallbacks), preventing GDI smear."""
+    w = str(weight or "normal").lower()
+    if w == "bold" and family not in BOLD_CAPABLE_FAMILIES and family not in ("Courier", "Courier New", "Arial"):
+        return "normal"
+    return w
 
 
 def _resolve_fonts_dir(fonts_dir: Optional[Path | str] = None) -> Path:
@@ -199,8 +227,11 @@ def _iter_ttf_paths(target_dir: Path, cfg: dict) -> list[Path]:
     if not target_dir.exists():
         return paths
     for record in cfg.get("fonts", {}).values():
-        fn = record.get("file")
-        if fn:
+        candidates = []
+        if record.get("file"):
+            candidates.append(record["file"])
+        candidates.extend(record.get("extra_files") or [])
+        for fn in candidates:
             p = (target_dir / fn).resolve()
             if p.exists() and p not in seen:
                 paths.append(p)
@@ -339,7 +370,10 @@ def verify_and_finalize_pixel_fonts(
                         missing.append(fam_name)
                 os_mode = "linux_user_fonts_dir"
 
-        if "m5x7" in available:
+        if "Tiny5" in available:
+            _PIXEL_FONT_FAMILY = "Tiny5"
+            _PIXEL_FONT_REGISTERED = True
+        elif "m5x7" in available:
             _PIXEL_FONT_FAMILY = "m5x7"
             _PIXEL_FONT_REGISTERED = True
         elif any("m5x7" in f.lower() for f in available):
@@ -394,13 +428,10 @@ def get_role_font(
     roles = cfg.get("roles", DEFAULT_FONT_CONFIG["roles"])
     role_def = roles.get(role, roles.get("body", {}))
 
-    target_family = role_def.get("family", "m5x7")
+    target_family = role_def.get("family", "Tiny5")
     fallback_family = role_def.get("fallback", "Courier")
-    base_size = role_def.get("base_size", 14)
+    base_size = role_def.get("base_size", 16)
     weight = weight_override if weight_override is not None else role_def.get("weight", "normal")
-
-    final_size = size_override if size_override is not None else snap_pixel_font_size(base_size, scale)
-    final_size = -abs(int(final_size))
 
     # Determine best registered font family
     if _REGISTERED_FONTS.get(target_family, False):
@@ -412,7 +443,11 @@ def get_role_font(
     else:
         resolved_family = fallback_family if fallback_family in ("Courier", "Arial") else "Courier"
 
-    return (resolved_family, final_size, weight)
+    raw_px = size_override if size_override is not None else snap_pixel_font_size(base_size, scale, family=resolved_family)
+    final_size = -_clamp_family_grid_size(raw_px, resolved_family)
+    safe_weight = _sanitize_pixel_weight(resolved_family, weight)
+
+    return (resolved_family, final_size, safe_weight)
 
 
 def get_element_font(
@@ -440,13 +475,10 @@ def get_element_font(
     role_def = roles.get(role_name, roles.get("body", {}))
 
     # Base parameters initialized from role, overridden by element specs if present
-    target_family = elem_def.get("family", role_def.get("family", "m5x7"))
+    target_family = elem_def.get("family", role_def.get("family", "Tiny5"))
     fallback_family = elem_def.get("fallback", role_def.get("fallback", "Courier"))
-    base_size = elem_def.get("base_size", role_def.get("base_size", 14))
+    base_size = elem_def.get("base_size", role_def.get("base_size", 16))
     weight = weight_override if weight_override is not None else elem_def.get("weight", role_def.get("weight", "normal"))
-
-    final_size = size_override if size_override is not None else snap_pixel_font_size(base_size, scale)
-    final_size = -abs(int(final_size))
 
     # Determine best registered font family
     if _REGISTERED_FONTS.get(target_family, False):
@@ -458,7 +490,11 @@ def get_element_font(
     else:
         resolved_family = fallback_family if fallback_family in ("Courier", "Arial") else "Courier"
 
-    return (resolved_family, final_size, weight)
+    raw_px = size_override if size_override is not None else snap_pixel_font_size(base_size, scale, family=resolved_family)
+    final_size = -_clamp_family_grid_size(raw_px, resolved_family)
+    safe_weight = _sanitize_pixel_weight(resolved_family, weight)
+
+    return (resolved_family, final_size, safe_weight)
 
 
 # ============================================================================
@@ -977,6 +1013,7 @@ class PixelPlaqueFrame(tkinter.Frame):
         self.base_width = width
         self.base_height = height
         self.scale = max(1, int(scale))
+        self._scale_factor = self.scale / 2.0
         self._bg = bg
         self._relief = relief
         self._borderwidth = borderwidth
@@ -1068,23 +1105,27 @@ class PixelPlaqueFrame(tkinter.Frame):
         """
         if not text_val:
             return
-        scale_ratio = self.scale / 2.0
+        scale_ratio = float(getattr(self, "_scale_factor", self.scale / 2.0))
         max_inner_w = int((self.base_width - 24) * scale_ratio)
 
         role_font = get_element_font("hand_score", scale=scale_ratio)
         primary_fam = role_font[0] if isinstance(role_font, tuple) and len(role_font) > 0 else "Round9x13"
 
         candidates = (
-            (primary_fam, 32),
-            ("m6x11plus", 18),
-            ("m6x11", 16),
-            ("m5x7", 16),
-            ("m5x7", 12),
+            (primary_fam, 32, "normal"),
+            ("Tiny5 Duo", 24, "bold"),
+            ("Tiny5", 24, "bold"),
+            ("Tiny5", 16, "bold"),
+            ("Tiny5", 16, "normal"),
+            ("m5x7", 16, "normal"),
+            ("3x5_Block_Adjusted", 12, "normal"),
+            ("m5x7", 12, "normal"),
         )
         chosen_font = None
-        for fam, base_sz in candidates:
-            actual_sz = -max(8, int(base_sz * scale_ratio))
-            test_font = (fam, actual_sz)
+        for fam, base_sz, wt in candidates:
+            actual_sz = -snap_pixel_font_size(base_sz, scale_ratio, family=fam)
+            safe_wt = _sanitize_pixel_weight(fam, wt)
+            test_font = (fam, actual_sz, safe_wt)
             try:
                 tk_f = tkfont.Font(font=test_font)
                 w = tk_f.measure(str(text_val))
@@ -1095,7 +1136,7 @@ class PixelPlaqueFrame(tkinter.Frame):
                 continue
 
         if chosen_font is None:
-            chosen_font = ("m5x7", -max(8, int(12 * scale_ratio)))
+            chosen_font = ("m5x7", -max(8, int(12 * scale_ratio)), "normal")
 
         try:
             self.canvas.itemconfigure(self._score_id, font=chosen_font)
@@ -1113,8 +1154,9 @@ class PixelPlaqueFrame(tkinter.Frame):
             return
         cx = cw // 2
         cy = ch // 2
-        ty = int(16 * (self.scale / 2.0))
-        sy = int(39 * (self.scale / 2.0))
+        sf = float(getattr(self, "_scale_factor", self.scale / 2.0))
+        ty = max(14, int(ch * 0.25))
+        sy = max(ty + 18, int(ch * 0.67))
         self.panel.resize(cx, cy, cw, ch, scale=self.scale)
         self.canvas.coords(self._title_sh_id, cx + 1, ty + 1)
         self.canvas.coords(self._title_id, cx, ty)
@@ -1123,6 +1165,7 @@ class PixelPlaqueFrame(tkinter.Frame):
 
     def set_scale(self, scale_factor: float):
         """Updates plaque dimensions, panel sprites, font sizes, and text positions on scale change."""
+        self._scale_factor = float(scale_factor)
         self.scale = max(1, int(2 * scale_factor))
         w = int(self.base_width * scale_factor)
         h = int(self.base_height * scale_factor)
@@ -1130,8 +1173,8 @@ class PixelPlaqueFrame(tkinter.Frame):
         self.canvas.config(width=w, height=h)
         cx = w // 2
         cy = h // 2
-        ty = int(16 * scale_factor)
-        sy = int(39 * scale_factor)
+        ty = max(14, int(h * 0.25))
+        sy = max(ty + 18, int(h * 0.67))
         self.panel.resize(cx, cy, w, h, scale=self.scale)
 
         self.canvas.coords(self._title_sh_id, cx + 1, ty + 1)
@@ -1201,9 +1244,9 @@ class PixelDialogueFrame(tkinter.Frame):
         self._bg = bg
         self._nameplate_fg = nameplate_fg
         s = self.scale / 2.0
-        self.width_px = int(304 * s)
-        self.nameplate_h = int(40 * s)
-        self.speech_h = int(96 * s)
+        self.width_px = int(336 * s)
+        self.nameplate_h = int(42 * s)
+        self.speech_h = int(104 * s)
         self.height_px = self.nameplate_h
 
         self.canvas = tkinter.Canvas(
@@ -1253,9 +1296,9 @@ class PixelDialogueFrame(tkinter.Frame):
         )
 
         speech_font = get_element_font("dealer_speech", scale=s)
-        sy = int(34 * s)
+        sy = int(36 * s)
         pad_x = int(12 * s)
-        wrap_w = int(280 * s)
+        wrap_w = int(312 * s)
         init_speech = speech_var.get() if speech_var is not None else ""
         self._speech_sh = self.canvas.create_text(
             pad_x + 1, sy + 1, text=init_speech, font=speech_font, fill="#0c0603",
@@ -1295,30 +1338,34 @@ class PixelDialogueFrame(tkinter.Frame):
         self.nameplate_label.bind(sequence, func, add=add)
         self.speech_label.bind(sequence, func, add=add)
 
-    def set_scale(self, scale_factor: float):
+    def set_scale(self, scale_factor: float, font_scale: Optional[float] = None):
         self.scale = max(1, int(2 * scale_factor))
         s = scale_factor
-        self.width_px = int(304 * s)
-        self.nameplate_h = int(40 * s)
-        self.speech_h = int(96 * s)
+        fs = float(font_scale) if font_scale is not None else s
+        w_base = 396 if (fs >= 1.35 and s < 1.5) else 336
+        h_speech_base = 136 if (fs >= 1.35 and s < 1.5) else 106
+        self.width_px = int(w_base * s)
+        self.nameplate_h = int(42 * s)
+        self.speech_h = int(h_speech_base * s)
         is_packed = self.speech_label._is_managed
         self.height_px = self.speech_h if is_packed else self.nameplate_h
         self.canvas.config(width=self.width_px, height=self.height_px)
         cx = self.width_px // 2
         cy = self.height_px // 2
-        ny = int(16 * s) if is_packed else int(20 * s)
+        ny = int(17 * s) if is_packed else int(21 * s)
         self.panel.resize(cx, cy, self.width_px, self.height_px, scale=self.scale)
         self.canvas.coords(self._name_sh, cx + 1, ny + 1)
         self.canvas.coords(self._name_id, cx, ny)
-        sy = int(34 * s)
+        sy = int(36 * s)
         pad_x = int(12 * s)
-        wrap_w = int(280 * s)
+        wrap_w = max(180, self.width_px - 2 * pad_x)
         self.canvas.coords(self._speech_sh, pad_x + 1, sy + 1)
         self.canvas.coords(self._speech_id, pad_x, sy)
         self.canvas.itemconfigure(self._speech_sh, width=wrap_w)
         self.canvas.itemconfigure(self._speech_id, width=wrap_w)
+        # Keep dealer nameplate at crisp 16px*s inside the 1000px stage so long names never clip
         self.nameplate_label.set_font(get_element_font("dealer_nameplate", scale=s))
-        self.speech_label.set_font(get_element_font("dealer_speech", scale=s))
+        self.speech_label.set_font(get_element_font("dealer_speech", scale=fs))
 
     def configure(self, **kwargs):
         if "background" in kwargs or "bg" in kwargs:

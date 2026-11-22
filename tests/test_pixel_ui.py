@@ -192,13 +192,49 @@ class TestPixelUI(unittest.TestCase):
             self.assertIn(expected_role, cfg["roles"], f"Missing role {expected_role} in font_config.json")
 
     def test_all_pixel_fonts_registered(self):
-        """Verifies load_all_pixel_fonts registers families and returns availability dictionary."""
+        """Verifies load_all_pixel_fonts registers families (including Tiny5, Tiny5 Duo, Tiny5 SC) and cleans up review staging."""
+        import struct
+        from pathlib import Path
+        import config
         from pixel_ui import load_all_pixel_fonts
+
         registered = load_all_pixel_fonts(self.root)
         self.assertIsInstance(registered, dict)
-        self.assertTrue(registered.get("m5x7", False))
+        self.assertTrue(registered.get("Tiny5", False))
+        self.assertTrue(registered.get("Tiny5 Duo", False))
+        self.assertTrue(registered.get("Tiny5 SC", False))
         self.assertTrue(registered.get("BoldPixels", False))
         self.assertTrue(registered.get("Round9x13", False))
+
+        fonts_dir = Path(config.FONTS_DIR)
+        self.assertFalse(
+            (fonts_dir / "pixel_fonts_to_review").exists(),
+            "Staging folder pixel_fonts_to_review must be removed so PyInstaller does not bundle unused variants",
+        )
+        self.assertTrue((fonts_dir / "Tiny5-OFL.txt").exists(), "Tiny5 SIL OFL license file must be present")
+        for expected_ttf in (
+            "Tiny5-Regular.ttf",
+            "Tiny5-Bold.ttf",
+            "Tiny5-Italic.ttf",
+            "Tiny5Duo-Regular.ttf",
+            "Tiny5Duo-Bold.ttf",
+            "Tiny5SC-Regular.ttf",
+            "Tiny5SC-Bold.ttf",
+        ):
+            ttf_path = fonts_dir / expected_ttf
+            self.assertTrue(ttf_path.exists(), f"Missing promoted font {expected_ttf}")
+            raw = ttf_path.read_bytes()
+            num_tables = struct.unpack(">H", raw[4:6])[0]
+            os2_off = None
+            for idx in range(num_tables):
+                rec = 12 + idx * 16
+                tag, _csum, toff, _tlen = struct.unpack(">4sIII", raw[rec : rec + 16])
+                if tag == b"OS/2":
+                    os2_off = toff
+                    break
+            self.assertIsNotNone(os2_off)
+            win_asc, win_desc = struct.unpack(">HH", raw[os2_off + 74 : os2_off + 78])
+            self.assertEqual((win_asc, win_desc), (960, 256), f"{expected_ttf} OS/2 usWin metrics not normalized")
 
     def test_semantic_font_getters(self):
         """Verifies all semantic font getters return valid Tkinter font tuples with negative pixel sizes."""
@@ -437,43 +473,61 @@ class TestPixelUI(unittest.TestCase):
         self.assertEqual(snap_pixel_font_size(18, 2), 36)
 
     def test_native_integer_pixel_font_grid_and_no_synthetic_bold_smears(self):
-        """Roles and UI elements use native integer pixel grids, Round9x13 display numerals, zero synthetic bold, and zero Mini3x5 prose."""
-        from pixel_ui import load_font_config, get_element_font
+        """Roles and UI elements use Tiny5 8px integer grids, preserve BoldPixels top title banners, and only allow bold on true -Bold.ttf families."""
+        from pixel_ui import BOLD_CAPABLE_FAMILIES, load_font_config, get_element_font
         import ui_canvases
 
         cfg = load_font_config()
         roles = cfg["roles"]
-        self.assertEqual(roles["header"]["family"], "m6x11plus")
-        self.assertEqual(roles["header"]["base_size"], 18)
-        self.assertEqual(roles["button"]["family"], "m6x11plus")
-        self.assertEqual(roles["button"]["base_size"], 18)
+        self.assertEqual(roles["title"]["family"], "BoldPixels")
+        self.assertEqual(roles["title"]["base_size"], 32)
+        self.assertEqual(roles["header"]["family"], "Tiny5")
+        self.assertEqual(roles["header"]["base_size"], 24)
+        self.assertEqual(roles["body"]["family"], "Tiny5")
+        self.assertEqual(roles["body"]["base_size"], 16)
+        self.assertEqual(roles["button"]["family"], "Tiny5")
+        self.assertEqual(roles["button"]["base_size"], 24)
+        self.assertEqual(roles["badge"]["family"], "Tiny5")
+        self.assertEqual(roles["badge"]["base_size"], 16)
         self.assertEqual(roles["display"]["family"], "Round9x13")
         self.assertEqual(roles["display"]["base_size"], 32)
-        self.assertNotEqual(roles["badge"]["family"], "Mini3x5")
 
         for role_name, r_spec in roles.items():
-            self.assertEqual(
-                r_spec.get("weight", "normal"),
-                "normal",
-                f"Role '{role_name}' must not apply synthetic GDI bold to bitmap TTF",
-            )
+            fam = r_spec.get("family", "")
+            wt = r_spec.get("weight", "normal")
+            if wt == "bold":
+                self.assertIn(
+                    fam,
+                    BOLD_CAPABLE_FAMILIES,
+                    f"Role '{role_name}' uses bold on '{fam}' which lacks a dedicated -Bold.ttf",
+                )
+            if fam in ("Tiny5", "Tiny5 Duo", "Tiny5 SC"):
+                self.assertEqual(r_spec["base_size"] % 8, 0, f"Role '{role_name}' size {r_spec['base_size']} off 8px grid")
+
         for elem_name, e_spec in cfg["elements"].items():
-            self.assertEqual(
-                e_spec.get("weight", "normal"),
-                "normal",
-                f"Element '{elem_name}' must not apply synthetic GDI bold to bitmap TTF",
-            )
+            r_name = e_spec.get("role", "body")
+            fam = e_spec.get("family", roles.get(r_name, {}).get("family", "Tiny5"))
+            wt = e_spec.get("weight", roles.get(r_name, {}).get("weight", "normal"))
+            if wt == "bold":
+                self.assertIn(
+                    fam,
+                    BOLD_CAPABLE_FAMILIES,
+                    f"Element '{elem_name}' uses bold on '{fam}' which lacks a dedicated -Bold.ttf",
+                )
             self.assertNotEqual(
                 e_spec.get("family"),
                 "Mini3x5",
                 f"Element '{elem_name}' must not hardcode Mini3x5 micro-font",
             )
+            if fam in ("Tiny5", "Tiny5 Duo", "Tiny5 SC") and "base_size" in e_spec:
+                self.assertEqual(e_spec["base_size"] % 8, 0, f"Element '{elem_name}' size {e_spec['base_size']} off 8px grid")
 
-        self.assertEqual(ui_canvases.HUD_OUTCOME_FONT_WEIGHT, "normal")
+        self.assertEqual(ui_canvases.HUD_OUTCOME_FONT_FAMILY, "Tiny5 Duo")
+        self.assertEqual(ui_canvases.HUD_OUTCOME_FONT_SIZE, 32)
+        self.assertEqual(ui_canvases.HUD_OUTCOME_FONT_WEIGHT, "bold")
         for elem in ("angelic_draft_tagline", "chip_bet_badge", "chip_denomination_label", "chip_bankroll_badge"):
-            fam, sz, wt = get_element_font(elem)
+            fam, sz, _wt = get_element_font(elem)
             self.assertNotEqual(fam, "Mini3x5")
-            self.assertEqual(wt, "normal")
             self.assertLessEqual(sz, -16)
 
 

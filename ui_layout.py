@@ -74,7 +74,7 @@ DEFAULT_UI_CONFIG: dict[str, Any] = {
             "font_scale": 1,
             "stage_w": 1000,
             "stage_h": 220,
-            "rail_h": 72,
+            "rail_h": 80,
             "divider_h": 4,
             "pit_max_width": 1920,
             "multi_seat_dx": 345,
@@ -241,10 +241,10 @@ DEFAULT_UI_CONFIG: dict[str, Any] = {
             "margin_x": 10,
         },
         "bankroll_piles": {
-            "origin": {"x_ratio": 0.5, "y_ratio": 0.65},
+            "origin": {"x_ratio": 0.5, "y_ratio": 0.64},
             "margin_x": 24,
             "chip_vertical_step": 3,
-            "denomination_label": {"offset_x": 0, "offset_y": 18},
+            "denomination_label": {"offset_x": 0, "offset_y": 20},
             "hitbox": {"pad_x": 4, "top_offset": -18, "bottom_offset": 7},
         },
         "bankroll_badge": {
@@ -348,26 +348,26 @@ DEFAULT_UI_CONFIG: dict[str, Any] = {
         "accent_line_y": 2,
         "grid_placement": {"row": 3, "column": 0, "sticky": "ew", "pady": [0, 0]},
         "dock": {
-            "btn_height": 38,
+            "btn_height": 44,
             "scale_2x_height_multiplier": 2.0,
             "dock_gap": 12,
             "side_margin": 24,
             "bet_buttons": {
                 "clear_bet": {"width": 140},
-                "all_in": {"width": 104},
+                "all_in": {"width": 108},
                 "deal_hand": {"width": 156},
-                "rebuy": {"width": 132},
+                "rebuy": {"width": 140},
             },
             "play_buttons": {
                 "hit": {"width": 104},
-                "stand": {"width": 104},
-                "double": {"width": 104},
+                "stand": {"width": 108},
+                "double": {"width": 112},
                 "split": {"width": 104},
-                "surrender": {"width": 124},
+                "surrender": {"width": 136},
             },
             "anchor_buttons": {
-                "new_game": {"width": 124},
-                "miracle": {"width": 144},
+                "new_game": {"width": 136},
+                "miracle": {"width": 148},
             },
             "cursed_stakes": {
                 "grid_placement": {"row": 0, "column": 8, "padx": [6, 8], "pady": 3, "sticky": "e"},
@@ -400,12 +400,12 @@ DEFAULT_UI_CONFIG: dict[str, Any] = {
     },
     "table_felt": {
         "shoe_tray": {
-            "width": 94,
+            "width": 126,
             "height": 28,
             "offset_right": 14,
             "offset_top": 3,
             "plaque": {
-                "height": 20,
+                "height": 22,
                 "offset_y": 3,
                 "background": "transparent",
                 "border": "transparent",
@@ -819,7 +819,7 @@ def get_widget_style(
         scale if (hasattr(scale, "font_scale") and hasattr(scale, "art_scale")) else None
     )
     if prof_obj is not None:
-        font_scale = float(prof_obj.font_scale)
+        font_scale = float(getattr(prof_obj, "table_font_scale", prof_obj.font_scale))
         art_scale = float(prof_obj.art_scale)
     else:
         s_val = float(scale)

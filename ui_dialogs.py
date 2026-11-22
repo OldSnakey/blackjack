@@ -555,7 +555,7 @@ class InWindowConfirmModal(tkinter.Frame):
         tkinter.Label(
             card,
             text=title,
-            font=get_header_font(18 * s),
+            font=("Tiny5 Duo", -24 * s, "bold"),
             fg="#ffd54f",
             background="#190b0e",
         ).pack(pady=(0, 10 * s))
@@ -563,11 +563,11 @@ class InWindowConfirmModal(tkinter.Frame):
         tkinter.Label(
             card,
             text=message,
-            font=get_header_font(18 * s),
+            font=("Tiny5", -24 * s, "normal"),
             fg="#eceff1",
             background="#190b0e",
             justify="left",
-            wraplength=500 * s,
+            wraplength=520 * s,
         ).pack(pady=(0, 18 * s))
 
         btn_row = tkinter.Frame(card, background="#190b0e")
@@ -598,7 +598,7 @@ class InWindowConfirmModal(tkinter.Frame):
         no_btn = tkinter.Button(
             no_wrap,
             text=cancel_label,
-            font=get_button_font(18 * s),
+            font=("Tiny5", -24 * s, "bold"),
             background="#2e7d32",
             fg="#ffffff",
             activebackground="#388e3c",
@@ -618,7 +618,7 @@ class InWindowConfirmModal(tkinter.Frame):
         yes_btn = tkinter.Button(
             yes_wrap,
             text=confirm_label,
-            font=get_button_font(18 * s),
+            font=("Tiny5", -24 * s, "bold"),
             background="#b71c1c",
             fg="#ffffff",
             activebackground="#d32f2f",
@@ -1234,17 +1234,17 @@ class MultiSeatInsuranceDialog(InWindowScreenHost):
             borderwidth=2 * s,
             highlightbackground="#d4af37",
             highlightthickness=2 * s,
-            padx=18 * s,
-            pady=12 * s,
+            padx=16 * s,
+            pady=8 * s,
         )
         content.pack(fill="both", expand=True)
 
         hdr_row = tkinter.Frame(content, background=PANEL_BACKGROUND_COLOR)
-        hdr_row.pack(fill="x", pady=(0, 4 * s))
+        hdr_row.pack(fill="x", pady=(0, 3 * s))
         tkinter.Label(
             hdr_row,
             text="🛡 DEALER SHOWS AN ACE — MULTI-SEAT INSURANCE",
-            font=("BoldPixels", -16 * s, "normal") if s >= 2 else get_header_font(18 * s),
+            font=("Tiny5 Duo", -24 * s, "bold"),
             fg="#ffd700",
             background=PANEL_BACKGROUND_COLOR,
         ).pack(side="left")
@@ -1252,7 +1252,7 @@ class MultiSeatInsuranceDialog(InWindowScreenHost):
         self.total_cost_lbl = tkinter.Label(
             hdr_row,
             text="Selected Insurance: $0",
-            font=get_header_font(18 * s),
+            font=("Tiny5", -24 * s, "bold"),
             fg="#ffd700",
             background=PANEL_BACKGROUND_COLOR,
         )
@@ -1261,14 +1261,14 @@ class MultiSeatInsuranceDialog(InWindowScreenHost):
         tkinter.Label(
             content,
             text=f"Pays 2:1 on Dealer Blackjack  •  Bankroll: ${self.bankroll:,}  •  Toggle Seats: [1] [2] [3] or [◄/► + Space]",
-            font=("m6x11", -16 * s, "normal"),
+            font=("Tiny5", -16 * s, "normal"),
             fg="#b2dfdb",
             background=PANEL_BACKGROUND_COLOR,
             anchor="w",
-        ).pack(fill="x", pady=(0, 8 * s))
+        ).pack(fill="x", pady=(0, 5 * s))
 
         cards_row = tkinter.Frame(content, background=PANEL_BACKGROUND_COLOR)
-        cards_row.pack(fill="both", expand=True, pady=(0, 10 * s))
+        cards_row.pack(fill="both", expand=True, pady=(0, 6 * s))
         cards_row.rowconfigure(0, weight=1)
 
         self.cb_widgets = {}
@@ -1290,7 +1290,7 @@ class MultiSeatInsuranceDialog(InWindowScreenHost):
                 highlightbackground="#1f5736",
                 highlightthickness=2 * s,
                 padx=10 * s,
-                pady=8 * s,
+                pady=5 * s,
                 cursor="hand2" if can_afford else "arrow",
             )
             scard.grid(row=0, column=col_i, sticky="nsew", padx=4 * s)
@@ -1298,7 +1298,7 @@ class MultiSeatInsuranceDialog(InWindowScreenHost):
             t_lbl = tkinter.Label(
                 scard,
                 text=f"[{s_idx}] {seat_short.get(s_idx, f'Seat {s_idx}')}",
-                font=get_header_font(18 * s),
+                font=("Tiny5", -24 * s, "bold"),
                 fg="#ffd54f" if can_afford else "#78909c",
                 background="#082415",
                 anchor="w",
@@ -1308,7 +1308,7 @@ class MultiSeatInsuranceDialog(InWindowScreenHost):
             m_lbl = tkinter.Label(
                 scard,
                 text=f"Main ${s_obj.main_bet:,}  ->  Insure ${cost:,}",
-                font=("m6x11", -16 * s, "normal"),
+                font=("Tiny5", -16 * s, "normal"),
                 fg="#ffffff" if can_afford else "#78909c",
                 background="#082415",
                 anchor="w",
@@ -1318,7 +1318,7 @@ class MultiSeatInsuranceDialog(InWindowScreenHost):
             st_lbl = tkinter.Button(
                 scard,
                 text="[ SKIP ]" if can_afford else "[ NO FUNDS ]",
-                font=get_header_font(18 * s),
+                font=("Tiny5", -24 * s, "bold"),
                 fg="#90a4ae" if can_afford else "#546e7a",
                 disabledforeground="#546e7a",
                 background="#082415",
@@ -1353,10 +1353,11 @@ class MultiSeatInsuranceDialog(InWindowScreenHost):
         btn_row.columnconfigure(2, weight=1, uniform="ms_ins_btns")
 
         can_insure_all = self.bankroll >= total_all_cost and len(self.seats) > 0
+        ms_btn_f = ("Tiny5", -24 * s, "bold")
         self.btn_insure_all = tkinter.Button(
             btn_row,
             text=f"[A] Insure All (${total_all_cost:,})",
-            font=get_button_font(18 * s),
+            font=ms_btn_f,
             background="#ff9800",
             fg="#141008",
             activebackground="#ffa726",
@@ -1366,14 +1367,14 @@ class MultiSeatInsuranceDialog(InWindowScreenHost):
             cursor="hand2" if can_insure_all else "arrow",
             command=self._on_insure_all,
             padx=10 * s,
-            pady=6 * s,
+            pady=4 * s,
         )
         self.btn_insure_all.grid(row=0, column=0, sticky="ew", padx=(0, 6 * s))
 
         self.btn_confirm = tkinter.Button(
             btn_row,
             text="Confirm Selection [Enter]",
-            font=get_button_font(18 * s),
+            font=ms_btn_f,
             background="#1b5e20",
             fg="white",
             activebackground="#2e7d32",
@@ -1382,14 +1383,14 @@ class MultiSeatInsuranceDialog(InWindowScreenHost):
             cursor="hand2",
             command=self._on_confirm,
             padx=10 * s,
-            pady=6 * s,
+            pady=4 * s,
         )
         self.btn_confirm.grid(row=0, column=1, sticky="ew", padx=6 * s)
 
         self.btn_decline_all = tkinter.Button(
             btn_row,
             text="Decline All [Esc / N]",
-            font=get_button_font(18 * s),
+            font=ms_btn_f,
             background="#37474f",
             fg="white",
             activebackground="#455a64",
@@ -1398,11 +1399,11 @@ class MultiSeatInsuranceDialog(InWindowScreenHost):
             cursor="hand2",
             command=self._on_decline,
             padx=10 * s,
-            pady=6 * s,
+            pady=4 * s,
         )
         self.btn_decline_all.grid(row=0, column=2, sticky="ew", padx=(6 * s, 0))
         self._refresh_seat_card_visuals()
-        self.fit_overlay_to_requested(pad_w=8 * s, pad_h=8 * s)
+        self.fit_overlay_to_requested(pad_w=8 * s, pad_h=4 * s)
 
     def _set_seat_focus(self, pos: int) -> None:
         if not self.visual_seats:
@@ -1548,10 +1549,10 @@ class SettingsDialog(InWindowScreenHost):
 
         hdr_pady = 4 if compact else (6 * s if tight_720 else 8 * s)
         title_font = ("BoldPixels", -48 if compact else (-32 * s), "normal")
-        hint_font = ("m5x7", -16 * s, "normal") if compact else get_header_font(18 * s)
-        tab_btn_font = ("m6x11", -16 * s, "normal") if compact else get_button_font(18 * s)
-        tab_pady = 4 if compact else (6 * s if tight_720 else 8 * s)
-        foot_pady = 4 if compact else (7 * s if tight_720 else 9 * s)
+        hint_font = ("Tiny5", -24 if compact else (-16 * s), "normal")
+        tab_btn_font = ("Tiny5", -32 if compact else (-24 * s if not tight_720 else -16 * s), "bold")
+        tab_pady = 3 if compact else (5 * s if tight_720 else 6 * s)
+        foot_pady = 3 if compact else (6 * s if tight_720 else 7 * s)
 
         # 1. Persistent Full-Width Header & Tab Bar
         self.header_frame = tkinter.Frame(
@@ -1812,11 +1813,11 @@ class SettingsDialog(InWindowScreenHost):
         compact = self.is_compact_2x
         _, vh = self._resolve_host_wh()
         tight_720 = (s == 1 and vh < 760)
-        hdr_font = ("m6x11", -16 * s, "normal") if compact else get_header_font(18 * s)
-        btn_font = ("m6x11", -16 * s, "normal") if compact else get_button_font(18 * s)
-        body_font = ("m5x7", -16 * s, "normal") if compact else get_header_font(18 * s)
-        btn_pady = 5 if compact else (5 if tight_720 else 8 * s)
-        row_pady = 5 if compact else (6 if tight_720 else 10 * s)
+        hdr_font = ("Tiny5", -24 if compact else (-16 * s if s == 1 else -32), "bold")
+        btn_font = ("Tiny5", -32 if compact else (-24 if (s == 1 and not tight_720) else (-16 * s)), "bold")
+        body_font = ("Tiny5", -24 if compact else (-16 * s if s == 1 else -32), "normal")
+        btn_pady = 3 if compact else (4 if tight_720 else 5 * s)
+        row_pady = 4 if compact else (5 if tight_720 else 7 * s)
 
         self.tab_general_frame = tkinter.Frame(self.scroll_content, background=PANEL_BACKGROUND_COLOR)
         self.tab_rules_frame = tkinter.Frame(self.scroll_content, background=PANEL_BACKGROUND_COLOR)
@@ -1979,7 +1980,7 @@ class SettingsDialog(InWindowScreenHost):
         self.diagnostics_lbl = tkinter.Label(
             ctrl_frame,
             text="",
-            font=("m5x7", -16 * s, "normal"),
+            font=("Tiny5", -24 if compact else (-16 * s), "normal"),
             fg="#80cbc4",
             background="#072214",
             padx=8 * s,
@@ -2216,9 +2217,9 @@ class SettingsDialog(InWindowScreenHost):
         compact = self.is_compact_2x
         vw, vh = self._resolve_host_wh()
         tight_720 = (s == 1 and vh < 760)
-        sec_hdr_font = ("m6x11", -16 * s, "normal") if (compact or tight_720) else get_header_font(18 * s)
-        pill_font = ("m5x7", -16 * s, "normal") if compact else (("m6x11", -16 * s, "normal") if tight_720 else get_button_font(18 * s))
-        commit_font = ("m6x11", -16 * s, "normal") if compact else get_button_font(18 * s)
+        sec_hdr_font = ("Tiny5", -24 if compact else (-16 * s if s == 1 else -32), "bold")
+        pill_font = ("Tiny5", -24 if compact else (-16 * s if s == 1 else -32), "bold")
+        commit_font = ("Tiny5", -24 if compact else (-16 * s if s == 1 else -32), "bold")
         pill_pady = 2 if compact else (2 if tight_720 else 4 * s)
 
         edge_banner = tkinter.Frame(
@@ -2246,7 +2247,7 @@ class SettingsDialog(InWindowScreenHost):
         self.active_rules_badge_label = tkinter.Label(
             edge_banner,
             text="",
-            font=("m5x7", -16 * s, "normal") if compact else sec_hdr_font,
+            font=("Tiny5", -24 if compact else (-16 * s), "normal"),
             fg="#80cbc4",
             background="#082415",
             anchor="e",
@@ -2422,7 +2423,7 @@ class SettingsDialog(InWindowScreenHost):
         self.rules_status_lbl = tkinter.Label(
             left_col,
             textvariable=self.rules_status_var,
-            font=("m5x7", -16 * s, "normal"),
+            font=("Tiny5", -24 if compact else (-16 * s), "normal"),
             fg="#ffeb3b",
             background=PANEL_BACKGROUND_COLOR,
             anchor="w",
@@ -2906,11 +2907,11 @@ class ShortcutsDialog(InWindowScreenHost):
         outer_px = 24 if compact else self.compute_outer_padx(vw)
         icon_div = 1 if s >= 2 else 2
         title_font = ("BoldPixels", -48 if compact else (-32 * s), "normal")
-        hdr_font = ("m6x11", -16 * s, "normal") if compact else get_header_font(18 * s)
-        btn_font = ("m6x11", -16 * s, "normal") if compact else get_button_font(18 * s)
-        act_font = get_element_font("dialog_action_label", scale=float(s))
-        hint_font = get_element_font("dialog_hint_label", scale=float(s))
-        tip_font = ("m5x7", -16 * s, "normal") if compact else get_element_font("dialog_tip_label", scale=float(s))
+        hdr_font = ("Tiny5", -24 if compact else (-16 * s if s == 1 else -32), "bold")
+        btn_font = ("Tiny5", -24 if compact else (-16 * s if s == 1 else -32), "bold")
+        act_font = ("Tiny5", -24 if compact else (-16 * s), "bold")
+        hint_font = ("Tiny5", -24 if compact else (-16 * s), "normal")
+        tip_font = ("Tiny5", -24 if compact else (-16 * s), "normal")
 
         # 1. Top Full-Width Header Bar
         self._header_frame = tkinter.Frame(
@@ -3098,7 +3099,7 @@ class ShortcutsDialog(InWindowScreenHost):
                     tkinter.Label(
                         badges,
                         text="or",
-                        font=("m5x7", -16 * s, "normal"),
+                        font=("Tiny5", -24 if compact else (-16 * s), "normal"),
                         fg="#80cbc4",
                         background=stripe_bg,
                     ).pack(side="left", padx=2 * s)
@@ -3113,7 +3114,7 @@ class ShortcutsDialog(InWindowScreenHost):
                     tkinter.Label(
                         badges,
                         text=f"[{disp}]",
-                        font=("m6x11", -16 * s, "normal"),
+                        font=("Tiny5", -24 if compact else (-16 * s), "bold"),
                         background="#ffffff",
                         foreground="#000000",
                         padx=3 * s,
@@ -3318,8 +3319,8 @@ class WelcomeSplashDialog(InWindowScreenHost):
         vw, vh = self._resolve_host_wh()
         outer_px = 24 if compact else self.compute_outer_padx(vw)
         tight_720 = (s == 1 and vh < 760)
-        btn_font = ("m6x11", -16 * s, "normal") if compact else get_button_font(18 * s)
-        chk_font = ("m5x7", -16 * s, "normal") if compact else get_header_font(18 * s)
+        btn_font = ("Tiny5", -24 if compact else (-24 if s == 1 else -32), "bold")
+        chk_font = ("Tiny5", -24 if compact else (-16 * s), "normal")
 
         # Persistent Bottom Footer Bar
         self._footer_bar = tkinter.Frame(
@@ -3476,9 +3477,9 @@ class WelcomeSplashDialog(InWindowScreenHost):
         tight_720 = (s == 1 and vh < 760)
         outer_px = 24 if compact else self.compute_outer_padx(vw)
         avail_w = max(800, vw - 2 * outer_px)
-        hdr_font = ("m6x11", -16 * s, "normal") if compact else get_header_font(18 * s)
-        bullet_font = ("m5x7", -16 * s, "normal") if (compact or tight_720) else get_header_font(18 * s)
-        pill_font = ("m6x11", -16 * s, "normal") if compact else get_header_font(18 * s)
+        hdr_font = ("Tiny5", -24 if compact else (-24 if s == 1 else -32), "bold")
+        bullet_font = ("Tiny5", -24 if compact else (-16 * s), "normal")
+        pill_font = ("Tiny5", -24 if compact else (-16 * s), "bold")
 
         # 1. Full-Width Top Hero Band: Retro Logo (Left) + Croupier Greeting Plaque (Right)
         hero_row = tkinter.Frame(self.scroll_content, background=PANEL_BACKGROUND_COLOR)
@@ -3751,7 +3752,7 @@ class WelcomeSplashDialog(InWindowScreenHost):
             return
         s = self.menu_scale
         compact = self.is_compact_2x
-        pill_font = ("m6x11", -16 * s, "normal") if compact else get_header_font(18 * s)
+        pill_font = ("Tiny5", -24 if compact else (-16 * s), "bold")
         self.selected_mode = mode
         for m_id, card in self._mode_cards.items():
             is_sel = m_id == mode
@@ -3858,8 +3859,8 @@ class TripometerDialog(InWindowScreenHost):
         tight_720 = (s == 1 and vh < 760)
         outer_px = 24 if compact else self.compute_outer_padx(vw)
         title_font = ("BoldPixels", -48 if compact else (-32 * s), "normal")
-        sub_font = ("m6x11", -16 * s, "normal") if (compact or tight_720) else get_header_font(18 * s)
-        foot_btn_font = ("m6x11", -16 * s, "normal") if compact else get_button_font(18 * s)
+        sub_font = ("Tiny5", -24 if compact else (-16 * s), "normal")
+        foot_btn_font = ("Tiny5", -24 if compact else (-24 if s == 1 else -32), "bold")
 
         self._header_bar = tkinter.Frame(
             self,
@@ -4125,9 +4126,9 @@ class TripometerDialog(InWindowScreenHost):
         tight_720 = (s == 1 and vh < 760)
         outer_px = 24 if compact else self.compute_outer_padx(vw)
         init_wrap = max(560, vw - 2 * outer_px - 36 * s)
-        row_hdr_font = ("m6x11", -16 * s, "normal") if (compact or tight_720) else get_header_font(18 * s)
-        row_step_font = ("m5x7", -16 * s, "normal") if compact else row_hdr_font
-        btn_font = ("m6x11", -16 * s, "normal") if (compact or tight_720) else get_button_font(18 * s)
+        row_hdr_font = ("Tiny5", -24 if compact else (-16 * s), "bold")
+        row_step_font = ("Tiny5", -24 if compact else (-16 * s), "normal")
+        btn_font = ("Tiny5", -24 if compact else (-16 * s), "bold")
         disp_font = ("Round9x13", -48 if compact else (-32 * s), "normal")
 
         tracker = getattr(self.app, "tripometer", None)

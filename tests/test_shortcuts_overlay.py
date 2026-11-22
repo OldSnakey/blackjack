@@ -320,16 +320,15 @@ class TestShortcutsOverlayGui(unittest.TestCase):
             self.assertGreater(len(action_labels), 0, f"Tab {tab_idx} missing action labels with fg #fff176")
             self.assertGreater(len(hint_labels), 0, f"Tab {tab_idx} missing hint labels with fg #eceff1")
 
-            # Check that action labels use m6x11plus and normal weight (no faux bold)
+            # Check that action labels use Tiny5 Bold (authentic -Bold.ttf pixel weight)
             for lbl in action_labels:
                 font_str = str(lbl.cget("font"))
-                self.assertIn("m6x11plus", font_str)
-                self.assertNotIn("bold", font_str.lower(), f"Action label '{lbl.cget('text')}' should not use faux bold")
+                self.assertIn("Tiny5", font_str)
 
-            # Check that hint labels use m6x11plus and normal weight
+            # Check that hint labels use Tiny5 normal weight
             for lbl in hint_labels:
                 font_str = str(lbl.cget("font"))
-                self.assertIn("m6x11plus", font_str)
+                self.assertIn("Tiny5", font_str)
                 self.assertNotIn("bold", font_str.lower())
 
         self.app._close_shortcuts_overlay()

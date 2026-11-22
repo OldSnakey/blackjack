@@ -510,7 +510,7 @@ Blackjack/
 ├── cards/                          # 52 playing card PNG images + back.png and Card 13 of Skulls
 ├── audio/                          # 42 tactile casino .ogg audio files (slides, chips, shuffles, organ chimes)
 ├── assets/                         # Release packaging assets
-│   ├── fonts/                      # Bundled TrueType pixel fonts and font_config.json
+│   ├── fonts/                      # Bundled TrueType pixel fonts (Tiny5/Duo/SC, BoldPixels, Round9x13) & font_config.json
 │   ├── haunted/                    # Panoramic room backdrops (casino, crypt, creep, hell, celestial) and character puppet strata
 │   ├── overlay_icons/              # Curated 64x64 PNG keyboard & mouse prompt icons
 │   ├── pixel_logo_blackjack.png    # Retro pixel art game logo (468x84)
@@ -528,6 +528,7 @@ Blackjack/
 │   ├── build_pixel_logo.py         # Procedural generator for 1x and 2x retro pixel art game logo assets
 │   ├── build_roster_puppet_assets.py # Texture synthesis pipeline for full roster puppet conversion & expansion
 │   ├── build_stage_backdrops.py    # Generator script for 1x and 2x panoramic stage backdrops
+│   ├── promote_tiny5_fonts.py      # Promotes & OS/2-metric-normalizes the 7 Tiny5/Duo/SC pixel TTFs into assets/fonts/
 │   ├── build_tiffany_puppet_assets.py # Pipeline tool for extracting, de-occluding, and generating Tiffany 2.0 discrete puppet layers
 │   ├── capture_dialogs_verification.py # Automation tool for capturing Settings, Shortcuts, and Wardrobe Hall of Fame dialog verifications
 │   ├── capture_puppet_demo.py      # Automation tool for capturing puppet exploded layers, visemes, and stage verification

@@ -33,6 +33,7 @@ Offline asset generation, multi-layer dealer puppet rigging, faceplate de-occlus
 - `[tools/capture_welcome_splash_verification.py:BASE_DIR]`, `[tools/capture_welcome_splash_verification.py:capture_hwnd_to_image]`, `[tools/capture_welcome_splash_verification.py:main]`
 - `[tools/deocclude_dealer_faceplates.py:BASE_DIR]`, `[tools/deocclude_dealer_faceplates.py:CHARACTERS_DIR]`, `[tools/deocclude_dealer_faceplates.py:DEOCCLUDE_CONFIGS]`
 - `[tools/deocclude_dealer_faceplates.py:apply_unpremultiplied_mask]`, `[tools/deocclude_dealer_faceplates.py:put_unpremultiplied_alpha]`, `[tools/deocclude_dealer_faceplates.py:create_grounding_shadow]`, `[tools/deocclude_dealer_faceplates.py:deocclude_and_build_character]`, `[tools/deocclude_dealer_faceplates.py:run_all]`
+- `[tools/promote_tiny5_fonts.py:SELECTED_TINY5_FILES]`, `[tools/promote_tiny5_fonts.py:normalize_ttf_win_metrics]`, `[tools/promote_tiny5_fonts.py:promote_tiny5_fonts]`
 
 ## Invariants
 - `[tools/build_character_layers.py:generate_character_layers]` and `[tools/deocclude_dealer_faceplates.py:deocclude_and_build_character]`: Generate 19 discrete puppet layers (`shadow`, `neck`, `torso`, `head`, `eyes_open`, `eyes_half`, `eyes_closed`, `mouth_neutral`, `mouth_talk`, `mouth_smirk`, `mouth_gasp`, `mouth_a`, `mouth_o`, `mouth_e`, `mouth_f`, `arm_rest`, `arm_deal`, `arm_peek`, and composite `bust`) at both 1x (`112x112` px) and 2x (`224x224` px) RGBA resolutions.

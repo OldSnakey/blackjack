@@ -401,7 +401,7 @@ class DealerCardPanel(tkinter.Canvas):
             height=btn_h,
             text="🔊 Voice",
             theme="neutral",
-            font=get_role_font("button", size_override=-18 * s),
+            font=("Tiny5", -16 * s, "bold"),
             scale=2 * s,
             command=self._play_voice,
         )
@@ -409,7 +409,7 @@ class DealerCardPanel(tkinter.Canvas):
         # 3. Right Column:
         top_title_y = (8 * s) if compact_2x else (14 * s)
         sub_y = (31 * s) if compact_2x else (50 * s if s == 1 else 48 * s)
-        name_font = ("m6x11", -24 * s, "normal") if compact_2x else get_role_font("header", size_override=-36 * s)
+        name_font = ("Tiny5", -24 * s if compact_2x else (-32 * s), "bold")
         self.name_text_id = self.create_text(
             rx,
             top_title_y,
@@ -423,7 +423,7 @@ class DealerCardPanel(tkinter.Canvas):
             rx,
             sub_y,
             text=profile.title,
-            font=("m6x11", -16 * s, "normal") if compact_2x else get_role_font("header", size_override=-18 * s),
+            font=("Tiny5", -16 * s, "bold"),
             fill=profile.nameplate_fg,
             anchor="nw",
         )
@@ -433,7 +433,7 @@ class DealerCardPanel(tkinter.Canvas):
             r_end,
             sub_y,
             text=status_text,
-            font=("m6x11", -16 * s, "normal"),
+            font=("Tiny5", -16 * s, "bold"),
             fill=status_col,
             anchor="ne",
         )
@@ -455,7 +455,7 @@ class DealerCardPanel(tkinter.Canvas):
             height=car_h,
             text="◄",
             theme="neutral",
-            font=get_role_font("button", size_override=-18 * s),
+            font=("Tiny5", -16 * s, "bold"),
             scale=2 * s,
             enabled=has_multi,
             command=self._prev_costume,
@@ -482,7 +482,7 @@ class DealerCardPanel(tkinter.Canvas):
             strip_x + strip_w // 2,
             car_cy,
             text=c_label,
-            font=("m6x11", -16 * s, "normal") if compact_2x else get_role_font("header", size_override=-18 * s),
+            font=("Tiny5", -16 * s, "bold"),
             fill="#f0f4f1",
             anchor="center",
         )
@@ -495,17 +495,17 @@ class DealerCardPanel(tkinter.Canvas):
             height=car_h,
             text="►",
             theme="neutral",
-            font=get_role_font("button", size_override=-18 * s),
+            font=("Tiny5", -16 * s, "bold"),
             scale=2 * s,
             enabled=has_multi,
             command=self._next_costume,
         )
 
         # Lore Blurb (when unlocked) or Unlock Requirement (when locked) + Live Costume Quote
-        lore_top_y = car_y + car_h + (5 * s if compact_2x else 10 * s)
+        lore_top_y = car_y + car_h + (4 * s if compact_2x else 10 * s)
         lore_wrap = max(240 * s, right_w - 4 * s)
-        bio_font = ("m5x7", -16 * s, "normal") if (compact_2x or ch < 268 * s) else get_role_font("header", size_override=-18 * s)
-        quote_font = ("m5x7", -16 * s, "normal")
+        bio_font = ("Tiny5", -16 * s, "normal")
+        quote_font = ("Tiny5", -24 if compact_2x else (-16 * s), "italic")
         if self.unlocked:
             self.req_header_id = None
             self.lore_text_id = self.create_text(
@@ -522,14 +522,14 @@ class DealerCardPanel(tkinter.Canvas):
                 rx,
                 lore_top_y,
                 text="🔒 UNLOCK REQUIREMENT:",
-                font=("m6x11", -16 * s, "normal") if compact_2x else get_role_font("header", size_override=-18 * s),
+                font=("Tiny5", -24 if compact_2x else (-16 * s), "bold"),
                 fill="#ffd54f",
                 anchor="nw",
             )
             crit = self.dialog.UNLOCK_CRITERIA.get(self.char_id, "Complete casino objectives to unlock.")
             self.lore_text_id = self.create_text(
                 rx,
-                lore_top_y + (18 * s if compact_2x else 22 * s),
+                lore_top_y + (16 * s if compact_2x else 22 * s),
                 text=crit,
                 font=bio_font,
                 fill="#f0f4f1",
@@ -539,11 +539,21 @@ class DealerCardPanel(tkinter.Canvas):
         self.bio_text_id = self.lore_text_id
 
         # Position live costume flavor quote cleanly in the lower right space above Equip button
-        lore_bbox = self.bbox(self.lore_text_id)
-        quote_top_y = (lore_bbox[3] + (4 * s if compact_2x else 10 * s)) if lore_bbox else (lore_top_y + 42 * s)
         max_quote_bot = btn_cy - btn_h // 2 - (4 * s if compact_2x else 6 * s)
         self._max_quote_bot = max_quote_bot
-        init_quote_txt = self._get_costume_quote_preview() if (max_quote_bot - quote_top_y >= 16 * s) else ""
+        min_quote_reserve = 30 if compact_2x else (18 * s)
+        lore_bbox = self.bbox(self.lore_text_id)
+        if compact_2x and lore_bbox and lore_bbox[3] > max_quote_bot - min_quote_reserve:
+            cur_lore = self.itemcget(self.lore_text_id, "text")
+            while lore_bbox and lore_bbox[3] > max_quote_bot - min_quote_reserve and len(cur_lore) > 36:
+                cut = cur_lore.rfind(" ", 0, max(24, len(cur_lore) - 10))
+                if cut <= 20:
+                    break
+                cur_lore = f"{cur_lore[:cut].rstrip(',;:- ')}..."
+                self.itemconfigure(self.lore_text_id, text=cur_lore)
+                lore_bbox = self.bbox(self.lore_text_id)
+        quote_top_y = (lore_bbox[3] + (3 * s if compact_2x else 10 * s)) if lore_bbox else (lore_top_y + 42 * s)
+        init_quote_txt = self._get_costume_quote_preview() if (max_quote_bot - quote_top_y >= (24 if compact_2x else 16 * s)) else ""
         self.costume_quote_id = self.create_text(
             rx,
             quote_top_y,
@@ -565,7 +575,7 @@ class DealerCardPanel(tkinter.Canvas):
             height=btn_h,
             text=btn_text,
             theme=btn_theme,
-            font=get_role_font("button", size_override=-18 * s),
+            font=("Tiny5", -16 * s, "bold"),
             scale=3 * s,
             enabled=btn_enabled,
             disabled_text_color=dis_text_color,
@@ -1421,7 +1431,7 @@ class WardrobeDialog(InWindowScreenHost):
         tab_canvas.pack(fill="x")
 
         tab_btn_w = min(440 * s, max(240 * s, (content_w - 24 * s) // 2))
-        tab_font = ("m6x11", -16 * s, "normal") if compact else get_role_font("button", size_override=-18 * s)
+        tab_font = ("Tiny5", -24 if compact else (-16 * s if s == 1 else -32), "bold")
         self.btn_tab_wardrobe = CanvasPixelButton(
             tab_canvas,
             x=cx - tab_btn_w // 2 - 6 * s,
@@ -1514,7 +1524,7 @@ class WardrobeDialog(InWindowScreenHost):
         compact = self.is_compact_2x
         nav_h = (28 * s) if compact else (34 * s)
         nav_btn_h = (25 * s) if compact else (30 * s)
-        nav_font = ("m6x11", -16 * s, "normal") if compact else get_role_font("button", size_override=-18 * s)
+        nav_font = ("Tiny5", -24 if compact else (-16 * s if s == 1 else -32), "bold")
         # Navigation Bar: Prev | Page X of Y : Title | Next
         nav_canvas = tkinter.Canvas(
             self.tab_wardrobe_frame,
@@ -1733,9 +1743,9 @@ class WardrobeDialog(InWindowScreenHost):
         col_b_2 = int(content_w * 0.28)
         col_b_3 = int(content_w * 0.50)
 
-        rec_hdr_font = ("m6x11", -16 * s, "normal") if compact else get_role_font("header", size_override=-18 * s)
-        rec_row1_font = ("m6x11", -16 * s, "normal")
-        rec_body_font = ("m5x7", -16 * s, "normal")
+        rec_hdr_font = ("Tiny5", -24 if compact else (-16 * s if s == 1 else -32), "bold")
+        rec_row1_font = ("Tiny5", -24 if compact else (-16 * s), "bold")
+        rec_body_font = ("Tiny5", -24 if compact else (-16 * s), "normal")
         y_hdr = (9 * s) if compact else (12 * s)
         y_r1 = (32 * s) if compact else (38 * s)
         y_dot1 = (y_r1 + 1) if s >= 2 else 41
@@ -1802,7 +1812,7 @@ class WardrobeDialog(InWindowScreenHost):
         # 2. Controller-Friendly Page Navigation Bar (◀ Previous | Page X of 3 | Next ▶)
         nav_h = (28 * s) if compact else (34 * s)
         nav_btn_h = (25 * s) if compact else (30 * s)
-        nav_font = ("m6x11", -16 * s, "normal") if compact else get_role_font("button", size_override=-18 * s)
+        nav_font = ("Tiny5", -24 if compact else (-16 * s if s == 1 else -32), "bold")
         hof_nav_canvas = tkinter.Canvas(
             self.tab_hof_frame,
             width=content_w,
@@ -1862,9 +1872,9 @@ class WardrobeDialog(InWindowScreenHost):
         plaque_w = max(436 * s, (content_w - 24 * s) // 2)
         plaque_h = max(92 * s, min(168 * s, (avail_hof_h - 24 * s) // 3))
 
-        plaque_hdr_font = ("m6x11", -16 * s, "normal") if compact else get_role_font("header", size_override=-18 * s)
-        plaque_bdg_font = ("m6x11", -16 * s, "normal")
-        plaque_desc_font = ("m5x7", -16 * s, "normal") if compact else get_role_font("header", size_override=-18 * s)
+        plaque_hdr_font = ("Tiny5", -24 if compact else (-16 * s if s == 1 else -32), "bold")
+        plaque_bdg_font = ("Tiny5", -24 if compact else (-16 * s), "bold")
+        plaque_desc_font = ("Tiny5", -24 if compact else (-16 * s), "normal")
 
         for p_idx, p_cfg in enumerate(self.HOF_PAGE_CONFIG):
             p_frame = tkinter.Frame(plaques_container, background="#0d1f14")
@@ -1969,9 +1979,9 @@ class WardrobeDialog(InWindowScreenHost):
     def _build_hof_tour_shelf(self, s: int, compact: bool) -> None:
         from tour_domain import SALON_SPECS
 
-        hdr_font = ("m6x11", -16 * s, "normal") if compact else get_role_font("header", size_override=-18 * s)
-        cell_title_font = ("m6x11", -16 * s, "normal")
-        cell_sub_font = ("m5x7", -16 * s, "normal")
+        hdr_font = ("Tiny5", -24 if compact else (-16 * s if s == 1 else -32), "bold")
+        cell_title_font = ("Tiny5", -24 if compact else (-16 * s), "bold")
+        cell_sub_font = ("Tiny5", -24 if compact else (-16 * s), "normal")
 
         tkinter.Label(
             self.hof_tour_shelf_frame,

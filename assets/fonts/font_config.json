@@ -1,41 +1,65 @@
 {
-  "version": "1.0",
+  "version": "1.1",
   "fonts": {
+    "Tiny5": {
+      "file": "Tiny5-Regular.ttf",
+      "extra_files": ["Tiny5-Bold.ttf", "Tiny5-Italic.ttf"],
+      "family": "Tiny5",
+      "grid": "8px integer (16, 24, 32, 40, 48, 64)",
+      "supports_bold": true,
+      "description": "Primary crisp 8px-grid pixel workhorse with true pixel Bold, Italic, and 3,667 Unicode/suit glyphs."
+    },
+    "Tiny5 Duo": {
+      "file": "Tiny5Duo-Regular.ttf",
+      "extra_files": ["Tiny5Duo-Bold.ttf"],
+      "family": "Tiny5 Duo",
+      "grid": "8px wide arcade display (24, 32, 40, 48, 64)",
+      "supports_bold": true,
+      "description": "Wide arcade pixel display face for victory announcements, section headers, and counts."
+    },
+    "Tiny5 SC": {
+      "file": "Tiny5SC-Regular.ttf",
+      "extra_files": ["Tiny5SC-Bold.ttf"],
+      "family": "Tiny5 SC",
+      "grid": "8px small-caps casino engraving (16, 24, 32, 48)",
+      "supports_bold": true,
+      "description": "Small-caps pixel face for casino baize engravings, seat tags, and ledger titles."
+    },
     "BoldPixels": {
       "file": "BoldPixels.ttf",
       "family": "BoldPixels",
       "grid": "arcade display",
-      "description": "Chunky punchy arcade display font for titles, modal headers, announcements."
+      "description": "Chunky punchy arcade display font for full-screen menu top title banners."
     },
     "m5x7": {
       "file": "m5x7.ttf",
       "family": "m5x7",
       "grid": "5x7",
-      "description": "Clean, balanced, condensed pixel workhorse font for body prose, buttons, and dialogue."
+      "description": "Legacy condensed pixel fallback font."
     },
     "m6x11": {
       "file": "m6x11.ttf",
       "family": "m6x11",
       "grid": "6x11",
-      "description": "Tall, clean, proportional pixel font with full mixed-case support and open numerals."
+      "description": "Tall proportional pixel font retained for compatibility."
     },
     "m6x11plus": {
       "file": "m6x11plus.ttf",
       "family": "m6x11plus",
       "grid": "6x11 plus",
-      "description": "Enhanced 6x11 pixel font with extended punctuation and symbols."
+      "description": "Enhanced 6x11 pixel font retained for compatibility."
     },
     "Round9x13": {
       "file": "Round9x13.ttf",
       "family": "Round9x13",
       "grid": "9x13 rounded caps",
-      "description": "High-impact bold rounded numerals for score plaques, top bar wins/ties, and bankroll."
+      "description": "High-impact bold rounded numerals for score plaques and giant counters."
     },
     "Volt5x5": {
       "file": "Volt5x5.ttf",
       "family": "Volt5x5",
       "grid": "5x5 terminal",
-      "description": "Digital electronic LCD terminal font for Hi-Lo Trainer metrics and telemetry."
+      "description": "Digital electronic LCD terminal font for telemetry markers."
     },
     "Covenant5x5": {
       "file": "Covenant5x5.ttf",
@@ -47,13 +71,13 @@
       "file": "Mini3x5.ttf",
       "family": "Mini3x5",
       "grid": "3x5 tall micro",
-      "description": "Compact micro font for keyboard shortcut badges and tiny HUD pills."
+      "description": "Legacy micro font."
     },
     "3x5_Block_Adjusted": {
       "file": "3x5_Block_Adjusted-Regular.ttf",
       "family": "3x5_Block_Adjusted",
       "grid": "3x5 block micro",
-      "description": "Micro block numbers for chip stack denominations."
+      "description": "Micro block numbers for chip stack cylinder face stamps."
     },
     "3x5_Block_Mono": {
       "file": "3x5_Block_Mono-Regular.ttf",
@@ -91,345 +115,424 @@
       "family": "BoldPixels",
       "base_size": 32,
       "weight": "normal",
-      "fallback": "m5x7",
-      "description": "Large banners, Table Announcements, Window Titles"
+      "fallback": "Tiny5 Duo",
+      "description": "Top Title Banners on Full-Screen Menus"
     },
     "header": {
-      "family": "m6x11plus",
-      "base_size": 18,
-      "weight": "normal",
-      "fallback": "m5x7",
-      "description": "Dialog Section Headers, Mode Card Titles, Plaque Names"
+      "family": "Tiny5",
+      "base_size": 24,
+      "weight": "bold",
+      "fallback": "m6x11plus",
+      "description": "Dialog Section Headers, Mode Card Titles, Plaque Headers"
     },
     "display": {
       "family": "Round9x13",
       "base_size": 32,
       "weight": "normal",
-      "fallback": "m5x7",
-      "description": "Score Plaques, Top Bar Numbers, Bankroll, Bet"
+      "fallback": "Tiny5 Duo",
+      "description": "Giant Score Plaque Numerals and Display Counters"
     },
     "body": {
-      "family": "m5x7",
+      "family": "Tiny5",
       "base_size": 16,
       "weight": "normal",
-      "fallback": "Courier",
-      "description": "Dialog Descriptions, Rules Text, Dialogue Speech, Help Guides"
+      "fallback": "m5x7",
+      "description": "Dialog Descriptions, Hand Audit Suits, Dialogue Speech, Help Guides"
     },
     "button": {
-      "family": "m6x11plus",
-      "base_size": 18,
-      "weight": "normal",
-      "fallback": "m5x7",
-      "description": "Mahogany Rail Buttons, Top Bar System Buttons, Modal Buttons"
+      "family": "Tiny5",
+      "base_size": 24,
+      "weight": "bold",
+      "fallback": "m6x11plus",
+      "description": "Mahogany Rail Action/Betting Buttons and Primary Modal Actions"
     },
     "digital": {
       "family": "Volt5x5",
       "base_size": 16,
       "weight": "normal",
-      "fallback": "m5x7",
-      "description": "Hi-Lo Trainer count readouts (RC, TC, Edge, Decks)"
+      "fallback": "Tiny5",
+      "description": "Compact Digital Markers"
     },
     "badge": {
-      "family": "m6x11",
+      "family": "Tiny5",
       "base_size": 16,
-      "weight": "normal",
-      "fallback": "m5x7",
-      "description": "Compact Badge Labels, Denomination Tags, and Metric Captions"
+      "weight": "bold",
+      "fallback": "m6x11",
+      "description": "Crisp 16px/24px Badges, Denomination Tags, and Metric Captions"
     },
     "micro": {
       "family": "3x5_Block_Adjusted",
       "base_size": 12,
       "weight": "normal",
-      "fallback": "m5x7",
+      "fallback": "Tiny5",
       "description": "Chip stack face numbers on felt"
     }
   },
   "elements": {
     "top_bar_button": {
-      "role": "button",
-      "family": "m5x7",
+      "role": "badge",
+      "family": "Tiny5",
       "base_size": 16,
-      "description": "System buttons on top bar (Rules, Settings, Shortcuts, Wardrobe, Mute, Scale)"
+      "weight": "bold",
+      "description": "System buttons in RightStageWing (Tour, Trip, Menu, Mute, Help, Full/Window)"
     },
     "top_bar_status": {
-      "role": "button",
-      "family": "m5x7",
+      "role": "badge",
+      "family": "Tiny5",
       "base_size": 16,
-      "description": "Scale and status readouts on top bar (e.g. \ud83d\udd0d 1x / 2x)"
+      "weight": "normal",
+      "description": "Status readouts in StageWings"
     },
     "scoreboard_title": {
-      "role": "header",
-      "family": "m6x11plus",
-      "base_size": 18,
-      "description": "Headers for Dealer, Player, Ties in top bar scoreboard"
+      "role": "badge",
+      "family": "Tiny5 SC",
+      "base_size": 16,
+      "weight": "bold",
+      "description": "Headers in LeftStageWing Casino Ledger"
     },
     "scoreboard_value": {
       "role": "display",
       "family": "Round9x13",
       "base_size": 32,
-      "description": "Win, Loss, and Tie numeric counters in top bar"
+      "weight": "normal",
+      "description": "Numeric counters"
     },
     "bankroll_label": {
-      "role": "display",
-      "family": "m5x7",
-      "base_size": 32,
-      "description": "Player bankroll display on top bar"
+      "role": "header",
+      "family": "Tiny5",
+      "base_size": 24,
+      "weight": "bold",
+      "description": "Player bankroll and staged bet display in LeftStageWing"
     },
     "shoe_counter": {
-      "role": "header",
-      "family": "m5x7",
+      "role": "badge",
+      "family": "Tiny5",
       "base_size": 16,
+      "weight": "bold",
       "description": "Deck shoe card counter plaque under acrylic shoe tray"
     },
     "hand_title": {
-      "role": "header",
-      "family": "m6x11",
+      "role": "badge",
+      "family": "Tiny5 SC",
       "base_size": 16,
-      "description": "Banners for dealer, player, and split hand areas"
+      "weight": "bold",
+      "description": "Headers on Dealer and Player score plaques"
     },
     "hand_score": {
       "role": "display",
       "family": "Round9x13",
       "base_size": 32,
+      "weight": "normal",
       "description": "Hand score plaques (19, 21, BUST, etc.)"
     },
     "action_button": {
       "role": "button",
-      "family": "m5x7",
-      "base_size": 32,
+      "family": "Tiny5",
+      "base_size": 24,
+      "weight": "bold",
       "description": "Primary action rail buttons (Hit, Stand, Double, Split, Surrender, New Game)"
     },
     "cursed_stakes_button": {
       "role": "button",
-      "family": "m5x7",
-      "base_size": 32,
-      "description": "Cursed stakes / High roller toggle button"
+      "family": "Tiny5",
+      "base_size": 24,
+      "weight": "bold",
+      "description": "Cursed stakes / Map [Esc] anchor button on Mahogany Rail"
     },
     "strategy_hint": {
       "role": "body",
+      "family": "Tiny5",
+      "base_size": 16,
+      "weight": "normal",
       "description": "Real-time basic strategy advice banner text"
     },
     "betting_button": {
       "role": "button",
-      "family": "m5x7",
-      "base_size": 32,
-      "description": "Bet staging action buttons (Deal, Clear, Rebet, All-In, Rebuy)"
+      "family": "Tiny5",
+      "base_size": 24,
+      "weight": "bold",
+      "description": "Bet staging action buttons (Deal Hand, Clear Bet, All In, Rebuy $1K)"
     },
     "betting_chip_button": {
       "role": "button",
-      "description": "Quick chip increment buttons in casual mode"
+      "family": "Tiny5",
+      "base_size": 24,
+      "weight": "bold",
+      "description": "Quick chip increment buttons"
     },
     "betting_spot_watermark": {
       "role": "badge",
-      "family": "m6x11",
+      "family": "Tiny5 SC",
       "base_size": 16,
-      "description": "Felt watermark text inside betting circle"
+      "weight": "bold",
+      "description": "Felt watermark text inside betting circles (PAIRS, SEAT 1, 21+3)"
     },
     "chip_bet_badge": {
-      "role": "header",
-      "family": "m6x11plus",
-      "base_size": 18,
+      "role": "badge",
+      "family": "Tiny5",
+      "base_size": 16,
+      "weight": "bold",
       "description": "Current staged bet readout above betting spot"
     },
     "chip_bankroll_badge": {
       "role": "badge",
-      "family": "m6x11",
+      "family": "Tiny5",
       "base_size": 16,
-      "description": "Reserve tray bankroll header (CHIPS: $... L-Click + | R-Click -)"
+      "weight": "normal",
+      "description": "Reserve tray hint header (L-Click + | R-Click -)"
     },
     "chip_denomination_label": {
       "role": "badge",
-      "family": "m6x11",
+      "family": "Tiny5",
       "base_size": 16,
+      "weight": "bold",
       "description": "Denomination label under each reserve pile ($5, $25, $100, $500, $1K)"
     },
     "chip_face_value": {
       "role": "micro",
       "family": "3x5_Block_Adjusted",
       "base_size": 12,
+      "weight": "normal",
       "description": "Denomination and multiplier text stamped on individual chip sprites"
     },
     "chip_floating_payout": {
-      "role": "digital",
+      "role": "header",
+      "family": "Tiny5 Duo",
+      "base_size": 24,
+      "weight": "bold",
       "description": "Animated floating payout text (+$150)"
     },
     "chip_push_banner": {
       "role": "header",
+      "family": "Tiny5",
+      "base_size": 24,
+      "weight": "bold",
       "description": "Push announcement banner on betting spot"
     },
     "insurance_prompt_label": {
       "role": "header",
-      "family": "m6x11plus",
-      "base_size": 18,
-      "description": "Insurance inquiry text prompt"
+      "family": "Tiny5",
+      "base_size": 24,
+      "weight": "bold",
+      "description": "Insurance inquiry text prompt on single-seat floating plaque"
     },
     "insurance_prompt_button": {
       "role": "button",
-      "family": "m6x11plus",
-      "base_size": 18,
+      "family": "Tiny5",
+      "base_size": 24,
+      "weight": "bold",
       "description": "Take / Decline Insurance action buttons"
     },
     "dealer_nameplate": {
-      "role": "header",
-      "family": "m6x11plus",
-      "base_size": 18,
+      "role": "badge",
+      "family": "Tiny5",
+      "base_size": 16,
+      "weight": "bold",
       "description": "Dealer character nameplate on narrative dialogue stage"
     },
     "dealer_speech": {
-      "role": "header",
-      "family": "m6x11plus",
-      "base_size": 18,
+      "role": "body",
+      "family": "Tiny5",
+      "base_size": 16,
+      "weight": "normal",
       "description": "Dialogue box typewriter speech and narrative subtitles"
     },
     "table_announcement": {
-      "role": "title",
-      "description": "Centered floating banner announcements (BLACKJACK!, DEALER BUSTS, PUSH)"
+      "role": "header",
+      "family": "Tiny5 Duo",
+      "base_size": 32,
+      "weight": "bold",
+      "description": "Centered floating banner announcements (Player Wins!, BLACKJACK! 3:2)"
     },
     "hilo_trainer_title": {
-      "family": "m6x11plus",
-      "base_size": 18,
-      "weight": "normal",
+      "family": "Tiny5 SC",
+      "base_size": 16,
+      "weight": "bold",
       "description": "Hi-Lo Card Counting Trainer header tab"
     },
     "hilo_trainer_label": {
-      "family": "m6x11",
+      "family": "Tiny5",
       "base_size": 16,
       "weight": "normal",
       "description": "Trainer HUD metric title badges (RC, TC, DECKS, EDGE, BET)"
     },
     "hilo_trainer_value": {
-      "family": "m6x11plus",
-      "base_size": 18,
-      "weight": "normal",
+      "family": "Tiny5",
+      "base_size": 24,
+      "weight": "bold",
       "description": "Trainer HUD numeric readouts"
     },
     "hilo_trainer_button": {
-      "family": "m6x11",
+      "family": "Tiny5",
       "base_size": 16,
-      "weight": "normal",
+      "weight": "bold",
       "description": "Trainer HUD control buttons (Quiz, Assisted, Close)"
     },
     "hilo_trainer_advice": {
-      "family": "m6x11plus",
-      "base_size": 18,
-      "weight": "normal",
+      "family": "Tiny5",
+      "base_size": 16,
+      "weight": "bold",
       "description": "Trainer drill hint and betting recommendation text"
     },
     "hilo_floating_badge": {
-      "role": "display",
+      "role": "header",
+      "family": "Tiny5 Duo",
+      "base_size": 24,
+      "weight": "bold",
       "description": "Transient floating count particle badges (+1, -1, 0) above cards"
     },
     "soul_meter_title": {
-      "role": "title",
+      "role": "header",
+      "family": "Tiny5 SC",
+      "base_size": 24,
+      "weight": "bold",
       "description": "Soul Wager Altar HUD banner title"
     },
     "soul_meter_markers": {
-      "role": "digital",
+      "role": "badge",
+      "family": "Tiny5",
+      "base_size": 16,
+      "weight": "normal",
       "description": "Soul Meter threshold percentage markers (50%, 75%)"
     },
     "soul_meter_bounds": {
       "role": "badge",
+      "family": "Tiny5",
+      "base_size": 16,
+      "weight": "bold",
       "description": "Soul Meter extremity labels (ABYSS 0%, LIGHT 100%)"
     },
     "soul_meter_status": {
       "role": "header",
+      "family": "Tiny5",
+      "base_size": 24,
+      "weight": "bold",
       "description": "Soul Meter dynamic status text"
     },
     "soul_meter_hint": {
       "role": "body",
+      "family": "Tiny5",
+      "base_size": 16,
+      "weight": "normal",
       "description": "Soul Meter bottom instruction text"
     },
     "dialog_title": {
       "role": "title",
-      "description": "Modal dialog top window titles"
+      "family": "BoldPixels",
+      "base_size": 32,
+      "weight": "normal",
+      "description": "Full-screen menu top window titles"
     },
     "dialog_tab": {
       "role": "header",
+      "family": "Tiny5",
+      "base_size": 24,
+      "weight": "bold",
       "description": "Modal dialog tab navigation bar buttons"
     },
     "dialog_header": {
       "role": "header",
+      "family": "Tiny5",
+      "base_size": 24,
+      "weight": "bold",
       "description": "Modal dialog section headers and mode card titles"
     },
     "dialog_body": {
       "role": "body",
+      "family": "Tiny5",
+      "base_size": 16,
+      "weight": "normal",
       "description": "Modal dialog explanatory body text, rules, and bios"
     },
     "dialog_badge": {
       "role": "badge",
+      "family": "Tiny5",
+      "base_size": 16,
+      "weight": "bold",
       "description": "Modal dialog shortcut key badges ([Space], [Esc], etc.)"
     },
     "dialog_button": {
       "role": "button",
+      "family": "Tiny5",
+      "base_size": 24,
+      "weight": "bold",
       "description": "Modal dialog action and dismissal buttons"
     },
     "story_dialog_speaker": {
       "role": "title",
       "family": "BoldPixels",
       "base_size": 32,
+      "weight": "normal",
       "description": "Speaker name in narrative story dialogue modal"
     },
     "story_dialog_body": {
       "role": "header",
-      "family": "m6x11plus",
-      "base_size": 18,
+      "family": "Tiny5",
+      "base_size": 24,
+      "weight": "normal",
       "description": "Story narrative text in story dialogue modal"
     },
     "story_dialog_button": {
       "role": "button",
-      "family": "m6x11plus",
-      "base_size": 18,
+      "family": "Tiny5",
+      "base_size": 24,
+      "weight": "bold",
       "description": "Dismiss / proceed button in story dialogue modal"
     },
     "angelic_draft_subtitle": {
       "role": "header",
-      "family": "m6x11plus",
-      "base_size": 18,
+      "family": "Tiny5",
+      "base_size": 24,
+      "weight": "normal",
       "description": "Angelic draft dialog subtitle instruction"
     },
     "angelic_draft_title": {
       "role": "header",
-      "family": "m6x11plus",
-      "base_size": 18,
+      "family": "Tiny5",
+      "base_size": 24,
+      "weight": "bold",
       "description": "Relic card title in angelic blessing draft dialog"
     },
     "angelic_draft_tagline": {
       "role": "badge",
-      "family": "m6x11",
+      "family": "Tiny5",
       "base_size": 16,
+      "weight": "bold",
       "description": "Relic card tagline in angelic blessing draft dialog"
     },
     "angelic_draft_description": {
-      "role": "header",
-      "family": "m6x11plus",
-      "base_size": 18,
+      "role": "body",
+      "family": "Tiny5",
+      "base_size": 16,
+      "weight": "normal",
       "description": "Relic card power description in angelic blessing draft dialog"
     },
     "angelic_draft_button": {
       "role": "button",
-      "family": "m6x11plus",
-      "base_size": 18,
+      "family": "Tiny5",
+      "base_size": 24,
+      "weight": "bold",
       "description": "Equip relic button in angelic blessing draft dialog"
     },
     "dialog_action_label": {
-      "family": "m6x11plus",
-      "base_size": 18,
-      "weight": "normal",
-      "fallback": "m5x7",
+      "family": "Tiny5",
+      "base_size": 16,
+      "weight": "bold",
+      "fallback": "m6x11plus",
       "description": "Shortcuts and controls action verb label"
     },
     "dialog_hint_label": {
-      "family": "m6x11plus",
-      "base_size": 18,
+      "family": "Tiny5",
+      "base_size": 16,
       "weight": "normal",
-      "fallback": "m5x7",
+      "fallback": "m6x11plus",
       "description": "Shortcuts and controls secondary description and hint label"
     },
     "dialog_tip_label": {
-      "family": "m6x11plus",
-      "base_size": 18,
+      "family": "Tiny5",
+      "base_size": 16,
       "weight": "normal",
-      "fallback": "m5x7",
+      "fallback": "m6x11plus",
       "description": "Dialog bottom footer navigation tip banner"
     }
   }

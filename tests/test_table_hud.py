@@ -91,6 +91,36 @@ class TestTableAnnouncementHUD(unittest.TestCase):
         self.assertEqual(self.hud.lore_font_family, "Times New Roman")
         self.assertEqual(self.hud.lore_font_size, 13)
 
+    def test_dynamic_length_aware_typography_and_1080p_profile_scaling(self):
+        """Short outcomes use Tiny5 Duo Bold 32/40/64px, standard prompts use Tiny5 Bold 32/40/64px, and long hints use 24/32/48px."""
+        from display_profile import make_profile_preset
+
+        prof_800 = make_profile_preset("deck_800p")
+        self.hud.set_display_profile(prof_800)
+        self.hud.set_message("Player Wins! (+$50)")
+        self.assertEqual(self.hud.outcome_label.cget("font"), ("Tiny5 Duo", -32, "bold"))
+
+        self.hud.set_message("Place your bet and click 'Deal Hand'")
+        self.assertEqual(self.hud.outcome_label.cget("font"), ("Tiny5", -32, "bold"))
+
+        self.hud.set_message("Click chips to bet on Seat 2 (Center) — click another seat ring to switch focus!")
+        self.assertEqual(self.hud.outcome_label.cget("font"), ("Tiny5", -24, "bold"))
+
+        # Full-HD 1080p steps up onto the 5x (40px) and 4x (32px) Tiny5 integer grids
+        prof_1080 = make_profile_preset("fhd_1080p", fullscreen=True)
+        self.hud.set_display_profile(prof_1080)
+        self.hud.set_message("BLACKJACK! 3:2")
+        self.assertEqual(self.hud.outcome_label.cget("font"), ("Tiny5 Duo", -40, "bold"))
+
+        self.hud.set_message("Place your bet and click 'Deal Hand'")
+        self.assertEqual(self.hud.outcome_label.cget("font"), ("Tiny5", -40, "bold"))
+
+        # 1440p 2x uses 64px / 48px
+        prof_1440 = make_profile_preset("qhd_1440p", fullscreen=True)
+        self.hud.set_display_profile(prof_1440)
+        self.hud.set_message("Player Wins! (+$50)")
+        self.assertEqual(self.hud.outcome_label.cget("font"), ("Tiny5 Duo", -64, "bold"))
+
 
 class TestHauntedAltarCanvas(unittest.TestCase):
     """Verifies HauntedAltarCanvas lighting, shadow math, and particle animations."""

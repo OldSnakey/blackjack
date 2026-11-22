@@ -422,14 +422,29 @@ class TestDisplayProfileEngine(unittest.TestCase):
                     f"bankroll_label wraplength {wrap_val} >= stage_wing_width {prof.stage_wing_width} in {preset_name}",
                 )
 
-                # RightStageWing button width capped & zero synthetic bold
+                # RightStageWing button width capped & no synthetic bold on single-weight bitmap fonts
                 btn_font = app.settings_button.cget("font")
-                self.assertNotIn("bold", str(btn_font).lower(), f"Synthetic bold on RightStageWing in {preset_name}")
+                if "bold" in str(btn_font).lower():
+                    self.assertIn("Tiny5", str(btn_font), f"Synthetic bold on RightStageWing in {preset_name}: {btn_font}")
+                max_wing_btn_w = 160 if preset_name == "fhd_1080p" else int(140 * prof.art_scale)
                 self.assertLessEqual(
                     app.settings_button.winfo_width(),
-                    int(140 * prof.art_scale),
+                    max_wing_btn_w,
                     f"RightStageWing button stretched too wide in {preset_name}: {app.settings_button.winfo_width()}",
                 )
+
+                # Verify 8px integer grid table_px() step-up on fhd_1080p
+                if preset_name == "fhd_1080p":
+                    self.assertEqual(prof.table_px(16), 24)
+                    self.assertEqual(prof.table_px(24), 32)
+                    self.assertEqual(prof.table_px(32), 40)
+                    self.assertIn("-24", str(app.ledger_header_label.cget("font")))
+                elif preset_name in ("hd_720p", "deck_800p"):
+                    self.assertEqual(prof.table_px(16), 16)
+                    self.assertEqual(prof.table_px(24), 24)
+                elif preset_name in ("qhd_1440p", "uhd_4k"):
+                    self.assertEqual(prof.table_px(16), 32)
+                    self.assertEqual(prof.table_px(24), 48)
 
                 # StageBand height remains locked to prof.stage_h even in Venue Tour & Bootcamp
                 self.assertLessEqual(app.stage_band_frame.winfo_reqheight(), prof.stage_h)

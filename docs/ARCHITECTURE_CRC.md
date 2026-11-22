@@ -360,7 +360,7 @@ graph TD
 #### `ShortcutsDialog` ([ui_dialogs.py](../ui_dialogs.py))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: All keyboard and mouse shortcut mappings across Gameplay, Wagering (`1`--`5` for \$5--\$1,000 chips, `Left`/`Right` for 3-Seat focus, Left/Right Mouse spot clicks), Card Counting, Strategy Tripometer (`T`), and System controls (`Shift+W`, `Shift+H`, `F1`/`?`).<br>**Does**: Renders a full-screen zero-scroll two-column controls reference (`[1] Gameplay & Betting` and `[2] System, Trainer & Modes`) with zebra row striping, `1x`/`2x` Kenney graphical keycap & mouse sprites (`m6x11plus`), `?`/`F1` toggle-close parity, and a bottom `✔ Return to Table` bar. | Collaborates with [InWindowScreenHost](../ui_dialogs.py), [KeyboardIconLoader](../audio_assets.py#L210), and [BlackjackApp](../blackjack.py). |
+| **Knows**: All keyboard and mouse shortcut mappings across Gameplay, Wagering (`1`--`5` for \$5--\$1,000 chips, `Left`/`Right` for 3-Seat focus, Left/Right Mouse spot clicks), Card Counting, Strategy Tripometer (`T`), and System controls (`Shift+W`, `Shift+H`, `F1`/`?`).<br>**Does**: Renders a full-screen zero-scroll two-column controls reference (`[1] Gameplay & Betting` and `[2] System, Trainer & Modes`) with zebra row striping, `1x`/`2x` Kenney graphical keycap & mouse sprites (`Tiny5` Bold/Regular on `8px` integer grid), `?`/`F1` toggle-close parity, and a bottom `✔ Return to Table` bar. | Collaborates with [InWindowScreenHost](../ui_dialogs.py), [KeyboardIconLoader](../audio_assets.py#L210), and [BlackjackApp](../blackjack.py). |
 
 #### `WelcomeSplashDialog` ([ui_dialogs.py](../ui_dialogs.py))
 | Responsibility | Collaboration |

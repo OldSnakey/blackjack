@@ -28,6 +28,7 @@ from pixel_ui import (
     get_display_font,
     get_digital_font,
     get_badge_font,
+    snap_pixel_font_size,
 )
 
 
@@ -165,7 +166,7 @@ class CardCountingHud(tkinter.Frame):
         self.dialogue_frame = dialogue_frame
         self._display_profile = display_profile
         self._art_scale: int = int(getattr(display_profile, "art_scale", 1) or 1)
-        self._font_scale: int = int(getattr(display_profile, "font_scale", self._art_scale) or 1)
+        self._font_scale: float = float(getattr(display_profile, "table_font_scale", self._art_scale) or 1.0)
 
         if placement_mode is not None:
             self.placement_mode = placement_mode
@@ -288,8 +289,8 @@ class CardCountingHud(tkinter.Frame):
         self._is_betting_phase: bool = True
         self.stats_grid = tkinter.Frame(self.bar_frame, background=self.MAHOGANY_BG)
         self.stats_grid.pack(side="top", fill="x", pady=(0, 2 * pad_s))
-        self.stats_grid.columnconfigure(0, weight=1, minsize=int(82 * pad_s))
-        self.stats_grid.columnconfigure(1, weight=1, minsize=int(88 * pad_s))
+        self.stats_grid.columnconfigure(0, weight=1, minsize=int(76 * pad_s))
+        self.stats_grid.columnconfigure(1, weight=1, minsize=int(82 * pad_s))
 
         # Running Count (RC)
         self.rc_frame = tkinter.Frame(self.stats_grid, background=self.MAHOGANY_BG)
@@ -359,7 +360,7 @@ class CardCountingHud(tkinter.Frame):
         self.bet_guide_label = tkinter.Label(
             self.bet_guide_frame,
             text="1u ($25)",
-            font=f_val,
+            font=btn_font,
             fg="#fff59d",
             background=self.MAHOGANY_BG,
             cursor="hand2",
@@ -528,17 +529,18 @@ class CardCountingHud(tkinter.Frame):
         """Updates fonts, wraplengths, and paddings cleanly for a new DisplayProfile."""
         self._display_profile = profile
         self._art_scale = int(getattr(profile, "art_scale", 1) or 1)
-        self._font_scale = int(getattr(profile, "font_scale", self._art_scale) or 1)
+        self._font_scale = float(getattr(profile, "table_font_scale", self._art_scale) or 1.0)
         fs = float(self._font_scale)
         pad_s = self._art_scale
+        col_mult = 1.25 if (pad_s == 1 and fs >= 1.35) else 1.0
 
         self.brass_trim.configure(height=max(1, pad_s))
         self.divider.configure(height=max(1, pad_s))
         self.tab_frame.configure(padx=6 * pad_s, pady=2 * pad_s)
         self.bar_frame.configure(padx=6 * pad_s, pady=3 * pad_s)
         self.strategy_frame.configure(padx=5 * pad_s, pady=3 * pad_s)
-        self.stats_grid.columnconfigure(0, weight=1, minsize=int(82 * pad_s))
-        self.stats_grid.columnconfigure(1, weight=1, minsize=int(88 * pad_s))
+        self.stats_grid.columnconfigure(0, weight=1, minsize=int(76 * pad_s * col_mult))
+        self.stats_grid.columnconfigure(1, weight=1, minsize=int(82 * pad_s * col_mult))
 
         f_title = get_element_font("hilo_trainer_title", scale=fs)
         f_btn = get_element_font("hilo_trainer_button", scale=fs)
@@ -552,7 +554,8 @@ class CardCountingHud(tkinter.Frame):
         for lbl in self._stat_name_labels:
             lbl.configure(font=f_lbl)
         self.strategy_title_lbl.configure(font=f_lbl)
-        for val_lbl in (self.rc_label, self.tc_label, self.decks_label, self.edge_label, self.bet_guide_label):
+        self.bet_guide_label.configure(font=f_btn)
+        for val_lbl in (self.rc_label, self.tc_label, self.decks_label, self.edge_label):
             val_lbl.configure(font=f_val)
 
         self.strategy_label.configure(wraplength=int(172 * fs))
@@ -684,8 +687,11 @@ class CardCountingHud(tkinter.Frame):
             "INSURANCE": "#ffd54f",  # Gold
         }
 
+        sz_sm = -snap_pixel_font_size(16, fs, family="Tiny5")
+        sz_lg = -snap_pixel_font_size(24, fs, family="Tiny5")
+
         if hint is None and not text:
-            return "-", "#78909c", ("m6x11plus", -16 * fs)
+            return "-", "#78909c", ("Tiny5", sz_sm, "normal")
 
         if hint is not None:
             raw_action = getattr(hint, "action", "")
@@ -705,10 +711,10 @@ class CardCountingHud(tkinter.Frame):
                 if len(reason) > 13:
                     reason = reason[:12] + "…"
                 display_text = f"{action_name}\n({reason})"
-                font_spec = ("m6x11", -16 * fs)
+                font_spec = ("Tiny5", sz_sm, "bold")
             else:
                 display_text = action_name
-                font_spec = ("m6x11plus", -18 * fs)
+                font_spec = ("Tiny5", sz_lg, "bold")
 
             return display_text, fg_col, font_spec
 
@@ -719,17 +725,17 @@ class CardCountingHud(tkinter.Frame):
             part1, part2 = clean_text.split(" (", 1)
             display_text = f"{part1}\n({part2}"
             fg_col = color_palette.get(part1.strip().upper(), "#ffffff")
-            font_spec = ("m5x7", -16 * fs) if max(len(part1), len(part2) + 1) > 11 else ("m6x11", -16 * fs)
+            font_spec = ("Tiny5", sz_sm, "normal") if max(len(part1), len(part2) + 1) > 11 else ("Tiny5", sz_sm, "bold")
         elif len(clean_text) > 14:
             if len(clean_text) > 22:
                 clean_text = clean_text[:20] + "…"
             display_text = clean_text
             fg_col = color_palette.get(clean_text.strip().upper(), "#ffffff")
-            font_spec = ("m5x7", -16 * fs)
+            font_spec = ("Tiny5", sz_sm, "normal")
         else:
             display_text = clean_text
             fg_col = color_palette.get(clean_text.strip().upper(), "#ffffff")
-            font_spec = ("m6x11", -16 * fs) if len(clean_text) > 8 else ("m6x11plus", -18 * fs)
+            font_spec = ("Tiny5", sz_sm, "bold") if len(clean_text) > 8 else ("Tiny5", sz_lg, "bold")
 
         return display_text, fg_col, font_spec
 
@@ -746,10 +752,11 @@ class CardCountingHud(tkinter.Frame):
         self._last_hint = hint
         self._last_hint_text = text
         self._last_deviation = deviation
-        fs = max(1, int(self._font_scale))
+        fs = float(self._font_scale)
+        sz_sm = -snap_pixel_font_size(16, fs, family="Tiny5")
 
         if self.drill_mode and hint is None and text:
-            display_text, fg_col, font_spec = "DRILL\n(Count!)", "#ffd54f", ("m6x11", -16 * fs)
+            display_text, fg_col, font_spec = "DRILL\n(Count!)", "#ffd54f", ("Tiny5", sz_sm, "bold")
         else:
             display_text, fg_col, font_spec = self._format_strategy_display(hint, text)
         self.strategy_label.configure(text=display_text, fg=fg_col, font=font_spec)
@@ -761,7 +768,7 @@ class CardCountingHud(tkinter.Frame):
                 display_badge = badge_txt
                 if len(display_badge) > 22 and " (" in display_badge:
                     display_badge = display_badge.split(" (")[0]
-                self.deviation_badge.configure(text=display_badge, font=("m5x7", -16 * fs))
+                self.deviation_badge.configure(text=display_badge, font=("Tiny5", sz_sm, "normal"))
                 if not bool(self.deviation_badge.winfo_manager()):
                     self.deviation_badge.pack(side="top", anchor="center", pady=(2 * self._art_scale, 0))
             else:
@@ -886,13 +893,17 @@ class CardCountingQuizDialog(InWindowScreenHost):
     ):
         app_ref = getattr(parent.winfo_toplevel(), "_active_blackjack_app", None)
         prof = display_profile or getattr(app_ref, "display_profile", None)
+        art_s = int(getattr(prof, "art_scale", 1) or 1)
+        tbl_fs = float(getattr(prof, "table_font_scale", art_s) or 1.0)
+        is_fhd = (art_s == 1 and tbl_fs >= 1.35)
+        ov_wh = (840, 480) if is_fhd else (720, 412)
         super().__init__(
             parent,
             app=app_ref,
             profile=prof,
             background="#0a1a15",
-            base_pad=18,
-            overlay_wh=(680, 395),
+            base_pad=16,
+            overlay_wh=ov_wh,
             overlay_rely=0.57,
         )
         self.counter = counter
@@ -910,7 +921,7 @@ class CardCountingQuizDialog(InWindowScreenHost):
         self.active_count_field: str = "rc"
         self._submitted: bool = False
 
-        self._font_scale: int = max(1, int(getattr(prof, "font_scale", 1) or self.art_scale))
+        self._font_scale: float = tbl_fs
         self.title("🎯 Card Counting Drill Quiz")
 
         self._build_ui()
@@ -985,7 +996,8 @@ class CardCountingQuizDialog(InWindowScreenHost):
 
     def _build_ui(self):
         fs = float(self._font_scale)
-        pad_s = self._font_scale
+        pad_s = max(1, int(self.art_scale))
+        prompt_font = ("Tiny5", -snap_pixel_font_size(24, fs, family="Tiny5"), "normal")
 
         card = tkinter.Frame(
             self,
@@ -994,8 +1006,8 @@ class CardCountingQuizDialog(InWindowScreenHost):
             borderwidth=2 * pad_s,
             highlightbackground="#00bfa5",
             highlightthickness=2 * pad_s,
-            padx=26 * pad_s,
-            pady=18 * pad_s,
+            padx=22 * pad_s,
+            pady=14 * pad_s,
         )
         card.pack(fill="both", expand=True)
         self._quiz_card = card
@@ -1073,21 +1085,20 @@ class CardCountingQuizDialog(InWindowScreenHost):
         self.count_desc_lbl = tkinter.Label(
             self.count_frame,
             text="Estimate the current Running Count and True Count from all revealed cards:",
-            font=get_element_font("dialog_body", scale=fs),
+            font=prompt_font,
             fg="#eceff1",
             background="#0a1a15",
-            wraplength=int(560 * fs),
+            wraplength=int(640 * fs),
             justify="center",
         )
-        self.count_desc_lbl.pack(pady=(0, 12 * pad_s))
+        self.count_desc_lbl.pack(pady=(0, 8 * pad_s))
 
         input_frame = tkinter.Frame(self.count_frame, background="#0a1a15")
-        input_frame.pack(pady=4 * pad_s)
+        input_frame.pack(pady=2 * pad_s)
 
-        s_int = max(1, int(round(fs)))
-        lbl_font = ("m6x11plus", -18 * s_int, "normal")
-        step_btn_font = ("m5x7", -32 * s_int, "normal")
-        val_font = ("Round9x13", -32 * s_int, "normal")
+        lbl_font = ("Tiny5", -snap_pixel_font_size(24, fs, family="Tiny5"), "bold")
+        step_btn_font = ("Tiny5 Duo", -snap_pixel_font_size(24, fs, family="Tiny5 Duo"), "bold")
+        val_font = ("Tiny5 Duo", -snap_pixel_font_size(32, fs, family="Tiny5 Duo"), "bold")
 
         # Row 0: Running Count (RC) Stepper (±1)
         tkinter.Label(
@@ -1266,10 +1277,10 @@ class CardCountingQuizDialog(InWindowScreenHost):
         self.deviation_prompt_label = tkinter.Label(
             self.deviation_frame,
             text=prompt_text,
-            font=get_element_font("dialog_body", scale=fs),
+            font=prompt_font,
             fg="#eceff1",
             background="#0a1a15",
-            wraplength=int(580 * fs),
+            wraplength=int(640 * fs),
             justify="center",
         )
         self.deviation_prompt_label.pack(pady=(6 * pad_s, 16 * pad_s))

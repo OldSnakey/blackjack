@@ -1115,8 +1115,11 @@ class BlackjackApp:
         self._stage_spacer_right.grid(row=0, column=4, sticky="nsew")
 
         # LeftStageWing: Tour & Bankroll Ledger (preserved as `self.scoreboard_frame`)
-        left_pad_x = max(int(8 * art_s), (prof.stage_wing_width - int(220 * art_s)) // 2)
-        left_pad_y = int(6 * art_s)
+        tbl_fs = prof.table_font_scale
+        is_fhd_wing = (art_s == 1 and tbl_fs >= 1.35)
+        left_inner_w = 300 if is_fhd_wing else int(220 * art_s)
+        left_pad_x = max(int(5 * art_s), (prof.stage_wing_width - left_inner_w) // 2)
+        left_pad_y = int(5 * art_s)
         scoreboard_frame = tkinter.Frame(
             self.stage_band_frame,
             height=prof.stage_h,
@@ -1132,11 +1135,12 @@ class BlackjackApp:
         self.left_stage_wing = scoreboard_frame
         self.scoreboard_frame = scoreboard_frame
 
-        f_wing_meta = get_body_font(16 * int(font_s))
+        f_wing_hdr = get_element_font("scoreboard_title", scale=tbl_fs)
+        f_wing_meta = get_body_font(prof.table_px(16))
         self.ledger_header_label = tkinter.Label(
             scoreboard_frame,
             text="CASINO LEDGER",
-            font=f_wing_meta,
+            font=f_wing_hdr,
             background=wing_bg,
             fg="#d4af37",
             anchor="w",
@@ -1145,10 +1149,11 @@ class BlackjackApp:
 
         bankroll_fg = get_theme_color("bankroll_text", "#ffd700")
         ledger_wrap = max(int(96 * art_s), prof.stage_wing_width - 2 * left_pad_x - int(6 * art_s))
+        init_br_font = ("Tiny5 Duo", -32, "bold") if is_fhd_wing else ("Tiny5", -24 * int(art_s), "bold")
         self.bankroll_label = tkinter.Label(
             scoreboard_frame,
             text="BANKROLL:\n$1,000\nBET: $0",
-            font=("m5x7", -32 * int(font_s)),
+            font=init_br_font,
             background=wing_bg,
             fg=bankroll_fg,
             justify="left",
@@ -1199,6 +1204,7 @@ class BlackjackApp:
             fg="#80cbc4",
             justify="left",
             anchor="sw",
+            wraplength=ledger_wrap,
         )
         self.rules_pill_label.grid(row=4, column=0, sticky="sew", pady=(int(1 * art_s), 0))
 
@@ -1269,9 +1275,11 @@ class BlackjackApp:
             self.dealer_stage_canvas, scale=max(2, int(2 * art_s)),
             title="The Classic Croupier", speech_var=self.dealer_speech_var,
         )
+        self.dealer_dialogue_frame.set_scale(float(art_s), font_scale=tbl_fs)
         dlg_cfg = get_ui_layout("dealer_stage", "dialogue_frame")
         bubble_x = (stage_init_w // 2) + int(dlg_cfg.get("offset_x", -76) * art_s)
-        bubble_y = stage_init_h + int(dlg_cfg.get("offset_y", -90) * art_s)
+        dlg_off_y = -72 if is_fhd_wing else int(dlg_cfg.get("offset_y", -90) * art_s)
+        bubble_y = stage_init_h + dlg_off_y
         self.dealer_stage_canvas.create_window(
             bubble_x, bubble_y, window=self.dealer_dialogue_frame, anchor=dlg_cfg.get("anchor", "se"), tags="dialogue_win"
         )
@@ -1281,7 +1289,8 @@ class BlackjackApp:
         self.dealer_dialogue_frame.bind("<Button-1>", self._on_dialogue_click)
 
         # RightStageWing: Compact 2x3 Salon Menu (capped horizontal padding prevents 1080p ribbon stretching!)
-        right_pad_x = max(int(6 * art_s), (prof.stage_wing_width - int(224 * art_s)) // 2)
+        right_inner_w = 276 if is_fhd_wing else int(224 * art_s)
+        right_pad_x = max(int(6 * art_s), (prof.stage_wing_width - right_inner_w) // 2)
         right_pad_y = int(14 * art_s)
         self.right_stage_wing = tkinter.Frame(
             self.stage_band_frame,
@@ -1299,7 +1308,7 @@ class BlackjackApp:
         for r_i in (0, 1, 2):
             self.right_stage_wing.rowconfigure(r_i, weight=1)
 
-        f_wing_btn = get_element_font("top_bar_button", scale=font_s)
+        f_wing_btn = get_element_font("top_bar_button", scale=tbl_fs)
         btn_scale = max(1, int(2 * art_s))
         wing_btn_kw = {
             "font": f_wing_btn,
@@ -1447,27 +1456,31 @@ class BlackjackApp:
         self.gravestone_labels = []
 
         # CenterPit Score Plaques (placed symmetrically relative to `pit_cx`)
+        plaque_sf = 1.4 if is_fhd_wing else float(art_s)
         self.dealer_header_frame = PixelPlaqueFrame(
-            card_table_frame, width=114, height=60, title="Dealer",
+            card_table_frame, width=124, height=68, title="Dealer",
             score_var=self.dealer_score_var, scale=max(1, int(2 * art_s)),
             bg=PANEL_BACKGROUND_COLOR
         )
+        self.dealer_header_frame.set_scale(plaque_sf)
         self.dealer_title_label = self.dealer_header_frame.title_label
         self.dealer_score_label = self.dealer_header_frame.score_label
 
         self.announcement_hud = TableAnnouncementHUD(
             card_table_frame, background=PANEL_BACKGROUND_COLOR
         )
+        self.announcement_hud.set_display_profile(prof)
         self.announcement_hud.set_payout_ratio(self.house_rules.blackjack_payout)
         self.table_hud = self.announcement_hud
         self.result_var.trace_add("write", lambda *_: self.announcement_hud.set_message(self.result_var.get()))
         self.announcement_hud.set_message(self.result_var.get())
 
         self.player_header_frame = PixelPlaqueFrame(
-            card_table_frame, width=114, height=60, title="Player",
+            card_table_frame, width=124, height=68, title="Player",
             score_var=self.player_score_var, scale=max(1, int(2 * art_s)),
             bg=PANEL_BACKGROUND_COLOR
         )
+        self.player_header_frame.set_scale(plaque_sf)
         self.player_title_label = self.player_header_frame.title_label
         self.player_score_label = self.player_header_frame.score_label
         self._position_score_plaques()
@@ -1557,59 +1570,60 @@ class BlackjackApp:
         self.chip_buttons = [ChipButtonProxy(self, amt) for amt, _, _ in CHIP_DENOMINATIONS]
 
         rail_btn_scale = max(3, int(3 * art_s))
-        f_bet_btn = get_element_font("betting_button", scale=font_s)
-        f_action_btn = get_element_font("action_button", scale=font_s)
+        f_bet_btn = get_element_font("betting_button", scale=tbl_fs)
+        f_action_btn = get_element_font("action_button", scale=tbl_fs)
+        rail_dis_fg = "#8d7b72"
 
         # 1. Betting Phase Center Dock ("bet_dock")
         self.clear_bet_button = CanvasPixelButton(
-            self.mahogany_rail, x=240, y=36, width=136, height=36,
-            text="Clear Bet", theme="neutral", font=f_bet_btn, scale=rail_btn_scale, group_tag="bet_dock", command=self._clear_bet
+            self.mahogany_rail, x=240, y=36, width=140, height=44,
+            text="Clear Bet", theme="neutral", font=f_bet_btn, scale=rail_btn_scale, disabled_text_color=rail_dis_fg, group_tag="bet_dock", command=self._clear_bet
         )
         self.all_in_button = CanvasPixelButton(
-            self.mahogany_rail, x=355, y=36, width=96, height=36,
-            text="All In", theme="red", font=f_bet_btn, scale=rail_btn_scale, group_tag="bet_dock", command=self._all_in
+            self.mahogany_rail, x=355, y=36, width=108, height=44,
+            text="All In", theme="red", font=f_bet_btn, scale=rail_btn_scale, disabled_text_color=rail_dis_fg, group_tag="bet_dock", command=self._all_in
         )
         self.deal_bet_button = CanvasPixelButton(
-            self.mahogany_rail, x=475, y=36, width=144, height=36,
-            text="Deal Hand", theme="gold", font=f_bet_btn, scale=rail_btn_scale, group_tag="bet_dock", command=self._deal_hand_with_bet
+            self.mahogany_rail, x=475, y=36, width=156, height=44,
+            text="Deal Hand", theme="gold", font=f_bet_btn, scale=rail_btn_scale, disabled_text_color=rail_dis_fg, group_tag="bet_dock", command=self._deal_hand_with_bet
         )
         self.rebuy_button = CanvasPixelButton(
-            self.mahogany_rail, x=615, y=36, width=124, height=36,
-            text="Rebuy $1K", theme="amber", font=f_bet_btn, scale=rail_btn_scale, group_tag="bet_dock", command=self._rebuy
+            self.mahogany_rail, x=615, y=36, width=140, height=44,
+            text="Rebuy $1K", theme="amber", font=f_bet_btn, scale=rail_btn_scale, disabled_text_color=rail_dis_fg, group_tag="bet_dock", command=self._rebuy
         )
 
         self.rail_denom_buttons: list[CanvasPixelButton] = []
 
         # 2. In-Play Phase Center Dock ("play_dock")
         self.hit_button = CanvasPixelButton(
-            self.mahogany_rail, x=185, y=36, width=96, height=36,
-            text="Hit", theme="green", font=f_action_btn, scale=rail_btn_scale, group_tag="play_dock", command=self.on_hit
+            self.mahogany_rail, x=185, y=36, width=104, height=44,
+            text="Hit", theme="green", font=f_action_btn, scale=rail_btn_scale, disabled_text_color=rail_dis_fg, group_tag="play_dock", command=self.on_hit
         )
         self.stand_button = CanvasPixelButton(
-            self.mahogany_rail, x=290, y=36, width=96, height=36,
-            text="Stand", theme="red", font=f_action_btn, scale=rail_btn_scale, group_tag="play_dock", command=self.on_stand
+            self.mahogany_rail, x=290, y=36, width=108, height=44,
+            text="Stand", theme="red", font=f_action_btn, scale=rail_btn_scale, disabled_text_color=rail_dis_fg, group_tag="play_dock", command=self.on_stand
         )
         self.double_button = CanvasPixelButton(
-            self.mahogany_rail, x=395, y=36, width=96, height=36,
-            text="Double", theme="gold", font=f_action_btn, scale=rail_btn_scale, group_tag="play_dock", command=self.on_double_down, enabled=False
+            self.mahogany_rail, x=395, y=36, width=112, height=44,
+            text="Double", theme="gold", font=f_action_btn, scale=rail_btn_scale, disabled_text_color=rail_dis_fg, group_tag="play_dock", command=self.on_double_down, enabled=False
         )
         self.split_button = CanvasPixelButton(
-            self.mahogany_rail, x=500, y=36, width=96, height=36,
-            text="Split", theme="blue", font=f_action_btn, scale=rail_btn_scale, group_tag="play_dock", command=self.on_split, enabled=False
+            self.mahogany_rail, x=500, y=36, width=104, height=44,
+            text="Split", theme="blue", font=f_action_btn, scale=rail_btn_scale, disabled_text_color=rail_dis_fg, group_tag="play_dock", command=self.on_split, enabled=False
         )
         self.surrender_button = CanvasPixelButton(
-            self.mahogany_rail, x=610, y=36, width=118, height=36,
-            text="Surrender", theme="neutral", font=f_action_btn, scale=rail_btn_scale, group_tag="play_dock", command=self.on_surrender, enabled=False
+            self.mahogany_rail, x=610, y=36, width=136, height=44,
+            text="Surrender", theme="neutral", font=f_action_btn, scale=rail_btn_scale, disabled_text_color=rail_dis_fg, group_tag="play_dock", command=self.on_surrender, enabled=False
         )
 
         # 3. Dedicated Actions (Right / Left anchors)
         self.new_game_button = CanvasPixelButton(
-            self.mahogany_rail, x=825, y=36, width=118, height=36,
-            text="New Game", theme="gold", font=f_action_btn, scale=rail_btn_scale, command=self.new_game
+            self.mahogany_rail, x=825, y=36, width=136, height=44,
+            text="New Game", theme="gold", font=f_action_btn, scale=rail_btn_scale, disabled_text_color=rail_dis_fg, command=self.new_game
         )
         self.miracle_button = CanvasPixelButton(
-            self.mahogany_rail, x=75, y=36, width=144, height=36,
-            text="✨ Miracle", theme="gold", font=f_action_btn, scale=rail_btn_scale, command=self._on_miracle_draw, enabled=False
+            self.mahogany_rail, x=75, y=36, width=148, height=44,
+            text="✨ Miracle", theme="gold", font=f_action_btn, scale=rail_btn_scale, disabled_text_color=rail_dis_fg, command=self._on_miracle_draw, enabled=False
         )
         self.mahogany_rail.itemconfigure(self.miracle_button.tag, state="hidden")
         self.miracle_button.grid(row=0, column=6, padx=6)
@@ -1617,11 +1631,11 @@ class BlackjackApp:
 
         self.button_frame.columnconfigure(7, weight=1)
 
-        f_cursed_btn = get_element_font("cursed_stakes_button", scale=font_s)
+        f_cursed_btn = get_element_font("cursed_stakes_button", scale=tbl_fs)
         self.cursed_stakes_button = CanvasPixelButton(
-            self.mahogany_rail, x=95, y=36, width=180, height=36,
+            self.mahogany_rail, x=95, y=36, width=180, height=44,
             text="🔥 Cursed", theme="red", font=f_cursed_btn,
-            scale=rail_btn_scale, group_tag="anchor_dock",
+            scale=rail_btn_scale, disabled_text_color=rail_dis_fg, group_tag="anchor_dock",
             command=self._on_toggle_cursed_stakes, master=self.button_frame
         )
         self.cursed_stakes_button.grid(**get_grid_options("mahogany_rail", "cursed_stakes"))
@@ -1629,9 +1643,9 @@ class BlackjackApp:
             self.cursed_stakes_button.grid_remove()
 
         self.tour_map_rail_button = CanvasPixelButton(
-            self.mahogany_rail, x=85, y=36, width=124, height=36,
+            self.mahogany_rail, x=85, y=36, width=136, height=44,
             text="Map [Esc]", theme="blue", font=f_cursed_btn,
-            scale=rail_btn_scale, group_tag="anchor_dock",
+            scale=rail_btn_scale, disabled_text_color=rail_dis_fg, group_tag="anchor_dock",
             command=self.return_to_tour_map, master=self.button_frame
         )
         self.tour_map_rail_button.grid_remove()
@@ -6347,9 +6361,11 @@ class BlackjackApp:
         if not hasattr(self, "bankroll_label"):
             return
         prof = getattr(self, "display_profile", None)
-        font_s = int(getattr(prof, "font_scale", 1) or 1)
-        f_compact = get_header_font(18 * font_s)
-        f_display = ("m5x7", -32 * font_s)
+        art_s = int(getattr(prof, "art_scale", 1) or 1)
+        tbl_fs = float(getattr(prof, "table_font_scale", float(art_s)))
+        is_fhd_wing = (art_s == 1 and tbl_fs >= 1.35)
+        f_compact = ("Tiny5", -24 if is_fhd_wing else (-16 * art_s), "bold")
+        f_display = ("Tiny5 Duo", -24, "bold") if is_fhd_wing else ("Tiny5", -24 * art_s, "bold")
 
         is_tour_map = bool(getattr(self, "tour_active", False) and not getattr(self, "tour_in_salon", False))
         is_bootcamp = bool(getattr(self, "bootcamp_active", False))
@@ -6430,9 +6446,14 @@ class BlackjackApp:
         else:
             if hasattr(self, "ledger_header_label"):
                 self.ledger_header_label.configure(text="CASINO LEDGER")
+            br_txt = (
+                f"CHIPS: ${bankroll:,}\nBET: ${bet:,}"
+                if is_fhd_wing
+                else f"CHIPS:\n${bankroll:,}\nBET: ${bet:,}"
+            )
             self.bankroll_label.configure(
                 font=f_display,
-                text=f"BANKROLL:\n${bankroll:,}\nBET: ${bet:,}",
+                text=br_txt,
             )
         if hasattr(self, "chip_visualizer"):
             available = max(0, bankroll - self.current_bet_var.get() - total_side) if self.is_betting_phase else max(0, bankroll)
@@ -6556,6 +6577,9 @@ class BlackjackApp:
             return
         prof = self.display_profile
         s = float(prof.art_scale)
+        tbl_fs = float(getattr(prof, "table_font_scale", s))
+        w_mult = 1.28 if (s < 1.5 and tbl_fs >= 1.35) else 1.0
+        h_mult = 1.18 if (s < 1.5 and tbl_fs >= 1.35) else 1.0
         rail_w = self.mahogany_rail.winfo_width()
         if rail_w < prof.window_w - 40 or self.root.state() == "withdrawn":
             rail_w = max(100, prof.window_w)
@@ -6565,19 +6589,19 @@ class BlackjackApp:
         cy = max(int(36 * s), rail_h // 2)
         pit_left, cx, pit_right = resolve_pit_bounds(rail_w, prof.pit_max_width)
         dock_cfg = get_rail_button_layout()
-        base_h = dock_cfg.get("btn_height", 36)
-        btn_h = int(base_h * s)
-        gap = int(dock_cfg.get("dock_gap", 12) * s)
+        base_h = dock_cfg.get("btn_height", 44)
+        btn_h = int(base_h * s * h_mult)
+        gap = int(dock_cfg.get("dock_gap", 12) * s * (1.2 if w_mult > 1.0 else 1.0))
         side_margin = int(dock_cfg.get("side_margin", 24) * s)
 
         # 1. Betting Phase Dock ("Clear Bet", "All In", "Deal Hand", "Rebuy")
         btn_scale = max(3, int(3 * s))
         bet_cfgs = dock_cfg.get("bet_buttons", {})
         bet_btns = [
-            (self.clear_bet_button, int(bet_cfgs.get("clear_bet", {}).get("width", 136) * s)),
-            (self.all_in_button, int(bet_cfgs.get("all_in", {}).get("width", 96) * s)),
-            (self.deal_bet_button, int(bet_cfgs.get("deal_hand", {}).get("width", 144) * s)),
-            (self.rebuy_button, int(bet_cfgs.get("rebuy", {}).get("width", 124) * s)),
+            (self.clear_bet_button, int(bet_cfgs.get("clear_bet", {}).get("width", 140) * s * w_mult)),
+            (self.all_in_button, int(bet_cfgs.get("all_in", {}).get("width", 108) * s * w_mult)),
+            (self.deal_bet_button, int(bet_cfgs.get("deal_hand", {}).get("width", 156) * s * w_mult)),
+            (self.rebuy_button, int(bet_cfgs.get("rebuy", {}).get("width", 140) * s * w_mult)),
         ]
         total_bet_w = sum(bw for _, bw in bet_btns) + gap * (len(bet_btns) - 1)
         cur_x = cx - (total_bet_w // 2)
@@ -6588,24 +6612,24 @@ class BlackjackApp:
         # 2. In-Play Phase Dock ("Hit", "Stand", "Double", "Split", "Surrender")
         play_cfgs = dock_cfg.get("play_buttons", {})
         play_btns = [
-            (self.hit_button, int(play_cfgs.get("hit", {}).get("width", 96) * s)),
-            (self.stand_button, int(play_cfgs.get("stand", {}).get("width", 96) * s)),
-            (self.double_button, int(play_cfgs.get("double", {}).get("width", 96) * s)),
-            (self.split_button, int(play_cfgs.get("split", {}).get("width", 96) * s)),
-            (self.surrender_button, int(play_cfgs.get("surrender", {}).get("width", 118) * s)),
+            (self.hit_button, int(play_cfgs.get("hit", {}).get("width", 104) * s * w_mult)),
+            (self.stand_button, int(play_cfgs.get("stand", {}).get("width", 108) * s * w_mult)),
+            (self.double_button, int(play_cfgs.get("double", {}).get("width", 112) * s * w_mult)),
+            (self.split_button, int(play_cfgs.get("split", {}).get("width", 104) * s * w_mult)),
+            (self.surrender_button, int(play_cfgs.get("surrender", {}).get("width", 136) * s * w_mult)),
         ]
         total_play_w = sum(bw for _, bw in play_btns) + gap * (len(play_btns) - 1)
         cur_x = cx - (total_play_w // 2)
 
         # Left Pit Anchor: Cursed Stakes / Map [Esc] / Miracle
         anchor_cfgs = dock_cfg.get("anchor_buttons", {})
-        m_w = int(anchor_cfgs.get("miracle", {}).get("width", 144) * s)
+        m_w = int(anchor_cfgs.get("miracle", {}).get("width", 148) * s * w_mult)
         m_x = pit_left + side_margin + (m_w // 2)
         if hasattr(self, "cursed_stakes_button") and isinstance(self.cursed_stakes_button, CanvasPixelButton):
             if getattr(self, "table_seats", 1) == 3:
                 self.cursed_stakes_button.grid_remove()
             else:
-                cs_w = int(180 * s)
+                cs_w = int(180 * s * w_mult)
                 cs_x = pit_left + side_margin + (cs_w // 2)
                 self.cursed_stakes_button.resize(cs_x, cy, cs_w, btn_h, scale=btn_scale)
                 if bool(self.cursed_stakes_button.grid_info()):
@@ -6613,7 +6637,7 @@ class BlackjackApp:
                     cur_x = max(cur_x, cs_x + (cs_w // 2) + int(24 * s))
 
         if hasattr(self, "tour_map_rail_button") and isinstance(self.tour_map_rail_button, CanvasPixelButton):
-            tm_w = int(124 * s)
+            tm_w = int(136 * s * w_mult)
             tm_x = pit_left + side_margin + (tm_w // 2)
             self.tour_map_rail_button.resize(tm_x, cy, tm_w, btn_h, scale=btn_scale)
             if bool(self.tour_map_rail_button.grid_info()):
@@ -6630,7 +6654,7 @@ class BlackjackApp:
             cur_x += bw + gap
 
         # 3. Right Pit Anchor ("New Game")
-        ng_w = int(anchor_cfgs.get("new_game", {}).get("width", 118) * s)
+        ng_w = int(anchor_cfgs.get("new_game", {}).get("width", 136) * s * w_mult)
         ng_x = pit_right - (ng_w // 2) - side_margin
         self.new_game_button.resize(ng_x, cy, ng_w, btn_h, scale=btn_scale)
 
@@ -8439,16 +8463,21 @@ class BlackjackApp:
         prof = self.display_profile
         art_s = prof.art_scale
         font_s = float(prof.font_scale)
+        tbl_fs = float(prof.table_font_scale)
+        is_fhd_wing = (art_s == 1 and tbl_fs >= 1.35)
         s = float(art_s)
 
         # 1. StageBand & Proscenium Wings
         self._sync_stage_band_columns()
-        left_pad_x = max(int(8 * art_s), (prof.stage_wing_width - int(220 * art_s)) // 2)
-        right_pad_x = max(int(6 * art_s), (prof.stage_wing_width - int(224 * art_s)) // 2)
-        f_wing_meta = get_body_font(16 * int(font_s))
+        left_inner_w = 300 if is_fhd_wing else int(220 * art_s)
+        right_inner_w = 276 if is_fhd_wing else int(224 * art_s)
+        left_pad_x = max(int(5 * art_s), (prof.stage_wing_width - left_inner_w) // 2)
+        right_pad_x = max(int(6 * art_s), (prof.stage_wing_width - right_inner_w) // 2)
+        f_wing_hdr = get_element_font("scoreboard_title", scale=tbl_fs)
+        f_wing_meta = get_body_font(prof.table_px(16))
         if hasattr(self, "left_stage_wing"):
             self.left_stage_wing.configure(
-                height=prof.stage_h, padx=left_pad_x, pady=int(6 * art_s), highlightthickness=max(1, art_s)
+                height=prof.stage_h, padx=left_pad_x, pady=int(5 * art_s), highlightthickness=max(1, art_s)
             )
             self.left_stage_wing.grid_propagate(False)
         if hasattr(self, "right_stage_wing"):
@@ -8457,20 +8486,20 @@ class BlackjackApp:
             )
             self.right_stage_wing.grid_propagate(False)
         if hasattr(self, "ledger_header_label"):
-            self.ledger_header_label.configure(font=f_wing_meta)
+            self.ledger_header_label.configure(font=f_wing_hdr)
+        ledger_wrap = max(int(96 * art_s), prof.stage_wing_width - 2 * left_pad_x - int(4 * art_s))
         if hasattr(self, "bankroll_label"):
-            ledger_wrap = max(int(96 * art_s), prof.stage_wing_width - 2 * left_pad_x - int(6 * art_s))
             self.bankroll_label.configure(wraplength=ledger_wrap)
             self._update_bankroll_display()
         if hasattr(self, "stat_labels"):
             for lbl, _is_bold in self.stat_labels:
                 lbl.configure(font=f_wing_meta)
         if hasattr(self, "rules_pill_label"):
-            self.rules_pill_label.configure(font=f_wing_meta)
+            self.rules_pill_label.configure(font=f_wing_meta, wraplength=ledger_wrap)
         if hasattr(self, "shoe_label"):
             self.shoe_label.configure(font=get_digital_font(snap_pixel_font_size(12, font_s)))
 
-        f_wing_btn = get_element_font("top_bar_button", scale=font_s)
+        f_wing_btn = get_element_font("top_bar_button", scale=tbl_fs)
         for btn in (
             getattr(self, "sound_button", None),
             getattr(self, "help_button", None),
@@ -8486,7 +8515,7 @@ class BlackjackApp:
 
         if getattr(self, "icon_loader", None) and hasattr(self, "help_button"):
             self.icon_question_small = self.icon_loader.get_clean_glyph_icon(
-                "keyboard_question", target_height=int(16 * art_s), color="#ffd700"
+                "keyboard_question", target_height=int((22 if is_fhd_wing else 16) * art_s), color="#ffd700"
             )
             if self.icon_question_small:
                 self.help_button.configure(image=self.icon_question_small)
@@ -8497,19 +8526,23 @@ class BlackjackApp:
         if hasattr(self, "dealer_stage_canvas"):
             self.dealer_stage_canvas.set_display_profile(prof)
             if hasattr(self, "dealer_dialogue_frame"):
-                self.dealer_dialogue_frame.set_scale(float(art_s))
+                self.dealer_dialogue_frame.set_scale(float(art_s), font_scale=tbl_fs)
                 dlg_cfg = get_ui_layout("dealer_stage", "dialogue_frame")
                 bubble_x = (prof.stage_w // 2) + int(dlg_cfg.get("offset_x", -76) * art_s)
-                bubble_y = prof.stage_h + int(dlg_cfg.get("offset_y", -90) * art_s)
+                dlg_off_y = -72 if is_fhd_wing else int(dlg_cfg.get("offset_y", -90) * art_s)
+                bubble_y = prof.stage_h + dlg_off_y
                 self.dealer_stage_canvas.coords("dialogue_win", bubble_x, bubble_y)
         if hasattr(self, "horizon_rail"):
             self.horizon_rail.configure(height=prof.divider_h)
 
         # 3. Card Table Felt, Score Plaques, Wings & Canvases
+        plaque_sf = 1.4 if is_fhd_wing else float(art_s)
         if hasattr(self, "dealer_header_frame") and hasattr(self.dealer_header_frame, "set_scale"):
-            self.dealer_header_frame.set_scale(float(art_s))
+            self.dealer_header_frame.set_scale(plaque_sf)
         if hasattr(self, "player_header_frame") and hasattr(self.player_header_frame, "set_scale"):
-            self.player_header_frame.set_scale(float(art_s))
+            self.player_header_frame.set_scale(plaque_sf)
+        if hasattr(self, "announcement_hud") and hasattr(self.announcement_hud, "set_display_profile"):
+            self.announcement_hud.set_display_profile(prof)
         if hasattr(self, "card_table_frame") and isinstance(self.card_table_frame, TableFeltCanvas):
             tbl_layout = get_table_layout()
             for row_cfg in tbl_layout.get("row_configs", []):
@@ -8531,18 +8564,18 @@ class BlackjackApp:
 
         # 4. Floating Insurance Plaque
         if hasattr(self, "insurance_frame"):
-            apply_style(self.insurance_frame, "insurance_prompt", "frame", scale=font_s, profile=prof)
+            apply_style(self.insurance_frame, "insurance_prompt", "frame", scale=tbl_fs, profile=prof)
         if hasattr(self, "insurance_label"):
-            apply_style(self.insurance_label, "insurance_prompt", "label", scale=font_s, profile=prof)
+            apply_style(self.insurance_label, "insurance_prompt", "label", scale=tbl_fs, profile=prof)
         if hasattr(self, "take_insurance_button"):
-            apply_style(self.take_insurance_button, "insurance_prompt", "take_button", scale=font_s, profile=prof)
+            apply_style(self.take_insurance_button, "insurance_prompt", "take_button", scale=tbl_fs, profile=prof)
         if hasattr(self, "decline_insurance_button"):
-            apply_style(self.decline_insurance_button, "insurance_prompt", "decline_button", scale=font_s, profile=prof)
+            apply_style(self.decline_insurance_button, "insurance_prompt", "decline_button", scale=tbl_fs, profile=prof)
 
         # 5. Mahogany Rail & Sub-View Docks (Tour / Bootcamp)
-        f_action_btn = get_element_font("action_button", scale=font_s)
-        f_bet_btn = get_element_font("betting_button", scale=font_s)
-        f_cursed_btn = get_element_font("cursed_stakes_button", scale=font_s)
+        f_action_btn = get_element_font("action_button", scale=tbl_fs)
+        f_bet_btn = get_element_font("betting_button", scale=tbl_fs)
+        f_cursed_btn = get_element_font("cursed_stakes_button", scale=tbl_fs)
         btn_scale = max(3, int(3 * art_s))
         for btn in (
             getattr(self, "hit_button", None),
