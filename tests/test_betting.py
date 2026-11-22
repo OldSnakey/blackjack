@@ -480,10 +480,16 @@ class TestBettingGuiAndState(unittest.TestCase):
             Card(8, self.app.back_image, rank="8", suit="diamond"),
         ]]
 
+        self.root.update_idletasks()
+        felt_h_before = self.app.card_table_frame.winfo_height()
         self.app._prompt_insurance()
+        self.root.update_idletasks()
+        felt_h_after = self.app.card_table_frame.winfo_height()
 
         self.assertTrue(self.app.is_insurance_phase)
-        self.assertTrue(bool(self.app.insurance_frame.grid_info()))
+        self.assertTrue(bool(self.app.insurance_frame.place_info()))
+        self.assertTrue(self.app.announcement_hud.insurance_overlay_active)
+        self.assertEqual(felt_h_before, felt_h_after)
         self.assertEqual(self.app.hit_button["state"], "disabled")
         self.assertEqual(self.app.stand_button["state"], "disabled")
         self.assertEqual(self.app.split_button["state"], "disabled")
@@ -498,7 +504,7 @@ class TestBettingGuiAndState(unittest.TestCase):
 
         # In Casual Mode, insurance frame must remain unmapped and phase False
         self.assertFalse(self.app.is_insurance_phase)
-        self.assertFalse(bool(self.app.insurance_frame.grid_info()))
+        self.assertFalse(bool(self.app.insurance_frame.place_info()))
 
     def test_insurance_taken_dealer_has_blackjack_breakeven(self):
         """Taking insurance when dealer has Blackjack pays 2:1, resulting in net $0 loss."""
@@ -523,7 +529,8 @@ class TestBettingGuiAndState(unittest.TestCase):
         # Bankroll was 950 - 25 (insurance cost) + 75 (insurance return: 25*3) + 0 (main bet lost) = 1000!
         self.assertEqual(self.app.bankroll_var.get(), 1000)
         self.assertFalse(self.app.is_insurance_phase)
-        self.assertFalse(bool(self.app.insurance_frame.grid_info()))
+        self.assertFalse(bool(self.app.insurance_frame.place_info()))
+        self.assertFalse(self.app.announcement_hud.insurance_overlay_active)
         self.assertEqual(self.app.new_game_button["state"], "normal")
         self.assertIn("Insurance won", self.app.result_var.get())
         self.assertIn("+$50", self.app.result_var.get())
@@ -580,7 +587,8 @@ class TestBettingGuiAndState(unittest.TestCase):
         # Insurance lost: 950 - 25 = 925
         self.assertEqual(self.app.bankroll_var.get(), 925)
         self.assertFalse(self.app.is_insurance_phase)
-        self.assertFalse(bool(self.app.insurance_frame.grid_info()))
+        self.assertFalse(bool(self.app.insurance_frame.place_info()))
+        self.assertFalse(self.app.announcement_hud.insurance_overlay_active)
         # Actions re-enabled for player's turn
         self.assertEqual(self.app.hit_button["state"], "normal")
         self.assertEqual(self.app.stand_button["state"], "normal")

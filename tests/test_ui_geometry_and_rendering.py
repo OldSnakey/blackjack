@@ -173,22 +173,36 @@ class TestUIGeometryAndRendering(unittest.TestCase):
         )
 
     def test_player_cards_fully_visible_2x(self):
-        """In 2x scale, player cards must remain completely within felt boundaries and not collide with betting frame."""
+        """Across deck_800p, fhd_1080p (1.5x cards), and qhd_1440p (2x), cards stay inside felt and pit_cx."""
+        from display_profile import make_profile_preset
+
         self.app.chips_mode_var.set(True)
         self.app._on_toggle_chips_mode(confirm=True)
 
-        # Toggle to 2x scale
-        self.app.toggle_scale_mode()
+        # Test 1.5x binary-alpha card scaling on fhd_1080p
+        prof_1080 = make_profile_preset("fhd_1080p", is_fullscreen=False)
+        self.app.apply_display_profile(prof_1080, update_window_geometry=False)
+        self.assertEqual((self.app.card_width, self.app.card_height), (111, 160))
+
+        # Test 2.0x integer scaling on qhd_1440p
+        prof_1440 = make_profile_preset("qhd_1440p", is_fullscreen=False)
+        self.app.apply_display_profile(prof_1440, update_window_geometry=False)
+        self.assertEqual((self.app.card_width, self.app.card_height), (148, 214))
+
+        # Return to 1x profile for live geometry settlement check
+        prof_800 = make_profile_preset("deck_800p", is_fullscreen=False)
+        self.app.apply_display_profile(prof_800, update_window_geometry=False)
 
         self.app._add_chip_bet(25)
         self.app._deal_hand_with_bet()
         self.root.update_idletasks()
 
         felt = self.app.card_table_frame
-        betting = self.app.betting_frame
+        rail = self.app.mahogany_rail
 
         self.assertGreater(len(felt.find_withtag("player_card")), 0)
-        self.assertEqual(betting.winfo_manager(), "grid")
+        self.assertEqual(self.app.dealer_header_frame.winfo_manager(), "place")
+        self.assertEqual(self.app.player_header_frame.winfo_manager(), "place")
 
         player_bbox = felt.bbox("player_card")
         self.assertIsNotNone(player_bbox)
@@ -197,15 +211,15 @@ class TestUIGeometryAndRendering(unittest.TestCase):
         self.assertLessEqual(
             player_bottom_in_felt,
             felt_h,
-            f"In 2x scale, player cards bottom ({player_bottom_in_felt}px) exceeds felt ({felt_h}px)!",
+            f"Player cards bottom ({player_bottom_in_felt}px) exceeds felt height ({felt_h}px)!",
         )
 
         player_root_bottom = felt.winfo_rooty() + player_bottom_in_felt
-        betting_root_top = betting.winfo_rooty()
+        rail_root_top = rail.winfo_rooty()
         self.assertLessEqual(
             player_root_bottom,
-            betting_root_top,
-            f"In 2x scale, player cards ({player_root_bottom}px) collide with betting frame ({betting_root_top}px)!",
+            rail_root_top,
+            f"Player cards ({player_root_bottom}px) collide with mahogany rail ({rail_root_top}px)!",
         )
 
     def test_haunted_altar_auto_syncs_felt_when_packed(self):

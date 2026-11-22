@@ -1205,13 +1205,20 @@ class DealerActor:
                     out.putpixel((nx, y0 + by), px_rgba)
         return out
 
-    def get_composite_image(self, force_2x: bool = False) -> Image.Image:
-        """Assembles active 7-layer discrete puppet strata with independent sub-layer offsets."""
-        use_2x = force_2x or (self.scale_factor > 1.5)
-        if use_2x and not (self.scale_factor > 1.5):
+    def get_composite_image(
+        self,
+        force_2x: bool = False,
+        scale_factor: Optional[float] = None,
+        scale_override: Optional[float] = None,
+    ) -> Image.Image:
+        """Assembles active 7-layer discrete puppet strata at exact integer 1x (112x112) or 2x (224x224)."""
+        chosen_scale = scale_override if scale_override is not None else scale_factor
+        eff_scale = float(chosen_scale) if chosen_scale is not None else float(self.scale_factor)
+        use_2x = bool(force_2x or (eff_scale >= 1.8))
+        if use_2x and not (self.scale_factor >= 1.8):
             if getattr(self, "_cached_composite_2x_pil", None) is not None:
                 return self._cached_composite_2x_pil
-        elif self._cached_composite_pil is not None:
+        elif not use_2x and (self.scale_factor < 1.8) and self._cached_composite_pil is not None:
             return self._cached_composite_pil
 
         # Determine canvas size
@@ -1294,9 +1301,9 @@ class DealerActor:
                     l_img = self._shift_layer(l_img, dx, dy, clamp_bottom=clamp_b)
                 composite.alpha_composite(l_img)
 
-        if use_2x and not (self.scale_factor > 1.5):
+        if use_2x and not (self.scale_factor >= 1.8):
             self._cached_composite_2x_pil = composite
-        else:
+        elif not use_2x and (self.scale_factor < 1.8):
             self._cached_composite_pil = composite
         return composite
 

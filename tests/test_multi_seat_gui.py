@@ -61,7 +61,7 @@ class TestMultiSeatGUI(unittest.TestCase):
 
     def test_table_felt_seat_origins_bounding_boxes(self):
         """Verifies full-size card sprites (74x107 px) on Seats 1, 2, and 3 remain within felt margins."""
-        felt_width = 980
+        felt_width = 1280
         card_w, card_h = 74, 107
 
         # Margin requirements: min 10px clear on left (Column 0) and right (Column 2)
@@ -69,7 +69,7 @@ class TestMultiSeatGUI(unittest.TestCase):
         max_right_margin = felt_width - 10
 
         for seat_idx in (1, 2, 3):
-            origin = ui_layout.get_seat_origin(seat_idx)
+            origin = ui_layout.get_seat_origin(seat_idx, canvas_w=felt_width)
             cx, cy = origin["x"], origin["y"]
             left_edge = cx - (card_w // 2)
             right_edge = cx + (card_w // 2)
@@ -88,11 +88,11 @@ class TestMultiSeatGUI(unittest.TestCase):
     def test_split_fan_bounding_box_within_felt(self):
         """Verifies split hands fanning +-45 px remain within central felt bounds."""
         card_w = 74
-        felt_width = 980
+        felt_width = 1280
         fan_offset = ui_layout.get_ui_layout("table_felt").get("split_fan_offset_x", 45)
 
         for seat_idx in (1, 2, 3):
-            origin = ui_layout.get_seat_origin(seat_idx)
+            origin = ui_layout.get_seat_origin(seat_idx, canvas_w=felt_width)
             cx = origin["x"]
             # Sub-hand A fans left (-45px), Sub-hand B fans right (+45px)
             sub_a_left = (cx - fan_offset) - (card_w // 2)
@@ -112,7 +112,7 @@ class TestMultiSeatGUI(unittest.TestCase):
         self.canvas.set_table_seats(3)
         self.canvas.draw_betting_spots()
 
-        origin2 = ui_layout.get_seat_origin(2)
+        origin2 = self.canvas._get_live_seat_origin(2)
         # Simulate click on Seat 2 main betting spot
         event_main = tkinter.Event()
         event_main.x = origin2["x"]
@@ -186,6 +186,8 @@ class TestMultiSeatGUI(unittest.TestCase):
         )
         dialog.update_idletasks()
 
+        self.assertIsInstance(dialog, tkinter.Frame)
+        self.assertNotIsInstance(dialog, tkinter.Toplevel)
         self.assertEqual(dialog.btn_insure_all["state"], "disabled")
         # Checkbox for Seat 2 ($100 insurance) can be afforded ($100 bankroll)
         self.assertEqual(dialog.cb_widgets[2]["state"], "normal")
@@ -656,12 +658,18 @@ class TestMultiSeatAppIntegration(unittest.TestCase):
         # Hand 1 must be to the left of Hand 2
         self.assertLess(h1_card0_pos[0], h2_card0_pos[0])
 
-        # The midpoint between Hand 1 left edge and Hand 2 right edge should be centered near X=745
+        # The midpoint between Hand 1 left edge and Hand 2 right edge should be centered over Seat 1's dynamic origin
         card_w = self.app.card_width
         h1_left = h1_card0_pos[0]
         h2_right = canvas.coords(seat.hands[1].sprite_ids[-1])[0] + card_w
         combined_center = (h1_left + h2_right) / 2.0
-        self.assertAlmostEqual(combined_center, 745, delta=10, msg="Split hands should be centered over Seat 1 betting area (X=745)")
+        expected_seat1_x = canvas._get_live_seat_origin(1)["x"]
+        self.assertAlmostEqual(
+            combined_center,
+            expected_seat1_x,
+            delta=10,
+            msg=f"Split hands should be centered over Seat 1 betting area (X={expected_seat1_x})",
+        )
 
         # Verify initial active decor: Hand 1 active, Hand 2 inactive
         decors = canvas.find_withtag("player_card_decor")
@@ -750,6 +758,103 @@ class TestMultiSeatAppIntegration(unittest.TestCase):
         self.assertEqual(self.app.hit_button.cget("state"), "normal")
         self.assertEqual(self.app.stand_button.cget("state"), "normal")
         self.assertIn("Dealer has no Blackjack", self.app.result_var.get())
+
+    def test_multi_seat_add_chip_bet_targets_focused_seat_and_plaque_clearance(self):
+        """_add_chip_bet / _deduct_chip_bet target focused_betting_seat in 3-seat mode; player_header_frame stays clear of center pit."""
+        self.app.set_table_seats(3)
+        self.app.new_game()
+        for s_idx, amt in ((1, 25), (2, 50), (3, 100)):
+            self.app.focused_betting_seat = s_idx
+            self.app._add_chip_bet(amt)
+
+        self.assertEqual(self.app.engine.get_seat(1).main_bet, 25)
+        self.assertEqual(self.app.engine.get_seat(2).main_bet, 50)
+        self.assertEqual(self.app.engine.get_seat(3).main_bet, 100)
+
+        self.app.focused_betting_seat = 3
+        self.app._deduct_chip_bet(25)
+        self.assertEqual(self.app.engine.get_seat(3).main_bet, 75)
+
+        self.root.update_idletasks()
+        self.app._position_score_plaques()
+        p_info = self.app.player_header_frame.place_info()
+        cw = max(self.app.display_profile.window_w, int(self.app.card_table_frame.winfo_width()))
+        self.assertGreater(int(float(p_info["x"])), cw // 2)
+
+    def test_multi_seat_insurance_floats_as_centered_overlay_and_blocks_table_clicks(self):
+        """MultiSeatInsuranceDialog mounts as a centered floating overlay (< 1280x800) and shields background spot clicks."""
+        from ui_dialogs import MultiSeatInsuranceDialog
+
+        self.app.set_table_seats(3)
+        self.app.new_game()
+        self.app.focused_betting_seat = 1
+        self.app._add_chip_bet(50)
+
+        dlg = MultiSeatInsuranceDialog(
+            self.root,
+            seats=self.app.engine.seats,
+            bankroll=self.app.bankroll_var.get(),
+            on_confirm=lambda _d: None,
+            on_decline=lambda: None,
+        )
+        try:
+            dlg.update_idletasks()
+            dlg.update()
+            self.assertIsInstance(dlg, tkinter.Frame)
+            self.assertNotIsInstance(dlg, tkinter.Toplevel)
+            self.assertLess(dlg.winfo_width(), 1280)
+            self.assertLess(dlg.winfo_height(), 800)
+            p_info = dlg.place_info()
+            self.assertGreater(int(float(p_info["x"])), 0)
+            self.assertGreater(int(float(p_info["y"])), 0)
+
+            # Background table spot click must be ignored while overlay is open
+            bet_before = self.app.engine.get_seat(1).main_bet
+            self.app._on_table_spot_click(1, None)
+            self.assertEqual(self.app.engine.get_seat(1).main_bet, bet_before)
+        finally:
+            if dlg.winfo_exists():
+                dlg.destroy()
+
+    def test_multi_seat_active_bet_sum_and_insurance_overlay_seat_cards_and_hotkeys(self):
+        """3-seat LeftStageWing sums all active seat wagers, and MultiSeatInsuranceDialog supports [1]/[2]/[3] & D-pad without a mouse."""
+        from ui_dialogs import MultiSeatInsuranceDialog
+
+        self.app.set_table_seats(3)
+        self.app.new_game()
+        self.app.focused_betting_seat = 1
+        self.app._add_chip_bet(25)
+        self.app.focused_betting_seat = 2
+        self.app._add_chip_bet(100)
+        self.app.focused_betting_seat = 3
+        self.app._add_chip_bet(50)
+        self.app._update_bankroll_display()
+
+        self.assertIn("BET: $175", self.app.bankroll_label.cget("text"))
+        self.assertIn("Window" if getattr(self.app, "_is_fullscreen", False) else "Full", self.app._wing_full_var.get())
+
+        confirmed = []
+        dlg = MultiSeatInsuranceDialog(
+            self.root,
+            seats=self.app.engine.seats,
+            bankroll=self.app.bankroll_var.get(),
+            on_confirm=confirmed.append,
+            on_decline=lambda: confirmed.append({}),
+        )
+        try:
+            dlg.update_idletasks()
+            dlg.update()
+            # Compact banner height keeps dealt hands visible
+            self.assertLessEqual(dlg.winfo_height(), 310)
+            # Toggle Seat 1 ($12) and Seat 2 ($50) via [1] and [2] hotkeys, then confirm via <Return>
+            dlg.event_generate("<KeyPress-1>")
+            dlg.event_generate("<KeyPress-2>")
+            dlg.event_generate("<Return>")
+            self.assertEqual(len(confirmed), 1)
+            self.assertEqual(confirmed[0], {1: 12, 2: 50})
+        finally:
+            if dlg.winfo_exists():
+                dlg.destroy()
 
 
 if __name__ == "__main__":

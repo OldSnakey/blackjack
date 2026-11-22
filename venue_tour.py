@@ -64,14 +64,49 @@ from ui_chip_renderer import draw_25d_grade_medallion, draw_single_25d_chip
 
 class TourControlDock(MahoganyRailCanvas):
     """
-    Dedicated `row=4` mahogany armrest control dock for the Casino Venue Tour Overworld Map.
+    Dedicated `row=3` full-width mahogany armrest control dock for the Casino Venue Tour Overworld Map.
     Exposes `self.buttons` keyed by semantic control ID (`enter_salon`, `toggle_mode`,
-    `top_up`, `free_play`) with every button >= 100px wide.
+    `top_up`, `free_play`) with every button >= 100px wide and dark `#141008` ink on gold buttons.
     """
 
-    def __init__(self, master: tkinter.Widget, height: int = 72, **kwargs: Any) -> None:
-        super().__init__(master, width=880, height=height, background="#140a05", **kwargs)
+    def __init__(
+        self,
+        master: tkinter.Widget,
+        height: int = 72,
+        art_scale: int = 1,
+        font_scale: float = 1.0,
+        display_profile: Optional[Any] = None,
+        **kwargs: Any,
+    ) -> None:
+        eff_art = max(1, int(getattr(display_profile, "art_scale", art_scale))) if display_profile is not None else max(1, int(art_scale))
+        self.font_scale = float(getattr(display_profile, "font_scale", font_scale)) if display_profile is not None else float(font_scale)
+        self._last_specs: List[Dict[str, Any]] = []
+        super().__init__(
+            master,
+            width=1280 * eff_art,
+            height=height,
+            display_profile=display_profile,
+            art_scale=eff_art,
+            background="#140a05",
+            **kwargs,
+        )
         self.buttons: Dict[str, CanvasPixelButton] = {}
+
+    def _on_configure(self, event: Any) -> None:
+        prev_w = self._current_width
+        super()._on_configure(event)
+        if self._current_width != prev_w and self._last_specs:
+            self._render_specs(self._last_specs)
+
+    def set_display_profile(self, profile: Any) -> None:
+        self.art_scale = max(1, int(getattr(profile, "art_scale", 1)))
+        self.font_scale = float(getattr(profile, "font_scale", 1.0))
+        self.rail_height = 72 * self.art_scale
+        self._current_width = 0
+        self.configure(height=self.rail_height)
+        self._draw_rail()
+        if self._last_specs:
+            self._render_specs(self._last_specs)
 
     def clear_controls(self) -> None:
         for btn in self.buttons.values():
@@ -83,26 +118,33 @@ class TourControlDock(MahoganyRailCanvas):
         self.delete("dock_fg")
 
     def set_buttons(self, specs: List[Dict[str, Any]]) -> None:
-        """Renders centered `CanvasPixelButton` controls onto the 880px mahogany rail."""
+        """Stores button specs and renders centered `CanvasPixelButton` controls across the full-width mahogany rail."""
+        self._last_specs = list(specs)
+        self._render_specs(self._last_specs)
+
+    def _render_specs(self, specs: List[Dict[str, Any]]) -> None:
         self.clear_controls()
         self._draw_rail()
         if not specs:
             return
 
-        w = 880
+        s = self.art_scale
+        live_w = self.winfo_width()
+        w = live_w if live_w > 20 else max(1000 * s, int(self._current_width) or 1280 * s)
         h = self.rail_height
-        spacing = 12
-        btn_h = 42
-        widths = [max(100, int(sp.get("width", 190))) for sp in specs]
+        spacing = 12 * s
+        btn_h = 42 * s
+        widths = [max(100, int(sp.get("width", 190)) * s) for sp in specs]
         total_w = sum(widths) + spacing * max(0, len(specs) - 1)
         cur_x = (w - total_w) // 2
         cy = h // 2
+        font_px = 18 * s
 
         for idx, (sp, bw) in enumerate(zip(specs, widths)):
             cx = cur_x + bw // 2
             key = str(sp.get("key", f"btn_{idx}"))
             theme = str(sp.get("theme", "green"))
-            txt_col = str(sp.get("text_color", "#ffffff" if theme != "gold" else "#fffdf5"))
+            txt_col = str(sp.get("text_color") or ("#141008" if theme == "gold" else "#ffffff"))
             btn = CanvasPixelButton(
                 self,
                 x=cx,
@@ -112,9 +154,9 @@ class TourControlDock(MahoganyRailCanvas):
                 text=str(sp.get("text", "Action")),
                 command=sp.get("command"),
                 theme=theme,
-                font=get_button_font(15),
+                font=get_button_font(font_px),
                 text_color=txt_col,
-                scale=2,
+                scale=2 * s,
                 enabled=bool(sp.get("enabled", True)),
                 group_tag="dock_fg",
             )
@@ -123,34 +165,49 @@ class TourControlDock(MahoganyRailCanvas):
 
 
 # ============================================================================
-# View Component 2: 2.5D Super Mario World Overworld Map Renderer (row=3)
+# View Component 2: 2.5D Super Mario World Overworld Map Renderer (row=2)
 # ============================================================================
 
 class VenueTourCanvasRenderer:
     """
-    Stateless 2.5D pixel-art Overworld Map renderer (`880x390`) for the 8-Salon Casino Venue Tour.
-    Composites crunchy 16-bit architectural salon miniatures in memory (sampling atmospheric
-    window vignettes from existing `assets/haunted/backdrops/` PNGs) plus darkened `???`
-    silhouettes for undiscovered stops and 2.5D Gold/Obsidian medallions for cleared salons.
+    Stateless 2.5D pixel-art Overworld Map renderer (`1000x390` at `1x`, `2000x780` at `2x`,
+    aligned 1:1 with `DealerStageCanvas`) for the 8-Salon Casino Venue Tour. Composites crunchy
+    16-bit architectural salon miniatures in memory (sampling atmospheric window vignettes from
+    `assets/haunted/backdrops/` PNGs) plus darkened `???` silhouettes for undiscovered stops and
+    2.5D Gold/Obsidian medallions.
     """
 
-    CANVAS_W = 880
+    CANVAS_W = 1000
     CANVAS_H = 390
     BACKDROPS_DIR = ASSETS_EXTRA_DIR / "haunted" / "backdrops"
 
-    def __init__(self, canvas: tkinter.Canvas) -> None:
+    def __init__(self, canvas: tkinter.Canvas, art_scale: int = 1) -> None:
         self.canvas = canvas
+        self.art_scale = max(1, int(art_scale))
         self._photo_refs: List[Any] = []
-        self._sprite_cache: Dict[Tuple[str, bool], ImageTk.PhotoImage] = {}
-        self._backdrop_samples: Dict[str, Image.Image] = {}
+        self._sprite_cache: Dict[Tuple[str, bool, int], ImageTk.PhotoImage] = {}
+        self._backdrop_samples: Dict[Tuple[str, int], Image.Image] = {}
         self.node_hit_boxes: Dict[int, Tuple[int, int, int, int]] = {}
         self.action_hit_boxes: Dict[str, Tuple[int, int, int, int]] = {}
+
+    def _s(self, v: int | float) -> int:
+        return int(round(v * self.art_scale))
+
+    def set_art_scale(self, art_scale: int) -> None:
+        new_scale = max(1, int(art_scale))
+        if new_scale != self.art_scale:
+            self.art_scale = new_scale
 
     def _clear(self) -> None:
         self.canvas.delete("all")
         self._photo_refs.clear()
         self.node_hit_boxes.clear()
         self.action_hit_boxes.clear()
+
+    def _map_xy(self, salon: TourSalonSpec) -> Tuple[int, int]:
+        """Scales canonical 880px salon map coordinates across `CANVAS_W = 1000` symmetrically."""
+        raw_x, raw_y = salon.map_pos
+        return int(round(raw_x * self.CANVAS_W / 880.0)), int(raw_y)
 
     def _draw_shadow_text(
         self,
@@ -163,31 +220,45 @@ class VenueTourCanvasRenderer:
         anchor: str = "center",
         tags: Tuple[str, ...] = (),
     ) -> int:
-        use_font = font or get_body_font(15)
-        self.canvas.create_text(x + 1, y + 1, text=text, fill=shadow, font=use_font, anchor=anchor, tags=tags)
+        use_font = font or get_body_font(16 * self.art_scale)
+        off = self.art_scale
+        self.canvas.create_text(x + off, y + off, text=text, fill=shadow, font=use_font, anchor=anchor, tags=tags)
         return self.canvas.create_text(x, y, text=text, fill=fill, font=use_font, anchor=anchor, tags=tags)
 
     def _get_backdrop_sample(self, theme: str) -> Optional[Image.Image]:
-        if theme in self._backdrop_samples:
-            return self._backdrop_samples[theme]
-        path = self.BACKDROPS_DIR / f"backdrop_{theme}_1x.png"
-        if not path.exists():
-            path = self.BACKDROPS_DIR / "backdrop_casino_1x.png"
-        if not path.exists():
+        cache_key = (theme, self.art_scale)
+        if cache_key in self._backdrop_samples:
+            return self._backdrop_samples[cache_key]
+        candidates = (
+            [
+                self.BACKDROPS_DIR / f"backdrop_{theme}_2x.png",
+                self.BACKDROPS_DIR / f"backdrop_{theme}.png",
+                self.BACKDROPS_DIR / "backdrop_casino_2x.png",
+                self.BACKDROPS_DIR / "backdrop_casino.png",
+            ]
+            if self.art_scale >= 2
+            else [
+                self.BACKDROPS_DIR / f"backdrop_{theme}.png",
+                self.BACKDROPS_DIR / "backdrop_casino.png",
+            ]
+        )
+        path = next((p for p in candidates if p.exists()), None)
+        if path is None:
             return None
         try:
             with Image.open(path) as src:
-                # Sample rich atmospheric left-wing architectural detail (avoiding dimmed center alcove)
-                crop = src.convert("RGBA").crop((90, 24, 250, 124)).resize(
+                k = max(1.0, src.width / 1000.0)
+                box = (int(90 * k), int(24 * k), int(250 * k), int(124 * k))
+                crop = src.convert("RGBA").crop(box).resize(
                     (20, 12), getattr(Image, "Resampling", Image).NEAREST
                 )
-                self._backdrop_samples[theme] = crop
+                self._backdrop_samples[cache_key] = crop
                 return crop
         except Exception:
             return None
 
     def _get_landmark_photo(self, salon: TourSalonSpec, discovered: bool) -> ImageTk.PhotoImage:
-        cache_key = (salon.salon_id, bool(discovered))
+        cache_key = (salon.salon_id, bool(discovered), self.art_scale)
         cached = self._sprite_cache.get(cache_key)
         if cached is not None:
             return cached
@@ -305,52 +376,54 @@ class VenueTourCanvasRenderer:
             d.line([18, 15, 19, 16], fill=(255, 215, 0, 255))
             d.point((18, 19), fill=(255, 215, 0, 255))
 
-        upscaled = img.resize((lw * 2, lh * 2), getattr(Image, "Resampling", Image).NEAREST)
+        upscaled = img.resize(
+            (lw * 2 * self.art_scale, lh * 2 * self.art_scale),
+            getattr(Image, "Resampling", Image).NEAREST,
+        )
         photo = ImageTk.PhotoImage(upscaled, master=self.canvas)
         self._sprite_cache[cache_key] = photo
         return photo
 
     def _draw_overworld_terrain(self) -> None:
         """Draws layered 2.5D casino district terrain zones from Resort Lawn (West) to Sanctum Summit (East)."""
-        w, h = self.CANVAS_W, self.CANVAS_H
+        s = self._s
+        k = self.art_scale
+        w, h = s(self.CANVAS_W), s(self.CANVAS_H)
         self.canvas.create_rectangle(0, 0, w, h, fill="#072b15", outline="")
 
-        # Subtle atmospheric district bands (West -> East elevation progression)
         zones = [
-            (0, 258, "#08361a", "#0d4724"),     # Resort Emerald Lawn
-            (258, 474, "#0b2e26", "#123f35"),   # Neon Lounge & Ivy Quad
-            (474, 686, "#102332", "#183347"),   # Vault Stone & Cyber Terrace
-            (686, w, "#1e162b", "#2b1d3d"),     # Crimson Ridge & Sanctum Summit
+            (0, 294, "#08361a", "#0d4724"),     # Resort Emerald Lawn
+            (294, 538, "#0b2e26", "#123f35"),   # Neon Lounge & Ivy Quad
+            (538, 780, "#102332", "#183347"),   # Vault Stone & Cyber Terrace
+            (780, self.CANVAS_W, "#1e162b", "#2b1d3d"),  # Crimson Ridge & Sanctum Summit
         ]
         for x1, x2, base_col, hill_col in zones:
-            self.canvas.create_rectangle(x1, 48, x2, 316, fill=base_col, outline="")
-            # Isometric 2.5D stepped plateau ledges
+            self.canvas.create_rectangle(s(x1), s(48), s(x2), s(316), fill=base_col, outline="")
             self.canvas.create_polygon(
-                x1 + 14, 185, x2 - 10, 165, x2 - 4, 290, x1 + 6, 300,
+                s(x1 + 14), s(185), s(x2 - 10), s(165), s(x2 - 4), s(290), s(x1 + 6), s(300),
                 fill=hill_col, outline="",
             )
 
-        # Summit golden cloud halo behind Salon 8 (Sanctum of Light at 794, 110)
-        self.canvas.create_oval(726, 56, 862, 164, fill="#2e294e", outline="#ffd54f", width=1)
-        self.canvas.create_oval(742, 68, 846, 148, fill="#3b3363", outline="")
+        self.canvas.create_oval(s(825), s(56), s(978), s(164), fill="#2e294e", outline="#ffd54f", width=k)
+        self.canvas.create_oval(s(843), s(68), s(960), s(148), fill="#3b3363", outline="")
 
-        # Decorative pixel-art cypress/palm trees & casino lampposts in non-overlapping clearings
-        trees = [(36, 132), (44, 286), (154, 276), (262, 96), (368, 92), (476, 286), (586, 282), (688, 96)]
+        trees = [(42, 132), (50, 286), (175, 276), (298, 96), (418, 92), (540, 286), (666, 282), (782, 96)]
         for tx, ty in trees:
-            self.canvas.create_rectangle(tx - 3, ty + 6, tx + 3, ty + 16, fill="#4e342e", outline="#121016")
-            self.canvas.create_oval(tx - 11, ty - 10, tx + 11, ty + 8, fill="#1b5e20", outline="#0a2910")
-            self.canvas.create_oval(tx - 7, ty - 14, tx + 7, ty + 2, fill="#2e7d32", outline="")
+            self.canvas.create_rectangle(s(tx - 3), s(ty + 6), s(tx + 3), s(ty + 16), fill="#4e342e", outline="#121016")
+            self.canvas.create_oval(s(tx - 11), s(ty - 10), s(tx + 11), s(ty + 8), fill="#1b5e20", outline="#0a2910")
+            self.canvas.create_oval(s(tx - 7), s(ty - 14), s(tx + 7), s(ty + 2), fill="#2e7d32", outline="")
 
-        # Outer 2.5D brass-trimmed map border
-        self.canvas.create_rectangle(2, 2, w - 3, h - 3, outline="#d4af37", width=2)
+        self.canvas.create_rectangle(s(2), s(2), w - s(3), h - s(3), outline="#d4af37", width=2 * k)
 
     def _draw_header_bar(self, progress: VenueTourProgress) -> None:
-        self.canvas.create_rectangle(4, 4, self.CANVAS_W - 5, 46, fill="#091f12", outline="#d4af37", width=1)
+        s = self._s
+        k = self.art_scale
+        self.canvas.create_rectangle(s(4), s(4), s(self.CANVAS_W - 5), s(46), fill="#091f12", outline="#d4af37", width=k)
         self._draw_shadow_text(
-            18, 25,
+            s(18), s(25),
             text="🗺 GRAND CASINO VENUE TOUR",
             fill="#ffd700",
-            font=get_title_font(20),
+            font=get_header_font(18 * k),
             anchor="w",
         )
 
@@ -366,127 +439,123 @@ class VenueTourCanvasRenderer:
             status = f"{mode_lbl}  •  Stack: ${active_br:,}  •  ★ {g_clears}/8  ♦ {im_clears}/8"
             pill_bg, pill_fg, pill_bd = "#103320", "#ffd54f", "#d4af37"
 
-        self.canvas.create_rectangle(412, 9, self.CANVAS_W - 12, 41, fill=pill_bg, outline=pill_bd, width=2)
+        pill_x1 = 490
+        self.canvas.create_rectangle(s(pill_x1), s(9), s(self.CANVAS_W - 12), s(41), fill=pill_bg, outline=pill_bd, width=2 * k)
         self._draw_shadow_text(
-            (412 + self.CANVAS_W - 12) // 2,
-            25,
+            s((pill_x1 + self.CANVAS_W - 12) // 2),
+            s(25),
             text=status,
             fill=pill_fg,
-            font=get_header_font(15),
+            font=get_badge_font(16 * k),
         )
 
     def _draw_winding_road(self, states: List[SalonVisualState]) -> None:
         """Draws the Super Mario World cobblestone/gold switchback road with milestone studs."""
+        s = self._s
+        k = self.art_scale
         for idx in range(len(SALON_SPECS) - 1):
-            x1, y1 = SALON_SPECS[idx].map_pos
-            x2, y2 = SALON_SPECS[idx + 1].map_pos
+            x1, y1 = self._map_xy(SALON_SPECS[idx])
+            x2, y2 = self._map_xy(SALON_SPECS[idx + 1])
             next_discovered = states[idx + 1].discovered
             seg_cleared = states[idx].forgiving_cleared or states[idx].ironman_cleared
 
-            # Midpoint bend for an authentic winding road feel
             mx = (x1 + x2) // 2
             my = (y1 + y2) // 2 + (-14 if idx % 2 == 0 else 14)
-            pts = [x1, y1 + 12, mx, my + 12, x2, y2 + 12]
+            pts = [s(x1), s(y1 + 12), s(mx), s(my + 12), s(x2), s(y2 + 12)]
 
             if seg_cleared or next_discovered:
-                # Lit golden casino road
-                self.canvas.create_line(*pts, fill="#1a1208", width=16, smooth=True, capstyle="round")
-                self.canvas.create_line(*pts, fill="#9e7b22", width=12, smooth=True, capstyle="round")
-                self.canvas.create_line(*pts, fill="#ffd54f", width=4, dash=(6, 6), smooth=True)
+                self.canvas.create_line(*pts, fill="#1a1208", width=16 * k, smooth=True, capstyle="round")
+                self.canvas.create_line(*pts, fill="#9e7b22", width=12 * k, smooth=True, capstyle="round")
+                self.canvas.create_line(*pts, fill="#ffd54f", width=4 * k, dash=(6 * k, 6 * k), smooth=True)
             else:
-                # Locked misty cobblestone trail
-                self.canvas.create_line(*pts, fill="#091319", width=14, smooth=True, capstyle="round")
-                self.canvas.create_line(*pts, fill="#263238", width=10, smooth=True, capstyle="round")
-                self.canvas.create_line(*pts, fill="#546e7a", width=3, dash=(4, 6), smooth=True)
+                self.canvas.create_line(*pts, fill="#091319", width=14 * k, smooth=True, capstyle="round")
+                self.canvas.create_line(*pts, fill="#263238", width=10 * k, smooth=True, capstyle="round")
+                self.canvas.create_line(*pts, fill="#546e7a", width=3 * k, dash=(4 * k, 6 * k), smooth=True)
 
     def _draw_salon_nodes(self, progress: VenueTourProgress, states: List[SalonVisualState]) -> None:
         """Renders all 8 2.5D salon stops, medallions, velvet ropes, and player token."""
+        s = self._s
+        k = self.art_scale
         for salon, st in zip(SALON_SPECS, states):
-            cx, cy = salon.map_pos
-            # Single-source geometric hitbox covering pedestal + building + label plaque
-            hb = (cx - 46, cy - 42, cx + 46, cy + 56)
+            cx, cy = self._map_xy(salon)
+            hb = (s(cx - 48), s(cy - 42), s(cx + 48), s(cy + 56))
             self.node_hit_boxes[salon.index] = hb
 
-            # 2.5D stone/brass node base oval
             pad_fill = "#263829" if st.discovered else "#101a24"
             pad_bd = (
                 "#00e5ff"
                 if st.is_selected
                 else ("#ffd700" if st.selectable else ("#ef5350" if st.velvet_rope_promoted else "#37474f"))
             )
-            self.canvas.create_oval(cx - 40, cy + 8, cx + 40, cy + 28, fill="#050d08", outline="")
+            self.canvas.create_oval(s(cx - 40), s(cy + 8), s(cx + 40), s(cy + 28), fill="#050d08", outline="")
             self.canvas.create_oval(
-                cx - 40, cy + 4, cx + 40, cy + 24,
-                fill=pad_fill, outline=pad_bd, width=3 if st.is_selected else 2,
+                s(cx - 40), s(cy + 4), s(cx + 40), s(cy + 24),
+                fill=pad_fill, outline=pad_bd, width=(3 if st.is_selected else 2) * k,
             )
 
-            # 2.5D Pixel-Art Salon Landmark (full color or darkened mystery silhouette)
             photo = self._get_landmark_photo(salon, discovered=st.discovered)
             self._photo_refs.append(photo)
-            self.canvas.create_image(cx, cy - 8, image=photo, anchor="center")
+            self.canvas.create_image(s(cx), s(cy - 8), image=photo, anchor="center")
 
-            # Stop number badge on top-left corner
             num_bg = "#ffd700" if st.selectable else ("#263238" if not st.discovered else "#37474f")
             num_fg = "#111111" if st.selectable else "#cfd8dc"
-            self.canvas.create_rectangle(cx - 42, cy - 38, cx - 22, cy - 20, fill=num_bg, outline="#121016", width=1)
-            self.canvas.create_text(cx - 32, cy - 29, text=f"{salon.index + 1}", fill=num_fg, font=get_badge_font(13))
+            self.canvas.create_rectangle(s(cx - 42), s(cy - 38), s(cx - 22), s(cy - 20), fill=num_bg, outline="#121016", width=k)
+            self.canvas.create_text(s(cx - 32), s(cy - 29), text=f"{salon.index + 1}", fill=num_fg, font=get_badge_font(16 * k))
 
-            # Velvet Rope overlay in Ironman Mode for earlier promoted salons
             if st.velvet_rope_promoted:
                 for sx in (cx - 28, cx + 28):
-                    self.canvas.create_rectangle(sx - 2, cy + 2, sx + 2, cy + 18, fill="#d4af37", outline="#121016")
+                    self.canvas.create_rectangle(s(sx - 2), s(cy + 2), s(sx + 2), s(cy + 18), fill="#d4af37", outline="#121016")
                 self.canvas.create_line(
-                    cx - 28, cy + 8, cx, cy + 15, cx + 28, cy + 8,
-                    fill="#d50000", width=3, smooth=True,
+                    s(cx - 28), s(cy + 8), s(cx), s(cy + 15), s(cx + 28), s(cy + 8),
+                    fill="#d50000", width=3 * k, smooth=True,
                 )
 
-            # Dual 2.5D Salon Completion Medallions (Gold Standard + Obsidian Ironman)
             if st.forgiving_cleared:
                 draw_25d_grade_medallion(
                     self.canvas,
-                    x=cx + 28,
-                    y=cy - 28,
+                    x=s(cx + 32),
+                    y=s(cy - 31),
                     grade="TOUR_GOLD",
+                    scale=float(k),
                     mini=True,
                     extra_tags=("tour_medallion_gold", f"tour_gold_{salon.index}"),
                 )
             if st.ironman_cleared:
-                im_x = cx + 28 if not st.forgiving_cleared else cx + 6
+                im_x = cx + 32 if not st.forgiving_cleared else cx + 10
                 draw_25d_grade_medallion(
                     self.canvas,
-                    x=im_x,
-                    y=cy - 28,
+                    x=s(im_x),
+                    y=s(cy - 31),
                     grade="TOUR_IRONMAN",
+                    scale=float(k),
                     mini=True,
                     extra_tags=("tour_medallion_ironman", f"tour_ironman_{salon.index}"),
                 )
 
-            # Active frontier player chip token
             if st.is_current_frontier and st.selectable:
                 chip_denom = 500 if progress.active_mode == "ironman" else 100
                 draw_single_25d_chip(
                     self.canvas,
-                    x=cx - 28,
-                    y=cy + 14,
+                    x=s(cx - 38),
+                    y=s(cy + 14),
                     denom=chip_denom,
                     style=CHIP_STYLES[chip_denom],
+                    scale=float(k),
                     compact=True,
                     tags=("tour_player_token",),
                 )
 
-            # Selection bracket highlight
             if st.is_selected:
-                bx1, by1, bx2, by2 = cx - 45, cy - 41, cx + 45, cy + 55
+                bx1, by1, bx2, by2 = s(cx - 45), s(cy - 41), s(cx + 45), s(cy + 55)
                 for sx, sy, dx, dy in (
-                    (bx1, by1, 10, 10),
-                    (bx2, by1, -10, 10),
-                    (bx1, by2, 10, -10),
-                    (bx2, by2, -10, -10),
+                    (bx1, by1, s(10), s(10)),
+                    (bx2, by1, -s(10), s(10)),
+                    (bx1, by2, s(10), -s(10)),
+                    (bx2, by2, -s(10), -s(10)),
                 ):
-                    self.canvas.create_line(sx, sy, sx + dx, sy, fill="#00e5ff", width=2)
-                    self.canvas.create_line(sx, sy, sx, sy + dy, fill="#00e5ff", width=2)
+                    self.canvas.create_line(sx, sy, sx + dx, sy, fill="#00e5ff", width=2 * k)
+                    self.canvas.create_line(sx, sy, sx, sy + dy, fill="#00e5ff", width=2 * k)
 
-            # Nameplate & stake/unlock sub-pill below pedestal
             title_txt = salon.short_name if st.discovered else "???"
             title_fg = (
                 "#ffffff"
@@ -504,13 +573,13 @@ class VenueTourCanvasRenderer:
                 sub_fg = "#ffd54f"
 
             self.canvas.create_rectangle(
-                cx - 44, cy + 23, cx + 44, cy + 54,
+                s(cx - 52), s(cy + 22), s(cx + 52), s(cy + 56),
                 fill="#081a10" if st.discovered else "#0c141c",
                 outline="#00e5ff" if st.is_selected else ("#2e6b47" if st.discovered else "#263238"),
-                width=1,
+                width=k,
             )
-            self._draw_shadow_text(cx, cy + 32, text=title_txt, fill=title_fg, font=get_header_font(13))
-            self._draw_shadow_text(cx, cy + 46, text=sub_txt, fill=sub_fg, font=get_body_font(12))
+            self._draw_shadow_text(s(cx), s(cy + 32), text=title_txt, fill=title_fg, font=get_badge_font(16 * k))
+            self._draw_shadow_text(s(cx), s(cy + 47), text=sub_txt, fill=sub_fg, font=get_body_font(16 * k))
 
     def _draw_inspector_plaque(
         self,
@@ -520,21 +589,24 @@ class VenueTourCanvasRenderer:
         prev_discovered: bool = True,
     ) -> None:
         """Draws the bottom 2.5D Selected Salon Dossier plaque (`y = 318..384`)."""
+        s = self._s
+        k = self.art_scale
         salon = get_salon_spec(focused_idx)
-        CanvasPixelPanel(
+        panel = CanvasPixelPanel(
             self.canvas,
-            x=14,
-            y=318,
-            width=self.CANVAS_W - 28,
-            height=66,
+            x=s(14),
+            y=s(318),
+            width=s(self.CANVAS_W - 28),
+            height=s(66),
             bg="#140d09" if st.discovered else "#0d151e",
             border="#00e5ff" if st.is_selected else "#d4af37",
             inner_hi="#3b261a" if st.discovered else "#1c2c3d",
             inner_sh="#080503",
             rivet_color="#ffd700",
-            scale=2,
+            scale=2 * k,
             tag="tour_inspector_panel",
         )
+        self._photo_refs.append(panel)
 
         if not st.discovered:
             prev_salon = get_salon_spec(max(0, salon.index - 1))
@@ -549,18 +621,18 @@ class VenueTourCanvasRenderer:
                     f"there to part the velvet rope and unlock this venue!"
                 )
             self._draw_shadow_text(
-                440,
-                338,
+                s(self.CANVAS_W // 2),
+                s(338),
                 text=f"🔒 SALON {salon.index + 1}: ??? MYSTERY VENUE   —   UNLOCK TARGET: ${salon.entry_bankroll:,}",
                 fill="#ffd54f",
-                font=get_header_font(15),
+                font=get_header_font(18 * k),
             )
             self._draw_shadow_text(
-                440,
-                362,
+                s(self.CANVAS_W // 2),
+                s(362),
                 text=sub_line,
                 fill="#cfd8dc",
-                font=get_body_font(14),
+                font=get_body_font(16 * k),
             )
             return
 
@@ -582,19 +654,19 @@ class VenueTourCanvasRenderer:
         stamp_str = "  •  ".join(stamps) if stamps else "Open for Play"
 
         self._draw_shadow_text(
-            28,
-            337,
+            s(28),
+            s(337),
             text=f"SALON {salon.index + 1}: {salon.name.upper()}  ({host_name})   |   {salon.rules.short_badge()}  (HE {he_pct:.2f}%)",
             fill="#ffd700",
-            font=get_header_font(15),
+            font=get_badge_font(16 * k),
             anchor="w",
         )
         self._draw_shadow_text(
-            self.CANVAS_W - 28,
-            337,
+            s(self.CANVAS_W - 28),
+            s(337),
             text=stamp_str,
             fill="#69f0ae" if (st.forgiving_cleared or st.ironman_cleared) else "#80cbc4",
-            font=get_badge_font(14),
+            font=get_body_font(16 * k),
             anchor="e",
         )
 
@@ -612,14 +684,14 @@ class VenueTourCanvasRenderer:
             mode_note = "Ironman: $0 Bust resets to Salon 1 ($500) — ♦ Obsidian Stamps permanent"
 
         self._draw_shadow_text(
-            28,
-            363,
+            s(28),
+            s(363),
             text=(
-                f"Entry: ${salon.entry_bankroll:,} → Target: ${salon.exit_bankroll:,}   |   "
-                f"Limits: ${salon.rules.minimum_bet:,}–${salon.rules.maximum_bet:,}   |   {mode_note}"
+                f"Entry: ${salon.entry_bankroll:,} -> Target: ${salon.exit_bankroll:,}   |   "
+                f"Limits: ${salon.rules.minimum_bet:,}-${salon.rules.maximum_bet:,}   |   {mode_note}"
             ),
             fill="#eceff1",
-            font=get_body_font(14),
+            font=get_body_font(16 * k),
             anchor="w",
         )
 
@@ -646,13 +718,15 @@ class VenueTourCanvasRenderer:
 
 
 # ============================================================================
-# Controller Layer: VenueTourFrame (row=3 Host Frame & Tour Map Controller)
+# Controller Layer: VenueTourFrame (row=2 Host Frame & Tour Map Controller)
 # ============================================================================
 
 class VenueTourFrame(tkinter.Frame):
     """
-    MVC Controller for the 2.5D Casino Venue Tour Overworld Map mounted on `row=3`
-    beneath the live `DealerStageCanvas` (`row=1`, where Tour Coordinator Julian speaks).
+    MVC Controller for the 2.5D Casino Venue Tour Overworld Map mounted on `row=2`
+    beneath the live `DealerStageCanvas` (`row=0`, where Tour Coordinator Julian speaks).
+    Centers an integer-scaled `880x390` (`1x`) or `1760x780` (`2x`) pixel-art board
+    inside a full-width `#061c0e` salon frame.
     """
 
     CANVAS_W = VenueTourCanvasRenderer.CANVAS_W
@@ -663,11 +737,12 @@ class VenueTourFrame(tkinter.Frame):
         master: tkinter.Widget,
         app: Any,
         dock: TourControlDock,
+        display_profile: Optional[Any] = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(
             master,
-            background=TABLE_BACKGROUND_COLOR,
+            background="#061c0e",
             borderwidth=0,
             highlightthickness=0,
             **kwargs,
@@ -677,20 +752,37 @@ class VenueTourFrame(tkinter.Frame):
         self.focused_salon_idx: int = 0
         self._hovered_idx: Optional[int] = None
         self._timer_ids: List[Any] = []
+        prof = display_profile if display_profile is not None else getattr(app, "display_profile", None)
+        art_scale = max(1, int(getattr(prof, "art_scale", 1)))
 
         self.canvas = tkinter.Canvas(
             self,
-            width=self.CANVAS_W,
-            height=self.CANVAS_H,
+            width=self.CANVAS_W * art_scale,
+            height=self.CANVAS_H * art_scale,
             background="#072b15",
             highlightthickness=0,
             borderwidth=0,
         )
-        self.canvas.pack(fill="both", expand=True)
-        self.renderer = VenueTourCanvasRenderer(self.canvas)
+        self.canvas.pack(expand=True)
+        self.renderer = VenueTourCanvasRenderer(self.canvas, art_scale=art_scale)
 
         self.canvas.bind("<Button-1>", self._on_canvas_click)
         self.canvas.bind("<Motion>", self._on_canvas_motion)
+
+    def set_display_profile(self, profile: Any) -> None:
+        """Re-scales the Overworld Map board (`880x390` at `1x`, `1760x780` at `2x`) and dock live."""
+        art_scale = max(1, int(getattr(profile, "art_scale", 1)))
+        self.renderer.set_art_scale(art_scale)
+        self.canvas.configure(
+            width=self.CANVAS_W * art_scale,
+            height=self.CANVAS_H * art_scale,
+        )
+        self.dock.set_display_profile(profile)
+        vt: VenueTourProgress = self.app.save_manager.data.venue_tour
+        self.focused_salon_idx = max(0, min(len(SALON_SPECS) - 1, int(self.focused_salon_idx)))
+        states = self.renderer.draw_overworld_map(vt, self.focused_salon_idx)
+        salon = get_salon_spec(self.focused_salon_idx)
+        self._sync_dock(vt, salon, states[self.focused_salon_idx])
 
     def cancel_all_timers(self) -> None:
         while self._timer_ids:
@@ -866,7 +958,7 @@ class VenueTourFrame(tkinter.Frame):
         self.refresh_map(speech_override=msg)
 
     def _ask_confirm_ironman_reset(self) -> bool:
-        """Prompts confirmation before discarding an active Ironman climb (auto-confirms in headless tests)."""
+        """Prompts confirmation via InWindowConfirmModal before discarding an active Ironman climb."""
         try:
             top = self.winfo_toplevel()
             if (top.state() == "withdrawn") or (not top.winfo_ismapped()):
@@ -874,18 +966,22 @@ class VenueTourFrame(tkinter.Frame):
         except Exception:
             return True
         try:
-            import tkinter.messagebox as messagebox
+            from ui_dialogs import InWindowConfirmModal
 
             vt: VenueTourProgress = self.app.save_manager.data.venue_tour
             cur_salon = get_salon_spec(get_active_salon_index(vt))
             return bool(
-                messagebox.askyesno(
-                    "Reset Ironman Gauntlet Run?",
-                    f"Abandon your current Ironman climb at Salon {cur_salon.index + 1} "
-                    f"({cur_salon.name}, Stack: ${vt.ironman_bankroll:,}) and restart at Salon 1 ($500)?\n\n"
-                    f"Your {vt.ironman_salons_cleared}/8 ♦ Obsidian Medallions remain permanently saved.",
-                    default="no",
+                InWindowConfirmModal.ask_yes_no(
                     parent=self.winfo_toplevel(),
+                    title="Reset Ironman Gauntlet Run?",
+                    message=(
+                        f"Abandon your current Ironman climb at Salon {cur_salon.index + 1} "
+                        f"({cur_salon.name}, Stack: ${vt.ironman_bankroll:,}) and restart at Salon 1 ($500)?\n\n"
+                        f"Your {vt.ironman_salons_cleared}/8 ♦ Obsidian Medallions remain permanently saved."
+                    ),
+                    confirm_text="↺ Reset Run",
+                    cancel_text="Keep Climbing",
+                    app=self.app,
                 )
             )
         except Exception:

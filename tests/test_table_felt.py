@@ -125,15 +125,11 @@ class TestTableFeltCanvas(unittest.TestCase):
         self.assertEqual(len(card_sprites), 0)
 
     def test_dealer_view_toggling(self):
-        """Dealer view toggles upper stage between enabled and disabled."""
+        """Hide Dealer UI is retired; _on_toggle_dealer_view is a safe no-op keeping dealer_view_var True."""
         self.assertTrue(self.app.dealer_view_var.get())
-        # Toggling dealer view disables it
-        self.app._on_toggle_dealer_view()
-        self.assertFalse(self.app.dealer_view_var.get())
-        # Toggling again re-enables it
         self.app._on_toggle_dealer_view()
         self.assertTrue(self.app.dealer_view_var.get())
-        # Dealer toggle button remains removed from top header grid (accessed via SettingsDialog or 'v')
+        self.assertTrue(bool(self.app.stage_band_frame.grid_info()))
         self.assertFalse(bool(self.app.dealer_view_button.grid_info()))
 
     def test_empty_cards_frames_do_not_render_solid_boxes(self):
@@ -221,15 +217,18 @@ class TestTableFeltCanvas(unittest.TestCase):
         # y1 must be at the top horizon rail (<= 5)
         self.assertLessEqual(bbox_initial[1], 5, f"Shoe tray not at horizon rail: y1={bbox_initial[1]}")
 
-        # Simulate window stretch resize event from 900 to 1300
+        # Simulate window stretch resize event from 1280 to 1920 with 1920 pit_max_width
+        from display_profile import make_profile_preset
+
         old_x2 = bbox_initial[2]
-        new_width = 1300
+        table.set_display_profile(make_profile_preset("fhd_1080p", is_fullscreen=True))
+        new_width = 1920
         event = type("ResizeEvent", (), {"width": new_width, "height": table.canvas_height})()
         table._on_resize(event)
         self.root.update_idletasks()
 
         bbox_resized = table.bbox("shoe_tray")
-        # x2 must have shifted rightward to track the new window width
+        # x2 must have shifted rightward to track the wider pit_right boundary
         self.assertGreater(bbox_resized[2], old_x2 + 200, "Shoe tray did not move rightward with window resize")
         self.assertLessEqual(bbox_resized[1], 5, "Shoe tray shifted away from horizon rail on resize")
 
@@ -247,16 +246,34 @@ class TestTableFeltCanvas(unittest.TestCase):
         container_fill = table.itemcget(items[0], "fill")
         self.assertNotEqual(container_fill, "#0a1812", "Discard rack should not have opaque black fill")
 
-    def test_trainer_hud_window_expansion_and_row_clearance(self):
-        """Toggling Trainer HUD expands window height if less than DEFAULT_WINDOW_HEIGHT."""
-        import config
-        from unittest.mock import patch
+    def test_pure_pillow_felt_and_lru_cache_bound(self):
+        """ui_canvases avoids numpy and bounds _felt_cache to MAX_FELT_CACHE=2 entries."""
+        import ast
+        from pathlib import Path
+        import ui_canvases
 
-        with patch.object(self.root, "winfo_height", return_value=700), \
-             patch.object(self.root, "geometry") as mock_geom:
-            self.app.apply_play_mode("training")
-            expected_h = min(config.DEFAULT_WINDOW_HEIGHT, self.root.winfo_screenheight() - 80)
-            mock_geom.assert_called_with(f"900x{expected_h}")
+        tree = ast.parse(Path(ui_canvases.__file__).read_text(encoding="utf-8"))
+        imported = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    imported.add(alias.name.split(".")[0])
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module.split(".")[0])
+        self.assertNotIn("numpy", imported, "ui_canvases must not import numpy")
+
+        table = self.app.card_table_frame
+        for theme in ("casino", "creep", "hell", "celestial"):
+            table.set_theme(theme)
+        self.assertLessEqual(len(table._felt_cache), table.MAX_FELT_CACHE)
+
+    def test_trainer_hud_mounts_in_left_felt_wing(self):
+        """Enabling Training play mode mounts CardCountingHud in LeftFeltWing without legacy 900px resize."""
+        self.app.apply_play_mode("training")
+        self.root.update_idletasks()
+        self.assertTrue(self.app.card_counting_hud.is_visible)
+        self.assertEqual(self.app.card_counting_hud.master, self.app.counting_wing_slot)
+        self.assertEqual(self.app.counting_wing_slot.master, self.app.left_felt_wing)
 
 
 if __name__ == "__main__":

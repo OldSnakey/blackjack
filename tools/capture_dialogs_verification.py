@@ -21,7 +21,9 @@ from PIL import Image
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
+import config
 from blackjack import BlackjackApp
+from display_profile import bootstrap_os_display_and_fonts, lock_tk_pixel_scaling
 from rules import Card, VENUE_PRESETS
 
 
@@ -86,15 +88,24 @@ def main():
     temp_dir = tempfile.TemporaryDirectory()
     save_file = Path(temp_dir.name) / "test_save.json"
 
+    boot_diag = bootstrap_os_display_and_fonts()
     root = tkinter.Tk()
+    lock_tk_pixel_scaling(root)
     root.title("Blackjack - Dialog Verification")
-    root.geometry("1100x820+50+50")
+    root.geometry(f"{config.DEFAULT_WINDOW_WIDTH}x{config.DEFAULT_WINDOW_HEIGHT}+50+50")
     root.update_idletasks()
     root.deiconify()
     root.lift()
     root.focus_force()
 
-    app = BlackjackApp(root, chips_mode=True, sound_enabled=False, save_path=save_file)
+    app = BlackjackApp(
+        root,
+        chips_mode=True,
+        sound_enabled=False,
+        save_path=save_file,
+        skip_splash=True,
+        bootstrap_diagnostics=boot_diag,
+    )
     app.save_manager.data.highscores.peak_bankroll = 15500
     app.save_manager.data.highscores.total_hands_played = 120
     app.save_manager.data.highscores.total_hands_won = 68

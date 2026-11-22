@@ -83,12 +83,14 @@ class TestUiLayout(unittest.TestCase):
         self.assertEqual(ry2, 20)
 
     def test_fallback_on_missing_file(self):
-        """If UI_CONFIG_FILE is pointed to a non-existent path, default config is safely returned."""
+        """If UI_CONFIG_FILE is pointed to a non-existent path, default v2.0 config is safely returned."""
         with patch.object(ui_layout, "UI_CONFIG_FILE", Path("non_existent_config.json")):
             ui_layout.reload_ui_config()
             cfg = ui_layout.load_ui_config()
-            self.assertEqual(cfg["version"], "1.0")
+            self.assertEqual(cfg["version"], "2.0")
             self.assertIn("chip_visualizer", cfg)
+            self.assertIn("display_profiles", cfg)
+            self.assertIn("stage_wings", cfg)
 
     def test_hot_reloading_on_mtime_change(self):
         """load_ui_config reloads immediately when file mtime changes on disk."""
@@ -183,37 +185,33 @@ class TestUiLayout(unittest.TestCase):
         self.assertIn("milestone_label_offset_y", pbar)
 
     def test_root_layout_configuration(self):
-        """root_layout configuration provides window padding, weights, and row mappings."""
+        """root_layout v2.0 configuration provides 4-row Pit-Wings grid without mid-round vertical bars."""
         cfg = ui_layout.get_ui_layout("root_layout")
         self.assertIn("padding", cfg)
+        self.assertEqual(cfg["padding"].get("padx"), 0)
+        self.assertEqual(cfg["padding"].get("pady"), 0)
         self.assertIn("column_weights", cfg)
         self.assertIn("row_weights", cfg)
         self.assertIn("rows", cfg)
         rows = cfg["rows"]
-        self.assertIn("top_bar", rows)
-        self.assertIn("dealer_stage", rows)
-        self.assertIn("horizon_rail", rows)
-        self.assertIn("card_table", rows)
-        self.assertIn("mahogany_rail", rows)
-        self.assertIn("insurance_prompt", rows)
-        self.assertIn("blessings_tray", rows)
+        self.assertEqual(set(rows.keys()), {"stage_band", "horizon_rail", "card_table", "mahogany_rail"})
+        self.assertEqual(rows["stage_band"]["row"], 0)
+        self.assertEqual(rows["horizon_rail"]["row"], 1)
+        self.assertEqual(rows["card_table"]["row"], 2)
+        self.assertEqual(rows["mahogany_rail"]["row"], 3)
 
     def test_get_grid_options_with_sub_element(self):
-        """get_grid_options retrieves grid options for top-level component or specific sub-element."""
-        # Top-level component
-        top_opts = ui_layout.get_grid_options("top_bar")
-        self.assertEqual(top_opts.get("row"), 0)
-        self.assertEqual(top_opts.get("columnspan"), 3)
-
-        # Specific sub-element
-        sound_opts = ui_layout.get_grid_options("top_bar", "sound_button")
-        self.assertEqual(sound_opts.get("row"), 0)
-        self.assertEqual(sound_opts.get("column"), 8)
-        self.assertIsInstance(sound_opts.get("padx"), tuple)
-
-        dealer_title_opts = ui_layout.get_grid_options("top_bar", "dealer_wins_title")
-        self.assertEqual(dealer_title_opts.get("row"), 0)
-        self.assertEqual(dealer_title_opts.get("column"), 0)
+        """get_grid_options retrieves grid options for stage_wings 2x3 Salon Menu and Tour Ledger."""
+        wings_cfg = ui_layout.get_ui_layout("stage_wings")
+        self.assertIn("left_stage_wing", wings_cfg)
+        self.assertIn("right_stage_wing", wings_cfg)
+        right_btns = wings_cfg["right_stage_wing"]["buttons"]
+        self.assertNotIn("dealer_view_button", right_btns)
+        for key in ("tour_button", "trip_button", "settings_button", "sound_button", "help_button", "fullscreen_button"):
+            self.assertIn(key, right_btns)
+        sound_opts = ui_layout.get_grid_options("stage_wings", "sound_button")
+        self.assertEqual(sound_opts.get("row"), 1)
+        self.assertEqual(sound_opts.get("column"), 1)
 
     def test_get_pack_options_and_scaling(self):
         """get_pack_options resolves pack keywords and scales paddings accurately."""
@@ -277,26 +275,23 @@ class TestUiLayout(unittest.TestCase):
         self.assertIn("min_overlap", cards_layout)
 
     def test_blessings_tray_layout(self):
-        """blessings_tray layout options are loaded and configurable."""
-        tray_opts = ui_layout.get_grid_options("blessings_tray")
-        self.assertEqual(tray_opts.get("row"), 7)
-        self.assertEqual(tray_opts.get("columnspan"), 3)
+        """blessings_tray mounts vertically inside LeftFeltWing rather than root row 7."""
         tray_cfg = ui_layout.get_ui_layout("blessings_tray")
-        self.assertIn("relic_item_padx", tray_cfg)
+        self.assertEqual(tray_cfg.get("zone"), "left_felt_wing")
+        self.assertEqual(tray_cfg.get("orientation"), "vertical")
+        self.assertIn("relic_item_pady", tray_cfg)
 
     def test_root_layout_grid_options_sub_element(self):
-        """get_grid_options correctly resolves sub-elements under root_layout rows with full sticky options."""
+        """get_grid_options resolves sub-elements under 4-row root_layout with full sticky options."""
         ct_opts = ui_layout.get_grid_options("root_layout", "card_table")
-        self.assertEqual(ct_opts.get("row"), 3)
+        self.assertEqual(ct_opts.get("row"), 2)
         self.assertEqual(ct_opts.get("column"), 0)
-        self.assertEqual(ct_opts.get("columnspan"), 3)
         self.assertEqual(ct_opts.get("sticky"), "nsew")
 
-        ds_opts = ui_layout.get_grid_options("root_layout", "dealer_stage")
-        self.assertEqual(ds_opts.get("row"), 1)
-        self.assertEqual(ds_opts.get("column"), 0)
-        self.assertEqual(ds_opts.get("columnspan"), 3)
-        self.assertEqual(ds_opts.get("sticky"), "ew")
+        sb_opts = ui_layout.get_grid_options("root_layout", "stage_band")
+        self.assertEqual(sb_opts.get("row"), 0)
+        self.assertEqual(sb_opts.get("column"), 0)
+        self.assertEqual(sb_opts.get("sticky"), "ew")
 
     def test_image_scaling_config_schema(self):
         """image_scaling configuration provides per-element-type scaling modes and resampling options."""
@@ -328,33 +323,45 @@ class TestUiLayout(unittest.TestCase):
         self.assertEqual(resample_frac, lanczos)
 
     def test_table_felt_multi_seat_origins(self):
-        """Validates seat origins for seats 1, 2, and 3 from table_felt configuration."""
+        """Validates symmetric pit_cx-centered seat origins for seats 1, 2, and 3 across DisplayProfiles."""
+        from display_profile import make_profile_preset
+
         felt_cfg = ui_layout.get_ui_layout("table_felt")
-        self.assertIn("seat_origins", felt_cfg)
         self.assertEqual(felt_cfg.get("split_fan_offset_x"), 35)
         self.assertEqual(felt_cfg.get("split_vertical_cascade_y"), 16)
 
+        # Default 1280x504 (deck_800p): pit_cx = 640, seat_dx = 240
         seat1 = ui_layout.get_seat_origin(1)
         seat2 = ui_layout.get_seat_origin(2)
         seat3 = ui_layout.get_seat_origin(3)
 
-        self.assertEqual(seat1["x"], 745)
-        self.assertEqual(seat2["x"], 490)
-        self.assertEqual(seat3["x"], 235)
-        self.assertEqual(seat1["y"], 285)
-        self.assertEqual(seat2["y"], 298)
-        self.assertEqual(seat3["y"], 285)
-        self.assertEqual(seat1["card_y"], 140)
-        self.assertEqual(seat2["card_y"], 150)
-        self.assertEqual(seat3["card_y"], 140)
-        self.assertEqual(seat1["side_bet_y"], 285)
-        self.assertEqual(seat1["side_bet_offset_x"], 82)
+        self.assertEqual(seat2["x"], 640)
+        self.assertEqual(seat1["x"], 880)
+        self.assertEqual(seat3["x"], 400)
+        self.assertEqual(seat1["x"] - seat2["x"], seat2["x"] - seat3["x"])
 
-    def test_cards_layout_player_y_offset(self):
-        """cards_layout must configure player_y_offset at 199px (lowered 75px from legacy 124px)."""
-        card_cfg = ui_layout.get_card_layout()
-        self.assertEqual(card_cfg.get("player_y_offset"), 199)
-        self.assertEqual(card_cfg.get("dealer_y_offset"), 6)
+        # 1920x784 (fhd_1080p): pit_cx = 960, seat_dx = 345
+        prof_1080 = make_profile_preset("fhd_1080p", window_wh=(1920, 1080), is_fullscreen=True)
+        s1_1080 = ui_layout.get_seat_origin(1, canvas_w=1920, canvas_h=784, profile=prof_1080)
+        s2_1080 = ui_layout.get_seat_origin(2, canvas_w=1920, canvas_h=784, profile=prof_1080)
+        s3_1080 = ui_layout.get_seat_origin(3, canvas_w=1920, canvas_h=784, profile=prof_1080)
+        self.assertEqual((s3_1080["x"], s2_1080["x"], s1_1080["x"]), (615, 960, 1305))
+
+    def test_pit_bounds_and_center_pit_lanes(self):
+        """resolve_pit_bounds and resolve_center_pit_lanes clamp 4K/21:9 spread and center lanes dynamically."""
+        from display_profile import make_profile_preset
+
+        self.assertEqual(ui_layout.resolve_pit_bounds(1280, 1280), (0, 640, 1280))
+        self.assertEqual(ui_layout.resolve_pit_bounds(3440, 2560), (440, 1720, 3000))
+        self.assertEqual(ui_layout.resolve_pit_bounds(3840, 2560), (640, 1920, 3200))
+
+        for prof_name, wh in (("hd_720p", (1280, 720)), ("deck_800p", (1280, 800)), ("qhd_1440p", (2560, 1440))):
+            prof = make_profile_preset(prof_name, window_wh=wh, is_fullscreen=(prof_name == "qhd_1440p"))
+            lanes = ui_layout.resolve_center_pit_lanes(prof.window_w, prof.felt_height, prof, table_seats=1)
+            self.assertEqual(lanes["pit_cx"], prof.window_w // 2)
+            self.assertGreater(lanes["player_y"], lanes["dealer_y"] + prof.card_height + 40)
+            self.assertLess(lanes["mid_gap_y"], lanes["player_y"])
+            self.assertGreater(lanes["mid_gap_y"], lanes["dealer_y"] + prof.card_height)
 
 
 if __name__ == "__main__":

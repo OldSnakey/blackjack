@@ -117,13 +117,13 @@ class TestShortcutsOverlayGui(unittest.TestCase):
             pass
 
     def test_help_button_initialized(self):
-        """Help button must exist on the scoreboard bar and be configured."""
+        """Help button must exist on right_stage_wing Salon Menu and be configured."""
         self.assertTrue(hasattr(self.app, "help_button"))
         self.assertIsInstance(self.app.help_button, tkinter.Button)
-        # Verify it is gridded and has expected text or image
+        self.assertEqual(self.app.help_button.master, self.app.right_stage_wing)
         info = self.app.help_button.grid_info()
-        self.assertEqual(info["row"], 0)
-        self.assertEqual(info["column"], 9)
+        self.assertEqual(info["row"], 2)
+        self.assertEqual(info["column"], 0)
 
     def test_toggle_shortcuts_overlay_lifecycle(self):
         """Toggling the overlay repeatedly creates and cleanly destroys the dialog."""
@@ -177,10 +177,10 @@ class TestShortcutsOverlayGui(unittest.TestCase):
         self.assertEqual(len(self.app.dealer_hand), initial_dealer_len)
 
     def test_keyboard_shortcuts_bound_on_root(self):
-        """All expected shortcut keys must have bindings on the root window."""
+        """All expected shortcut keys must have bindings on the root window, and retired <v>/<V> must not."""
         expected_keys = [
             "<question>", "?", "/", "<F1>", "<h>", "<H>", "<s>", "<S>",
-            "<Key-5>", "<Shift-W>", "<Shift-H>", "<F11>", "<v>",
+            "<Key-5>", "<Shift-W>", "<Shift-H>", "<F11>",
             "<Left>", "<Right>",
         ]
         for key in expected_keys:
@@ -189,6 +189,11 @@ class TestShortcutsOverlayGui(unittest.TestCase):
             self.assertTrue(
                 bool(binding),
                 f"Expected binding for key '{key}' on root window, but none found",
+            )
+        for retired_key in ("<v>", "<V>"):
+            self.assertFalse(
+                bool(self.root.bind(retired_key)),
+                f"Retired dealer-view shortcut '{retired_key}' should not be bound on root",
             )
 
     def test_shortcuts_dialog_tabs_and_navigation(self):
@@ -255,28 +260,33 @@ class TestShortcutsOverlayGui(unittest.TestCase):
         self.assertIn("Card Counter", combined_text, "Missing Card Counter shortcut")
         # Check Fullscreen
         self.assertIn("Fullscreen", combined_text, "Missing Fullscreen shortcut")
+        # Check Settings [O / F2]
+        self.assertIn("Settings", combined_text, "Missing Settings shortcut in help overlay")
         # Check Multi-Seat Focus
         self.assertIn("Seat Focus", combined_text, "Missing Seat Focus shortcut in help overlay")
-        # Ensure Scale 1x / 2x is removed
+        # Ensure Scale 1x / 2x and retired Dealer Portrait [V] are removed
         self.assertNotIn("Scale 1x / 2x", combined_text)
+        self.assertNotIn("Dealer Portrait", combined_text)
 
         self.app._close_shortcuts_overlay()
 
     def test_shortcuts_dialog_scrollable_container_and_no_clipping(self):
-        """Shortcuts dialog wraps content in a scrollable container with mousewheel support and zero clipped rows."""
+        """Shortcuts screen mounts full-screen in-window with zero vertical scrollbar on 1280x800."""
+        self.root.geometry("1280x800")
+        self.root.update_idletasks()
         self.app._show_shortcuts_overlay()
         dialog = self.app._shortcuts_dialog
         self.assertIsNotNone(dialog)
+        self.assertIsInstance(dialog, tkinter.Frame)
+        self.assertNotIsInstance(dialog, tkinter.Toplevel)
         self.assertTrue(hasattr(dialog, "_on_mousewheel") or hasattr(dialog, "canvas"))
 
-        # Verify dialog geometry fits within live configuration bounds
         dialog.update_idletasks()
-        req_h = dialog.winfo_reqheight()
-        max_allowed_h = min(
-            self.root.winfo_screenheight() - 80,
-            int(config.DEFAULT_WINDOW_HEIGHT * getattr(self.app, "scale_factor", 1.0)),
-        )
-        self.assertLessEqual(req_h, max_allowed_h, f"Dialog height {req_h} exceeds live display allowance {max_allowed_h}")
+        dialog.update()
+        size_part = dialog.geometry().split("+")[0]
+        w, h = map(int, size_part.split("x"))
+        self.assertEqual((w, h), (1280, 800))
+        self.assertFalse(bool(dialog.v_scrollbar.winfo_manager()))
 
         self.app._close_shortcuts_overlay()
 

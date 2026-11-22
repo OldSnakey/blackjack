@@ -270,12 +270,11 @@ class TestHauntedGui(unittest.TestCase):
         self.assertEqual(info_stakes["column"], 8)
 
     def test_dealer_view_toggle(self):
-        """Dealer view toggle switches state between True and False."""
+        """Hide Dealer UI is retired; _on_toggle_dealer_view is a safe no-op leaving dealer_view_var True."""
         self.assertTrue(self.app.dealer_view_var.get())
         self.app._on_toggle_dealer_view()
-        self.assertFalse(self.app.dealer_view_var.get())
-        self.app._on_toggle_dealer_view()
         self.assertTrue(self.app.dealer_view_var.get())
+        self.assertEqual(self.app.blessings_tray.master, self.app.left_felt_wing)
 
 
     def test_soul_meter_and_accessories_initialized(self):
@@ -561,6 +560,8 @@ class TestHauntedGui(unittest.TestCase):
         )
         self.root.update_idletasks()
 
+        self.assertIsInstance(dlg, tkinter.Frame)
+        self.assertNotIsInstance(dlg, tkinter.Toplevel)
         # Find the button inside the dialog
         btn = None
         for child in dlg.winfo_children():
@@ -802,11 +803,23 @@ class TestHauntedGui(unittest.TestCase):
         self.assertEqual(self.app.cursed_stakes_button.cget("text"), "✦ Exit Cursed")
         self.assertEqual(self.app.cursed_stakes_button.cget("state"), "normal")
 
-        # Equip Miracle Draw and verify no overlap between cursed_stakes_button and miracle_button
+        # Equip Miracle Draw and verify no overlap AND zero text overflow on cursed_stakes_button & miracle_button
         self.app.haunted.equip_blessing(Blessing.MIRACLE)
         self.app._update_blessings_tray()
         self.app._reposition_rail_buttons()
         self.root.update_idletasks()
+        cs_font_obj = tkinter.font.Font(font=self.app.cursed_stakes_button.font)
+        m_font_obj = tkinter.font.Font(font=self.app.miracle_button.font)
+        self.assertLessEqual(
+            cs_font_obj.measure(self.app.cursed_stakes_button.cget("text")),
+            self.app.cursed_stakes_button.width - 10,
+            "cursed_stakes_button text overflows button bevel!",
+        )
+        self.assertLessEqual(
+            m_font_obj.measure(self.app.miracle_button.cget("text")),
+            self.app.miracle_button.width - 10,
+            "miracle_button text overflows button bevel!",
+        )
         cs_left = self.app.cursed_stakes_button.x - (self.app.cursed_stakes_button.width // 2)
         cs_right = self.app.cursed_stakes_button.x + (self.app.cursed_stakes_button.width // 2)
         m_left = self.app.miracle_button.x - (self.app.miracle_button.width // 2)
@@ -924,6 +937,54 @@ class TestHauntedGui(unittest.TestCase):
         player_sprite_img = self.app.card_table_frame.itemcget(self.app.player_hands[0].sprite_ids[1], "image")
         self.assertEqual(dealer_sprite_img, str(c_ks.image))
         self.assertEqual(player_sprite_img, str(c_js.image))
+
+    def test_secondary_haunted_overlays_float_over_table_and_draft_arrow_navigation(self):
+        """AngelicDraftDialog & StoryDialogueDialog mount as centered floating overlays (< 1280x800) with D-pad/arrow relic selection."""
+        from ui_dialogs import AngelicDraftDialog
+
+        picked = []
+        choices = [Blessing.SERAPH, Blessing.EYE, Blessing.SMITE]
+        relic_map = {b.value: self.app.haunted_assets.get(f"relic_{b.value}") for b in choices}
+        draft = AngelicDraftDialog(self.root, choices=choices, relic_icons=relic_map, on_select=picked.append)
+        try:
+            draft.update_idletasks()
+            draft.update()
+            self.assertIsInstance(draft, tkinter.Frame)
+            self.assertNotIsInstance(draft, tkinter.Toplevel)
+            self.assertLess(draft.winfo_width(), 1280)
+            self.assertLess(draft.winfo_height(), 800)
+            p_info = draft.place_info()
+            self.assertGreater(int(float(p_info["x"])), 0)
+            self.assertGreater(int(float(p_info["y"])), 0)
+            self.assertEqual(draft.focused_idx, 0)
+
+            draft.event_generate("<Right>")
+            self.assertEqual(draft.focused_idx, 1)
+            draft.event_generate("<Return>")
+            self.assertEqual(picked, [Blessing.EYE])
+        finally:
+            if draft.winfo_exists():
+                draft.destroy()
+
+        story = StoryDialogueDialog(
+            self.root,
+            title="Pit Fiend",
+            speaker="MALPHAS",
+            portrait_img=self.app.dealer_actor.get_bust_photo_image("malphas"),
+            text_content="The crimson baize awaits.",
+        )
+        try:
+            story.update_idletasks()
+            story.update()
+            self.assertIsInstance(story, tkinter.Frame)
+            self.assertLess(story.winfo_width(), 1280)
+            self.assertLess(story.winfo_height(), 800)
+            sp_info = story.place_info()
+            self.assertGreater(int(float(sp_info["x"])), 0)
+            self.assertGreater(int(float(sp_info["y"])), 0)
+        finally:
+            if story.winfo_exists():
+                story.destroy()
 
 
 if __name__ == "__main__":

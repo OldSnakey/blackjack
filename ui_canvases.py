@@ -16,6 +16,7 @@ Provides:
 
 from __future__ import annotations
 
+from collections import OrderedDict
 import math
 import random
 import tkinter
@@ -24,10 +25,11 @@ from typing import Any, Callable, Optional
 
 # Optional Pillow support
 try:
-    from PIL import Image, ImageTk, ImageDraw, ImageFont, ImageFilter
+    from PIL import Image, ImageChops, ImageTk, ImageDraw, ImageFont, ImageFilter
     PIL_AVAILABLE = True
 except (ImportError, Exception):
     Image = None
+    ImageChops = None
     ImageTk = None
     ImageDraw = None
     ImageFont = None
@@ -56,12 +58,19 @@ from pixel_ui import (
     CanvasPixelPanel,
     CanvasTextLabelProxy,
 )
-from ui_layout import get_ui_layout, resolve_origin, resolve_offset, get_seat_origin
+from ui_layout import (
+    get_ui_layout,
+    resolve_origin,
+    resolve_offset,
+    get_seat_origin,
+    resolve_pit_bounds,
+    resolve_center_pit_lanes,
+)
 
 # Parameterized Typography & HUD Constants
-HUD_OUTCOME_FONT_FAMILY = "BoldPixels"
-HUD_OUTCOME_FONT_SIZE = 16
-HUD_OUTCOME_FONT_WEIGHT = "bold"
+HUD_OUTCOME_FONT_FAMILY = "m6x11plus"
+HUD_OUTCOME_FONT_SIZE = 18
+HUD_OUTCOME_FONT_WEIGHT = "normal"
 
 HUD_LORE_FONT_FAMILY = "m5x7"
 HUD_LORE_FONT_SIZE = 16
@@ -93,20 +102,25 @@ class ChipVisualizer(tkinter.Canvas):
         on_side_bet_click: Optional[Callable[[str, int], None]] = None,
         on_side_bet_deduct: Optional[Callable[[str, int], None]] = None,
         on_side_bet_clear: Optional[Callable[[str], None]] = None,
+        display_profile: Optional[Any] = None,
         **kwargs,
     ):
         cv_cfg = get_ui_layout("chip_visualizer")
-        base_w = width if width is not None else cv_cfg.get("base_width", 260)
-        base_h = height if height is not None else cv_cfg.get("base_height", 148)
+        init_scale = float(getattr(display_profile, "art_scale", 1)) if display_profile is not None else 1.0
+        base_w = width if width is not None else cv_cfg.get("base_width", 288)
+        base_h = height if height is not None else cv_cfg.get("base_height", 204)
+        init_w = int(base_w * init_scale) if width is None else int(width)
+        init_h = int(base_h * init_scale) if height is None else int(height)
         super().__init__(
-            master, width=base_w, height=base_h, background=background,
+            master, width=init_w, height=init_h, background=background,
             highlightthickness=0, borderwidth=0, relief="flat", **kwargs
         )
-        self.scale = 1.0
+        self.display_profile = display_profile
+        self.scale = init_scale
         self.base_width = base_w
         self.base_height = base_h
-        self.canvas_width = base_w
-        self.canvas_height = base_h
+        self.canvas_width = init_w
+        self.canvas_height = init_h
         self.cx, self.cy = resolve_origin(
             get_ui_layout("chip_visualizer", "betting_spot"), base_w, base_h, content_offset=self._get_content_offset()
         )
@@ -166,12 +180,16 @@ class ChipVisualizer(tkinter.Canvas):
         except Exception:
             pass
 
+    def set_display_profile(self, profile: Any) -> None:
+        """Applies integer `art_scale` from an active `DisplayProfile`."""
+        self.display_profile = profile
+        self.set_scale(float(getattr(profile, "art_scale", 1)))
+
     def set_scale(self, scale: float):
         """Scales visualizer canvas and re-renders base spot proportionally without table overflow."""
         self.scale = scale
         self.canvas_width = int(getattr(self, "base_width", 260) * scale)
-        scale_h = 1.0 if scale <= 1.0 else (1.0 + (scale - 1.0) * 0.35)
-        self.canvas_height = int(getattr(self, "base_height", 148) * scale_h)
+        self.canvas_height = int(getattr(self, "base_height", 195) * scale)
         self.configure(width=self.canvas_width, height=self.canvas_height)
         self.cx, self.cy = resolve_origin(
             get_ui_layout("chip_visualizer", "betting_spot"), self.canvas_width, self.canvas_height,
@@ -237,7 +255,7 @@ class ChipVisualizer(tkinter.Canvas):
         pp_wm = pp_cfg.get("watermark", {"offset_x": 0, "offset_y": 1})
         pp_wm_x, pp_wm_y = resolve_offset(pp_wm, (pp_cx, pp_cy), sx, sy)
         self.create_text(
-            pp_wm_x, pp_wm_y, text="PAIRS", fill="#8a6d1b",
+            pp_wm_x, pp_wm_y, text="PAIRS", fill="#bfa040",
             font=get_element_font("betting_spot_watermark", scale=s_font),
             tags=("pp_watermark", "pp_spot_interactive")
         )
@@ -270,7 +288,7 @@ class ChipVisualizer(tkinter.Canvas):
         wm_cfg = spot_cfg.get("watermark", {"offset_x": 0, "offset_y": 1})
         wm_x, wm_y = resolve_offset(wm_cfg, (cx, cy), sx, sy)
         self.create_text(
-            wm_x, wm_y, text="BETTING SPOT", fill="#8a6d1b",
+            wm_x, wm_y, text="BETTING SPOT", fill="#bfa040",
             font=get_element_font("betting_spot_watermark", scale=s_font), tags=("watermark", "spot_interactive")
         )
         badge_cfg = spot_cfg.get("bet_badge", {"offset_x": 0, "offset_y": -34})
@@ -304,7 +322,7 @@ class ChipVisualizer(tkinter.Canvas):
         t13_wm = t13_cfg.get("watermark", {"offset_x": 0, "offset_y": 1})
         t13_wm_x, t13_wm_y = resolve_offset(t13_wm, (t13_cx, t13_cy), sx, sy)
         self.create_text(
-            t13_wm_x, t13_wm_y, text="21+3", fill="#8a6d1b",
+            t13_wm_x, t13_wm_y, text="21+3", fill="#bfa040",
             font=get_element_font("betting_spot_watermark", scale=s_font),
             tags=("t13_watermark", "t13_spot_interactive")
         )
@@ -516,10 +534,11 @@ class ChipVisualizer(tkinter.Canvas):
         s_font = min(sx, sy)
 
         avail = getattr(self, "available_bankroll", 0)
-        hint_suffix = " (L:+ | R:-)" if getattr(self, "interactive_bankroll", False) and avail >= 5 else ""
-        if w >= 250 and hint_suffix:
-            hint_suffix = " (L-Click + | R-Click -)"
-        self.itemconfigure("bankroll_badge", text=f"CHIPS: ${avail:,}{hint_suffix}")
+        if getattr(self, "interactive_bankroll", False):
+            badge_label = "L-CLICK +BET  |  R-CLICK -BET" if avail >= 5 else "OUT OF CHIPS - REBUY TO BET"
+        else:
+            badge_label = "HAND IN PROGRESS"
+        self.itemconfigure("bankroll_badge", text=badge_label)
 
         piles = breakdown_bankroll_piles(avail)
         denoms = (5, 25, 100, 500, 1000)
@@ -560,9 +579,9 @@ class ChipVisualizer(tkinter.Canvas):
                 rx, ry = int(12 * s_font), int(6 * s_font)
                 self.create_oval(
                     col_x - rx, base_y - ry, col_x + rx, base_y + ry,
-                    outline="#5d4a18", width=1, dash=(2, 2), fill="", tags=combined_tags
+                    outline="#7d6728", width=1, dash=(2, 2), fill="", tags=combined_tags
                 )
-                lbl_color = "#6e6e6e"
+                lbl_color = "#8fa89b"
 
             self.create_text(
                 col_x, lbl_y, text=short_lbl, fill=lbl_color,
@@ -626,6 +645,10 @@ class ChipVisualizer(tkinter.Canvas):
         self.delete("floating_text")
         self.itemconfigure("spot_base", outline="#d4af37")
 
+    def cancel_animations(self):
+        """Alias for clear_timers() used during atomic DisplayProfile transitions."""
+        self.clear_timers()
+
     def clear_timers(self):
         """Cancels all active animation callbacks and cleans up any interrupted transient animation items."""
         for tid in list(self._active_timers):
@@ -644,12 +667,17 @@ class ChipVisualizer(tkinter.Canvas):
             if getattr(self, "current_bet", 0) <= 0:
                 self.delete("chip")
                 self.itemconfigure("badge", text="")
-            for b_type, badge_tag in (("perfect_pairs", "pp_badge"), ("21_plus_3", "t13_badge")):
+                self.itemconfigure("watermark", state="normal")
+            for b_type, badge_tag, wm_tag in (
+                ("perfect_pairs", "pp_badge", "pp_watermark"),
+                ("21_plus_3", "t13_badge", "t13_watermark"),
+            ):
                 if self.side_bets.get(b_type, 0) <= 0:
                     self.delete(f"sb_chip_{b_type}")
                     self.delete(f"anim_sb_chip_{b_type}")
                     self.delete(f"floating_sb_{b_type}")
                     self.itemconfigure(badge_tag, text="")
+                    self.itemconfigure(wm_tag, state="normal")
         except Exception:
             pass
 
@@ -675,6 +703,8 @@ class ChipVisualizer(tkinter.Canvas):
         self.delete("floating_sb_21_plus_3")
         self.itemconfigure("pp_badge", text="")
         self.itemconfigure("t13_badge", text="")
+        self.itemconfigure("pp_watermark", state="normal")
+        self.itemconfigure("t13_watermark", state="normal")
 
     def render_side_bet_stacks(self, bet_type: str, amount: int):
         """Procedurally draws compact 2.5D chip stacks representing the side bet amount."""
@@ -684,10 +714,13 @@ class ChipVisualizer(tkinter.Canvas):
         self.delete(f"anim_{tag}")
 
         title = "PAIRS" if bet_type == "perfect_pairs" else "21+3"
+        wm_tag = "pp_watermark" if bet_type == "perfect_pairs" else "t13_watermark"
         if amount <= 0:
             self.itemconfigure(badge_tag, text="")
+            self.itemconfigure(wm_tag, state="normal")
             return
 
+        self.itemconfigure(wm_tag, state="hidden")
         self.itemconfigure(badge_tag, text=f"{title}: ${amount:,}")
 
         breakdown = breakdown_chips(amount)
@@ -773,8 +806,10 @@ class ChipVisualizer(tkinter.Canvas):
 
         if amount <= 0:
             self.itemconfigure("badge", text="")
+            self.itemconfigure("watermark", state="normal")
             return
 
+        self.itemconfigure("watermark", state="hidden")
         self.itemconfigure("badge", text=f"BET: ${amount:,}")
 
         breakdown = breakdown_chips(amount)
@@ -841,11 +876,12 @@ class ChipVisualizer(tkinter.Canvas):
             x - rx, y - ry, x + rx, y + ry,
             fill=style["bg"], outline="#ffffff", width=1, tags=tags
         )
-        # Inner dashed circle
-        self.create_oval(
-            x - rx + int(3 * s_chip), y - ry + int(2 * s_chip), x + rx - int(3 * s_chip), y + ry - int(2 * s_chip),
-            outline=style["fg"], dash=(2, 2), tags=tags
-        )
+        # Inner dashed circle (only at >1x chip scale so 1x numerals stay crisp and unobstructed)
+        if s_chip > 1.15:
+            self.create_oval(
+                x - rx + int(3 * s_chip), y - ry + int(2 * s_chip), x + rx - int(3 * s_chip), y + ry - int(2 * s_chip),
+                outline=style["fg"], dash=(2, 2), tags=tags
+            )
 
         # 4. Text (denomination or count badge if stack is capped)
         short_denom = "$1K" if denom == 1000 else f"${denom}"
@@ -1030,17 +1066,19 @@ class SoulMeterCanvas(tkinter.Canvas):
     Visualizes the struggle between the mortal soul (0% Abyss) and celestial freedom (100% Light).
     """
 
-    def __init__(self, master, width=None, height=None, background="#140508", **kwargs):
+    def __init__(self, master, width=None, height=None, background="#140508", display_profile: Optional[Any] = None, **kwargs):
         cfg = get_ui_layout("soul_meter")
+        init_scale = float(getattr(display_profile, "art_scale", 1)) if display_profile is not None else 1.0
         if width is None:
-            width = int(cfg.get("base_width", 250))
+            width = int(cfg.get("base_width", 250) * init_scale)
         if height is None:
-            height = int(cfg.get("base_height", 135))
+            height = int(cfg.get("base_height", 135) * init_scale)
         super().__init__(
             master, width=width, height=height, background=background,
             highlightthickness=0, borderwidth=0, relief="flat", **kwargs
         )
-        self.scale = 1.0
+        self.display_profile = display_profile
+        self.scale = init_scale
         self.canvas_width = width
         self.canvas_height = height
         self.cx = width // 2
@@ -1048,7 +1086,37 @@ class SoulMeterCanvas(tkinter.Canvas):
         self.current_value = 0.25
         self.target_value = 0.25
         self._anim_timer_id = None
+        self._felt_bg_photo = None
+        self._felt_coords = None
         self._draw_meter()
+
+    def sync_felt_background(self, felt_img: Any, x_off: int = 0, y_off: int = 0) -> None:
+        """Slices active table felt behind SoulMeterCanvas so rounded corners show zero rectangular box halo."""
+        if not PIL_AVAILABLE or Image is None or ImageTk is None or felt_img is None:
+            return
+        try:
+            self._felt_coords = (int(x_off), int(y_off))
+            w, h = max(10, self.canvas_width), max(10, self.canvas_height)
+            sx1 = max(0, min(int(x_off), max(0, felt_img.width - w)))
+            sy1 = max(0, min(int(y_off), max(0, felt_img.height - h)))
+            cropped = felt_img.crop((sx1, sy1, min(felt_img.width, sx1 + w), min(felt_img.height, sy1 + h)))
+            if cropped.size != (w, h):
+                cropped = cropped.resize((w, h))
+            self._felt_bg_photo = ImageTk.PhotoImage(cropped, master=self)
+            self.delete("soul_felt_bg")
+            self.create_image(0, 0, image=self._felt_bg_photo, anchor="nw", tags="soul_felt_bg")
+            self.tag_lower("soul_felt_bg")
+        except Exception:
+            pass
+
+    def cancel_animations(self) -> None:
+        """Cancels any in-flight soul meter step timer."""
+        self._cancel_timer()
+
+    def set_display_profile(self, profile: Any) -> None:
+        """Applies integer `art_scale` from an active `DisplayProfile`."""
+        self.display_profile = profile
+        self.set_scale(float(getattr(profile, "art_scale", 1)))
 
     def set_scale(self, scale: float):
         """Scales soul meter canvas dimensions proportionally."""
@@ -1088,6 +1156,8 @@ class SoulMeterCanvas(tkinter.Canvas):
 
     def _draw_meter(self):
         self.delete("all")
+        if getattr(self, "_felt_bg_photo", None) is not None:
+            self.create_image(0, 0, image=self._felt_bg_photo, anchor="nw", tags="soul_felt_bg")
         cx, cy = self.cx, self.cy
         s = getattr(self, "scale", 1.0)
 
@@ -1164,6 +1234,13 @@ class SoulMeterCanvas(tkinter.Canvas):
         except Exception:
             return False
 
+    def cancel_animations(self):
+        """Cancels active SoulMeter animation timer and snaps to target_value."""
+        self._cancel_timer()
+        self.current_value = self.target_value
+        if self.winfo_exists():
+            self._draw_meter()
+
     def _cancel_timer(self):
         if self._anim_timer_id:
             try:
@@ -1209,6 +1286,7 @@ class TableAnnouncementHUD(tkinter.Frame):
         self.wraplength = wraplength
         self.payout_ratio: tuple[int, int] = (3, 2)
         self.current_raw_message = ""
+        self.insurance_overlay_active: bool = False
         self._dismiss_timer_id: Optional[str] = None
 
         # Outer felt badge containing procedural brass-riveted plaque canvas
@@ -1389,16 +1467,43 @@ class TableAnnouncementHUD(tkinter.Frame):
             self.badge_canvas.coords(self._outcome_id, cx, cy)
             self.badge_canvas.coords(self._outcome_sh_id, cx + 1, cy + 1)
 
-        # Float in center of parent table felt as an overlay dialog card (higher in 3-seat mode to keep Seat 2 un-occluded)
+        # Float in upper-center pit gap above the felt rules block (and suppress duplicate generic Ace prompt during Insurance)
+        tl = text.lower()
+        if getattr(self, "insurance_overlay_active", False) and "take insurance" in tl and "side bet" not in tl:
+            if self.winfo_manager() == "place":
+                self.place_forget()
+            return
+
         if not self.winfo_manager() or self.winfo_manager() == "place":
-            target_rely = 0.30 if getattr(self.master, "table_seats", 1) == 3 else 0.54
+            if getattr(self.master, "table_seats", 1) == 3:
+                target_rely = 0.25
+            elif getattr(self, "insurance_overlay_active", False):
+                target_rely = 0.28
+            else:
+                target_rely = 0.35
             self.place(relx=0.5, rely=target_rely, anchor="center")
             self.lift()
 
         # Automatically dismiss transient announcements after 2.5s
-        tl = text.lower()
         if "relic" in tl or "equipped" in tl or "blessing" in tl or "achievement" in tl:
             self._dismiss_timer_id = self.after(2500, self.dismiss)
+
+    def set_insurance_overlay_active(self, active: bool) -> None:
+        """Coordinates vertical placement and suppresses duplicate prompt text while floating Insurance plaque is active."""
+        self.insurance_overlay_active = bool(active)
+        if self.insurance_overlay_active and "take insurance" in self.current_raw_message.lower() and "side bet" not in self.current_raw_message.lower():
+            if self.winfo_manager() == "place":
+                self.place_forget()
+            return
+        if self.winfo_manager() == "place":
+            if getattr(self.master, "table_seats", 1) == 3:
+                target_rely = 0.25
+            elif self.insurance_overlay_active:
+                target_rely = 0.28
+            else:
+                target_rely = 0.35
+            self.place(relx=0.5, rely=target_rely, anchor="center")
+            self.lift()
 
     @property
     def is_lore_visible(self) -> bool:
@@ -1471,6 +1576,11 @@ class TableAnnouncementHUD(tkinter.Frame):
             wraplength=self.wraplength
         )
 
+    def set_display_profile(self, profile: Any) -> None:
+        """Applies integer `art_scale` from an active `DisplayProfile`."""
+        self.display_profile = profile
+        self.set_scale(float(getattr(profile, "art_scale", 1)))
+
     def set_scale(self, scale: float):
         """Scales outcome/lore typography and wraplength proportionally."""
         self.scale = scale
@@ -1527,30 +1637,39 @@ class HauntedAltarCanvas(tkinter.Canvas):
         self,
         master,
         assets: dict[str, tkinter.PhotoImage] | None = None,
-        width: int = 260,
-        height: int = 135,
+        width: int | None = None,
+        height: int | None = None,
         background: str = PANEL_BACKGROUND_COLOR,
+        display_profile: Optional[Any] = None,
         **kwargs
     ):
+        altar_cfg = get_ui_layout("haunted_altar")
+        init_scale = float(getattr(display_profile, "art_scale", 1)) if display_profile is not None else 1.0
+        if width is None:
+            width = int(altar_cfg.get("base_width", 260) * init_scale)
+        if height is None:
+            height = int(altar_cfg.get("base_height", 96) * init_scale)
         super().__init__(
             master, width=width, height=height, background=background,
             highlightthickness=0, borderwidth=0, relief="flat", **kwargs
         )
-        self.scale = 1.0
+        self.display_profile = display_profile
+        self.scale = init_scale
+        self.base_width = int(altar_cfg.get("base_width", 260))
+        self.base_height = int(altar_cfg.get("base_height", 96))
         self.canvas_width = width
         self.canvas_height = height
         self.assets = assets or {}
 
-        altar_cfg = get_ui_layout("haunted_altar")
         candles_cfg = altar_cfg.get("candles", {})
-        self.candle_y = candles_cfg.get("origin_y", 28)
+        self.candle_y = int(candles_cfg.get("origin_y", 22) * init_scale)
         start_c = candles_cfg.get("start_x", 26)
         step_c = candles_cfg.get("step_x", 52)
-        self.candle_x_positions = [start_c + i * step_c for i in range(5)]
+        self.candle_x_positions = [int((start_c + i * step_c) * init_scale) for i in range(5)]
 
         graves_cfg = altar_cfg.get("gravestones", {})
-        self.gravestone_y = graves_cfg.get("origin_y", 80)
-        self.gravestone_x_positions = list(graves_cfg.get("x_positions", [36, 83, 130, 177, 224]))
+        self.gravestone_y = int(graves_cfg.get("origin_y", 62) * init_scale)
+        self.gravestone_x_positions = [int(x * init_scale) for x in graves_cfg.get("x_positions", [36, 83, 130, 177, 224])]
 
         # Altar state
         self.candles_remaining = 5
@@ -1625,18 +1744,30 @@ class HauntedAltarCanvas(tkinter.Canvas):
             except Exception:
                 pass
 
+    def set_display_profile(self, profile: Any, assets: dict[str, tkinter.PhotoImage] | None = None) -> None:
+        """Applies integer `art_scale` from an active `DisplayProfile`."""
+        self.display_profile = profile
+        self.set_scale(float(getattr(profile, "art_scale", 1)), assets=assets)
+
     def set_scale(self, scale: float, assets: dict[str, tkinter.PhotoImage] | None = None):
         """Scales canvas dimensions and re-projects candle/stone coordinates proportionally."""
         self.scale = scale
         if assets is not None:
             self.assets = assets
-        self.canvas_width = int(260 * scale)
-        self.canvas_height = int(135 * scale)
+        altar_cfg = get_ui_layout("haunted_altar")
+        bw = int(altar_cfg.get("base_width", 260))
+        bh = int(altar_cfg.get("base_height", 96))
+        self.canvas_width = int(bw * scale)
+        self.canvas_height = int(bh * scale)
         self.configure(width=self.canvas_width, height=self.canvas_height)
-        self.candle_y = int(28 * scale)
-        self.candle_x_positions = [int((26 + i * 52) * scale) for i in range(5)]
-        self.gravestone_y = int(80 * scale)
-        self.gravestone_x_positions = [int(x * scale) for x in [36, 83, 130, 177, 224]]
+        candles_cfg = altar_cfg.get("candles", {})
+        graves_cfg = altar_cfg.get("gravestones", {})
+        self.candle_y = int(candles_cfg.get("origin_y", 22) * scale)
+        start_c = candles_cfg.get("start_x", 26)
+        step_c = candles_cfg.get("step_x", 52)
+        self.candle_x_positions = [int((start_c + i * step_c) * scale) for i in range(5)]
+        self.gravestone_y = int(graves_cfg.get("origin_y", 62) * scale)
+        self.gravestone_x_positions = [int(x * scale) for x in graves_cfg.get("x_positions", [36, 83, 130, 177, 224])]
         self._felt_slice_photo = None
         if self._felt_source_img and self._felt_coords:
             self.sync_felt_background(self._felt_source_img, self._felt_coords[0], self._felt_coords[1])
@@ -1977,7 +2108,7 @@ class HauntedAltarCanvas(tkinter.Canvas):
                 dx = self.calculate_shadow_offset_dx(gx, centroid)
                 dy = (6 + (5 - self.candles_remaining)) * s
 
-                ground_y = gy + int(20 * s)
+                ground_y = gy + int(15 * s)
                 w_half = int(18 * s)
                 shadow_pts = [
                     gx - w_half + dx * 0.15, ground_y,
@@ -2035,32 +2166,38 @@ class DealerStageCanvas(tkinter.Canvas):
     - Dynamic resize handling and High-DPI in-memory scaling.
     """
 
+    DEFAULT_WIDTH = 1000
     DEFAULT_HEIGHT = 220
 
     def __init__(
         self,
         parent: tkinter.Misc,
         app: Optional[Any] = None,
-        width: int = 1000,
-        height: int = 220,
+        width: Optional[int] = None,
+        height: Optional[int] = None,
         on_hanger_click: Optional[Callable[[], None]] = None,
+        display_profile: Optional[Any] = None,
         **kwargs
     ):
+        art_scale = int(getattr(display_profile, "art_scale", 1)) if display_profile is not None else 1
+        eff_w = int(width) if width is not None else (int(getattr(display_profile, "stage_w", self.DEFAULT_WIDTH * art_scale)) if display_profile is not None else self.DEFAULT_WIDTH)
+        eff_h = int(height) if height is not None else (int(getattr(display_profile, "stage_h", self.DEFAULT_HEIGHT * art_scale)) if display_profile is not None else self.DEFAULT_HEIGHT)
         super().__init__(
             parent,
-            width=width,
-            height=height,
+            width=eff_w,
+            height=eff_h,
             background="#0a0a0a",
             highlightthickness=0,
             borderwidth=0,
             **kwargs
         )
         self.app = app
+        self.display_profile = display_profile
         self.current_theme = "casino"
-        self.scale_factor = 1.0
+        self.scale_factor = float(art_scale)
         self.on_hanger_click = on_hanger_click
-        self.canvas_width = width
-        self.canvas_height = height
+        self.canvas_width = eff_w
+        self.canvas_height = eff_h
 
         self.backdrop_images: dict[str, Any] = {}
         self.hanger_photo: Optional[Any] = None
@@ -2107,8 +2244,15 @@ class DealerStageCanvas(tkinter.Canvas):
             fill=fill_col, outline=border_col, width=max(1, int(s)),
             tags="speech_tail"
         )
+        self.create_line(
+            p1[0], p1[1], p3[0], p3[1],
+            fill=border_col, width=max(1, int(s)), tags="speech_tail"
+        )
         if self.find_withtag("dialogue_win"):
-            self.lift("dialogue_win")
+            if self.itemcget("dialogue_win", "state") == "hidden":
+                self.itemconfigure("speech_tail", state="hidden")
+            else:
+                self.lift("dialogue_win")
 
     def clear_speech_tail(self):
         """Removes the active speech callout tail from the canvas."""
@@ -2159,10 +2303,16 @@ class DealerStageCanvas(tkinter.Canvas):
             p2x = backdrops_dir / f2x
             if p1x.exists() and PIL_AVAILABLE and Image is not None and ImageTk is not None:
                 try:
-                    img1x = Image.open(p1x)
-                    photo1x = ImageTk.PhotoImage(img1x)
-                    img2x = Image.open(p2x) if p2x.exists() else img1x
-                    photo2x = ImageTk.PhotoImage(img2x) if p2x.exists() else photo1x
+                    with Image.open(p1x) as im1:
+                        img1x = im1.copy()
+                    photo1x = ImageTk.PhotoImage(img1x, master=self)
+                    if p2x.exists():
+                        with Image.open(p2x) as im2:
+                            img2x = im2.copy()
+                        photo2x = ImageTk.PhotoImage(img2x, master=self)
+                    else:
+                        img2x = img1x
+                        photo2x = photo1x
                     self.backdrop_images[theme] = {
                         1.0: (img1x, photo1x),
                         2.0: (img2x, photo2x),
@@ -2193,16 +2343,19 @@ class DealerStageCanvas(tkinter.Canvas):
         w = max(10, self.canvas_width)
         h = max(10, self.canvas_height)
 
-        # 1. Draw scaled backdrop
+        # 1. Draw exact integer backdrop (zero non-integer stretch at 1000x220 1x and 2000x440 2x)
         theme_data = self.backdrop_images.get(self.current_theme)
         if theme_data and PIL_AVAILABLE and Image is not None and ImageTk is not None:
-            active_scale = 2.0 if self.scale_factor > 1.5 else 1.0
-            raw_img, _ = theme_data.get(active_scale, (None, None))
-            if raw_img:
+            active_scale = 2.0 if self.scale_factor >= 1.8 else 1.0
+            raw_img, cached_photo = theme_data.get(active_scale, (None, None))
+            if raw_img is not None:
                 try:
-                    resample_mode = getattr(Image, "Resampling", Image).NEAREST
-                    resized = raw_img.resize((w, h), resample_mode)
-                    self._active_backdrop_photo = ImageTk.PhotoImage(resized, master=self)
+                    if raw_img.size == (w, h) and cached_photo is not None:
+                        self._active_backdrop_photo = cached_photo
+                    else:
+                        resample_mode = getattr(Image, "Resampling", Image).NEAREST
+                        resized = raw_img.resize((w, h), resample_mode)
+                        self._active_backdrop_photo = ImageTk.PhotoImage(resized, master=self)
                     self.create_image(0, 0, image=self._active_backdrop_photo, anchor="nw", tags="backdrop")
                 except Exception:
                     pass
@@ -2365,7 +2518,10 @@ class DealerStageCanvas(tkinter.Canvas):
         if self.find_withtag("speech_tail"):
             self.lift("speech_tail")
         if self.find_withtag("dialogue_win"):
-            self.lift("dialogue_win")
+            if self.itemcget("dialogue_win", "state") == "hidden":
+                self.itemconfigure("speech_tail", state="hidden")
+            else:
+                self.lift("dialogue_win")
         if self.find_withtag("hanger_btn"):
             self.lift("hanger_btn")
 
@@ -2380,10 +2536,26 @@ class DealerStageCanvas(tkinter.Canvas):
             self.clear_particles()
             self._redraw_stage()
 
+    def cancel_animations(self):
+        """Clears transient stage particles during DisplayProfile transitions."""
+        self.clear_particles()
+
+    def set_display_profile(self, profile: Any) -> None:
+        """Locks `DealerStageCanvas` to integer `1000x220` (`1x`) or `2000x440` (`2x`) with zero stretch."""
+        self.display_profile = profile
+        art_scale = int(getattr(profile, "art_scale", 1))
+        self.scale_factor = float(art_scale)
+        self.canvas_width = int(getattr(profile, "stage_w", self.DEFAULT_WIDTH * art_scale))
+        self.canvas_height = int(getattr(profile, "stage_h", self.DEFAULT_HEIGHT * art_scale))
+        self.configure(width=self.canvas_width, height=self.canvas_height)
+        self._redraw_stage()
+
     def set_scale(self, scale_factor: float):
-        self.scale_factor = scale_factor
-        self.canvas_height = int(self.DEFAULT_HEIGHT * (1.0 if scale_factor <= 1.0 else 1.30))
-        self.configure(height=self.canvas_height)
+        art_scale = 2 if scale_factor >= 1.8 else 1
+        self.scale_factor = float(art_scale)
+        self.canvas_width = self.DEFAULT_WIDTH * art_scale
+        self.canvas_height = self.DEFAULT_HEIGHT * art_scale
+        self.configure(width=self.canvas_width, height=self.canvas_height)
         self._redraw_stage()
 
 
@@ -2480,12 +2652,22 @@ class TableFeltCanvas(tkinter.Canvas):
         },
     }
 
-    def __init__(self, parent: tkinter.Misc, background: str = PANEL_BACKGROUND_COLOR, **kwargs):
+    MAX_FELT_CACHE = 2
+    _SHARED_TILE_CACHE: dict[tuple[str, int], Any] = {}
+    _SHARED_VIGNETTE_GRID: dict[tuple[int, int], Any] = {}
+    _SHARED_FONT_CACHE: dict[tuple[str, int], Any] = {}
+    _SHARED_ARC_CACHE: dict[tuple[int, int, int, tuple[int, int, int]], Any] = {}
+
+    def __init__(self, parent: tkinter.Misc, background: str = PANEL_BACKGROUND_COLOR, display_profile: Optional[Any] = None, **kwargs):
         hl = kwargs.pop("highlightthickness", 0)
         bw = kwargs.pop("borderwidth", 0)
         rel = kwargs.pop("relief", "flat")
         self.padx = kwargs.pop("padx", 0)
         self.pady = kwargs.pop("pady", 0)
+        default_w = int(getattr(display_profile, "window_w", 1280)) if display_profile is not None else 1280
+        default_h = int(getattr(display_profile, "felt_height", 504)) if display_profile is not None else 504
+        init_w = int(kwargs.get("width", default_w))
+        init_h = int(kwargs.get("height", default_h))
         super().__init__(
             parent,
             background=background,
@@ -2495,15 +2677,17 @@ class TableFeltCanvas(tkinter.Canvas):
             **kwargs
         )
         self.current_theme = "casino"
-        self.scale_factor = 1.0
-        self.canvas_width = 900
-        self.canvas_height = 274
+        self.scale_factor = float(getattr(display_profile, "art_scale", 1)) if display_profile is not None else 1.0
+        self.pit_max_width: int = int(getattr(display_profile, "pit_max_width", 1920)) if display_profile is not None else 1920
+        self._display_profile: Optional[Any] = display_profile
+        self.canvas_width = init_w
+        self.canvas_height = init_h
         self._bg_hex = background
         self._felt_photo: Optional[Any] = None
         self._felt_img: Optional[Any] = None
         self.payout_ratio: tuple[int, int] = (3, 2)
         self.dealer_hits_soft_17: bool = False
-        self._felt_cache: dict[tuple[Any, ...], Any] = {}
+        self._felt_cache: OrderedDict[tuple[Any, ...], Any] = OrderedDict()
         self._shoe_visible: bool = False
         self._shoe_remaining: int = 208
         self._shoe_total: int = 208
@@ -2533,6 +2717,10 @@ class TableFeltCanvas(tkinter.Canvas):
         self.bind("<Motion>", self._on_felt_motion)
         self.bind("<Configure>", self._on_resize)
         self._redraw_felt()
+
+    @property
+    def art_scale(self) -> int:
+        return 2 if getattr(self, "scale_factor", 1.0) >= 1.8 else 1
 
     def _on_resize(self, event):
         if event.width > 20 and (event.width != self.canvas_width or event.height != self.canvas_height):
@@ -2572,56 +2760,189 @@ class TableFeltCanvas(tkinter.Canvas):
             if getattr(self, "_shoe_visible", False):
                 self.draw_shoe_tray(self._shoe_remaining, self._shoe_total, getattr(self, "_shoe_cut_notice", False))
 
+    def set_display_profile(self, profile: Any):
+        """Updates TableFeltCanvas scale, pit_max_width, and profile reference atomically."""
+        self._display_profile = profile
+        new_scale = float(getattr(profile, "art_scale", 1))
+        new_pit_max = int(getattr(profile, "pit_max_width", 1920))
+        changed = (self.scale_factor != new_scale) or (self.pit_max_width != new_pit_max)
+        self.scale_factor = new_scale
+        self.pit_max_width = new_pit_max
+        if changed:
+            self._redraw_felt()
+            if getattr(self, "_shoe_visible", False):
+                self.draw_shoe_tray(self._shoe_remaining, self._shoe_total, getattr(self, "_shoe_cut_notice", False))
+            if self.table_seats > 1:
+                self.draw_betting_spots()
+
     def set_scale(self, scale_factor: float):
         if self.scale_factor != scale_factor:
             self.scale_factor = scale_factor
+            self.pit_max_width = 2560 if scale_factor >= 1.8 else 1920
             self._redraw_felt()
             if getattr(self, "_shoe_visible", False):
                 self.draw_shoe_tray(self._shoe_remaining, self._shoe_total, getattr(self, "_shoe_cut_notice", False))
 
+    def _get_baize_tile(self, theme: str, art_scale: int) -> Any:
+        """Synthesizes a deterministic, edge-wrapping 128x128 RGB woven baize tile without numpy."""
+        cache_key = (theme, art_scale)
+        cached = self._SHARED_TILE_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
+
+        cfg = self.THEME_COLORS.get(theme, self.THEME_COLORS["casino"])
+        br, bg, bb = cfg["base"]
+        # Pre-boost base slightly (~1.06x) so multiplicative overhead-lamp vignette peaks cleanly at center
+        r_base = min(255.0, br * 1.07 + 1.0)
+        g_base = min(255.0, bg * 1.07 + 1.0)
+        b_base = min(255.0, bb * 1.07 + 1.0)
+
+        tile_sz = 128
+        period = 4 * max(1, art_scale)
+        rng = random.Random(42)
+        buf = bytearray(tile_sz * tile_sz * 3)
+        idx = 0
+        for y in range(tile_sz):
+            for x in range(tile_sz):
+                grain = rng.gauss(0.0, 4.5)
+                twill = 3.0 if ((x + y) % period == 0) else (-1.0 if ((x - y) % (period * 2) == 0) else 0.0)
+                delta = grain + twill
+                rv = int(r_base + delta * 0.75)
+                gv = int(g_base + delta)
+                bv = int(b_base + delta * 0.80)
+                buf[idx] = 0 if rv < 0 else (255 if rv > 255 else rv)
+                buf[idx + 1] = 0 if gv < 0 else (255 if gv > 255 else gv)
+                buf[idx + 2] = 0 if bv < 0 else (255 if bv > 255 else bv)
+                idx += 3
+
+        tile = Image.frombytes("RGB", (tile_sz, tile_sz), bytes(buf))
+        self._SHARED_TILE_CACHE[cache_key] = tile
+        return tile
+
+    def _get_vignette_base(self) -> Any:
+        """Builds a cached 64x48 single-channel overhead-lamp dark-edge vignette alpha mask."""
+        key = (64, 48)
+        cached = self._SHARED_VIGNETTE_GRID.get(key)
+        if cached is not None:
+            return cached
+        gw, gh = key
+        cx, cy = gw * 0.5, gh * 0.46
+        buf = bytearray(gw * gh)
+        idx = 0
+        for y in range(gh):
+            dy = (y - cy) / (gh * 0.68)
+            dy2 = dy * dy
+            for x in range(gw):
+                dx = (x - cx) / (gw * 0.58)
+                dist = math.sqrt(dx * dx + dy2)
+                darkness = max(0.0, min(0.22, 0.19 * dist - 0.03))
+                buf[idx] = int(round(darkness * 255.0))
+                idx += 1
+        vig = Image.frombytes("L", (gw, gh), bytes(buf))
+        self._SHARED_VIGNETTE_GRID[key] = vig
+        return vig
+
+    @classmethod
+    def _get_cached_pil_font(cls, filename: str, px_size: int) -> Any:
+        key = (filename, px_size)
+        if key in cls._SHARED_FONT_CACHE:
+            return cls._SHARED_FONT_CACHE[key]
+        if ImageFont is None:
+            return None
+        path = FONTS_DIR / filename
+        font_obj = ImageFont.truetype(str(path), px_size) if path.exists() else ImageFont.load_default()
+        cls._SHARED_FONT_CACHE[key] = font_obj
+        return font_obj
+
     def _generate_felt_image(self, w: int, h: int) -> Optional[Any]:
         if not PIL_AVAILABLE or Image is None or ImageDraw is None:
             return None
-        import numpy as np
 
         cfg = self.THEME_COLORS.get(self.current_theme, self.THEME_COLORS["casino"])
-        base_rgb = np.array(cfg["base"], dtype=np.float32)
+        art_scale = 2 if self.scale_factor >= 1.8 else 1
+        lw = max(1, (w + art_scale - 1) // art_scale)
+        lh = max(1, (h + art_scale - 1) // art_scale)
+        tile = self._get_baize_tile(self.current_theme, 1)
 
-        rng = np.random.RandomState(42)
-        noise = rng.normal(0, 5.0, (h, w, 1))
+        # 1. Fast exponential doubling paste on 1x logical grid (lw, lh)
+        base_img = Image.new("RGB", (lw, lh))
+        tw, th = tile.size
+        base_img.paste(tile, (0, 0))
+        filled_w = min(tw, lw)
+        while filled_w < lw:
+            copy_w = min(filled_w, lw - filled_w)
+            strip = base_img.crop((0, 0, copy_w, min(th, lh)))
+            base_img.paste(strip, (filled_w, 0))
+            filled_w += copy_w
+        filled_h = min(th, lh)
+        while filled_h < lh:
+            copy_h = min(filled_h, lh - filled_h)
+            band = base_img.crop((0, 0, lw, copy_h))
+            base_img.paste(band, (0, filled_h))
+            filled_h += copy_h
 
-        y_idx, x_idx = np.indices((h, w))
-        weave = ((x_idx + y_idx) % 4 == 0).astype(np.float32)[:, :, np.newaxis] * 2.5
+        # 2. Low-res 64x48 overhead-lamp dark-edge alpha vignette applied on logical grid
+        resampling_ns = getattr(Image, "Resampling", Image)
+        vig_small = self._get_vignette_base()
+        vig_mask = vig_small.resize((lw, lh), resampling_ns.BILINEAR)
+        base_img.paste((0, 0, 0), (0, 0, lw, lh), vig_mask)
 
-        cx, cy = w / 2.0, h * 0.45
-        dist = np.sqrt(((x_idx - cx) / (w * 0.6)) ** 2 + ((y_idx - cy) / (h * 0.7)) ** 2)
-        vignette = np.clip(1.06 - 0.18 * dist, 0.85, 1.10)[:, :, np.newaxis]
+        # Upscale logical pixel-art felt grain via NEAREST when art_scale == 2 (2x2 crunchy baize)
+        if (lw, lh) != (w, h):
+            felt_img = base_img.resize((w, h), resampling_ns.NEAREST)
+        else:
+            felt_img = base_img
 
-        felt_arr = (base_rgb + noise + weave) * vignette
-        felt_arr = np.clip(felt_arr, 0, 255).astype(np.uint8)
+        # 3. Center-Pit dealer arc (2x supersampled ribbon) + crisp pixel-font house rules
+        lanes = resolve_center_pit_lanes(w, h, self._display_profile, self.table_seats)
+        pit_left, cx, pit_right = lanes["pit_left"], lanes["pit_cx"], lanes["pit_right"]
+        mid_y = lanes["mid_gap_y"] if h >= 320 else int(h * 0.42)
+        pit_w = max(240, pit_right - pit_left)
 
-        felt_img = Image.fromarray(felt_arr, mode="RGB")
-        draw = ImageDraw.Draw(felt_img)
-
-        s = self.scale_factor
         gold = cfg["gold"]
+        rx = min(int(pit_w * 0.30), int(370 * art_scale))
+        ry = min(max(int(36 * art_scale), int(h * 0.16)), int(96 * art_scale))
 
-        ribbon_y = int(h * 0.36) - int(20 * s)
-        rx = int(w * 0.38)
-        ry = int(h * 0.28)
-        draw.arc([cx - rx, ribbon_y - int(10 * s), cx + rx, ribbon_y + ry], start=22, end=158, fill=gold, width=max(1, int(2 * s)))
+        compact_v = h < int(450 * art_scale)
+        large_px = 16 * art_scale
+        small_px = 16 * art_scale
+        step_1 = int((15 if compact_v else 18) * art_scale)
+        step_2 = int((29 if compact_v else 34) * art_scale)
+        text_top_y = mid_y - int((18 if compact_v else 22) * art_scale)
 
-        scale_mult = max(1.0, min(1.6, (w / 900.0) * s))
+        if rx > 30 and ry > 16:
+            box_w = rx * 2 + int(16 * art_scale)
+            box_h = ry + int(24 * art_scale)
+            arc_key = (art_scale, rx, ry, tuple(gold))
+            arc_down = self._SHARED_ARC_CACHE.get(arc_key)
+            if arc_down is None:
+                ss = 2
+                arc_layer = Image.new("RGBA", (box_w * ss, box_h * ss), (0, 0, 0, 0))
+                arc_draw = ImageDraw.Draw(arc_layer)
+                pad_ss = int(8 * art_scale * ss)
+                arc_draw.arc(
+                    [pad_ss, -ry * ss + pad_ss, box_w * ss - pad_ss, ry * ss + pad_ss],
+                    start=20,
+                    end=160,
+                    fill=(gold[0], gold[1], gold[2], 215),
+                    width=max(2, int(2 * art_scale * ss)),
+                )
+                arc_down = arc_layer.resize((box_w, box_h), resampling_ns.BILINEAR)
+                self._SHARED_ARC_CACHE[arc_key] = arc_down
+            paste_x = cx - box_w // 2
+            target_apex_y = text_top_y + step_2 + int(16 * art_scale)
+            paste_y = max(0, target_apex_y - (ry + int(8 * art_scale)))
+            felt_img.paste(arc_down, (paste_x, paste_y), arc_down)
+
+        draw = ImageDraw.Draw(felt_img)
         try:
-            from PIL import ImageFont
-            bold_font_path = FONTS_DIR / "BoldPixels.ttf"
-            m5_font_path = FONTS_DIR / "m5x7.ttf"
-            if bold_font_path.exists() and m5_font_path.exists():
-                font_large = ImageFont.truetype(str(bold_font_path), max(20, int(22 * scale_mult)))
-                font_small = ImageFont.truetype(str(m5_font_path), max(16, int(17 * scale_mult)))
-            else:
-                font_large = ImageFont.load_default()
-                font_small = ImageFont.load_default()
+            draw.fontmode = "1"
+        except Exception:
+            pass
+
+        try:
+            font_large = self._get_cached_pil_font("BoldPixels.ttf", large_px)
+            font_small = self._get_cached_pil_font("m5x7.ttf", small_px)
         except Exception:
             font_large = font_small = None
 
@@ -2633,9 +2954,9 @@ class TableFeltCanvas(tkinter.Canvas):
                 if self.dealer_hits_soft_17
                 else "Dealer must stand on 17 and must draw to 16"
             )
-            draw.text((cx, ribbon_y + int(8 * scale_mult)), bj_text, fill=gold, font=font_large, anchor="mm")
-            draw.text((cx, ribbon_y + int(24 * scale_mult)), soft17_text, fill=cfg["rules_fg"], font=font_small, anchor="mm")
-            draw.text((cx, ribbon_y + int(38 * scale_mult)), "INSURANCE PAYS 2 TO 1", fill=gold, font=font_small, anchor="mm")
+            draw.text((cx, text_top_y), bj_text, fill=gold, font=font_large, anchor="mm")
+            draw.text((cx, text_top_y + step_1), soft17_text, fill=cfg["rules_fg"], font=font_small, anchor="mm")
+            draw.text((cx, text_top_y + step_2), "INSURANCE PAYS 2 TO 1", fill=gold, font=font_small, anchor="mm")
 
         return felt_img
 
@@ -2665,12 +2986,13 @@ class TableFeltCanvas(tkinter.Canvas):
             self.current_theme,
             w,
             h,
-            self.scale_factor,
+            int(self.art_scale),
             self.payout_ratio,
             self.dealer_hits_soft_17,
         )
 
         if key in self._felt_cache:
+            self._felt_cache.move_to_end(key)
             self._felt_img, self._felt_photo = self._felt_cache[key]
         elif PIL_AVAILABLE and Image is not None and ImageTk is not None:
             try:
@@ -2679,6 +3001,8 @@ class TableFeltCanvas(tkinter.Canvas):
                     self._felt_img = img
                     self._felt_photo = ImageTk.PhotoImage(img, master=self)
                     self._felt_cache[key] = (self._felt_img, self._felt_photo)
+                    while len(self._felt_cache) > self.MAX_FELT_CACHE:
+                        self._felt_cache.popitem(last=False)
             except Exception:
                 self._felt_img = None
                 self._felt_photo = None
@@ -2770,18 +3094,20 @@ class TableFeltCanvas(tkinter.Canvas):
             return
         s = self.scale_factor
         w = self.canvas_width
+        _, _, pit_right = resolve_pit_bounds(w, getattr(self, "pit_max_width", w))
 
         shoe_cfg = get_ui_layout("table_felt", "shoe_tray")
-        sw = int(shoe_cfg.get("width", 82) * s)
+        sw = int(shoe_cfg.get("width", 94) * s)
         sh = int(shoe_cfg.get("height", 28) * s)  # Compact, sleek profile sitting right at the horizon rail
-        sx = w - sw - int(shoe_cfg.get("offset_right", 12) * s)
-        sy = int(shoe_cfg.get("offset_top", 2) * s)   # Flush with the top horizon rail
+        sx = pit_right - sw - int(shoe_cfg.get("offset_right", 14) * s)
+        sy = int(shoe_cfg.get("offset_top", 3) * s)   # Flush with the top horizon rail
 
         # Clear acrylic shoe housing with subtle metallic bevel
         self.create_rectangle(sx, sy, sx + sw, sy + sh, fill="#0d2419", outline="#2e543e", width=max(1, int(1.5 * s)), tags="shoe_tray")
         self.create_rectangle(sx + 1, sy + 1, sx + sw - 1, sy + sh - 1, fill="", outline="#3a684c", width=1, tags="shoe_tray")
 
-        # Stack depth based on remaining cards
+        # Stack depth based on remaining cards (clamp total >= remaining against custom/rigged shoes)
+        total = max(int(total), int(remaining))
         ratio = max(0.0, min(1.0, remaining / max(1, total)))
         stack_w = max(4, int((sw - 14) * ratio))
 
@@ -2828,10 +3154,12 @@ class TableFeltCanvas(tkinter.Canvas):
         if inner_border_col:
             self.create_rectangle(bx1 + 1, py1 + 1, bx2 - 1, py2 - 1, fill="", outline=inner_border_col, width=1, tags="shoe_tray")
 
-        # Text label (e.g. "Shoe: 196/208" or "Shoe: 32/208 [Cut]")
+        # Text label (e.g. "Shoe: 196/208" or "Shoe: 32/208 [Cut]") with 1px drop shadow for baize legibility
         cut_text = " [Cut]" if cut_notice else ""
         label_text = f"Shoe: {remaining}/{total}{cut_text}"
-        self.create_text((bx1 + bx2) // 2, (py1 + py2) // 2, text=label_text, fill=text_col, font=f_shoe, tags="shoe_tray")
+        tx, ty = (bx1 + bx2) // 2, (py1 + py2) // 2
+        self.create_text(tx + 1, ty + 1, text=label_text, fill="#040e07", font=f_shoe, tags="shoe_tray")
+        self.create_text(tx, ty, text=label_text, fill=text_col, font=f_shoe, tags="shoe_tray")
 
     def draw_discard_rack(self, discarded: int = 0, total: int = 208):
         """Optional discard rack - renders without opaque black box so table felt is not obscured."""
@@ -2840,10 +3168,11 @@ class TableFeltCanvas(tkinter.Canvas):
             return
         s = self.scale_factor
         w = self.canvas_width
+        _, _, pit_right = resolve_pit_bounds(w, getattr(self, "pit_max_width", w))
         dw = int(60 * s)
         dh = int(24 * s)
-        dx = w - int(160 * s)
-        dy = int(2 * s)
+        dx = pit_right - int(175 * s)
+        dy = int(3 * s)
         ratio = max(0.0, min(1.0, discarded / max(1, total)))
         d_stack_w = max(3, int((dw - 8) * ratio))
         self.create_rectangle(dx, dy, dx + dw, dy + dh, fill="", outline="#2e543e", width=max(1, int(1.5 * s)), tags="discard_rack")
@@ -2870,13 +3199,14 @@ class TableFeltCanvas(tkinter.Canvas):
     # Layer 3: Canvas Card Sprites & Slide Trajectories
     # ------------------------------------------------------------------------
     def get_shoe_mouth_coords(self) -> tuple[int, int]:
-        """Calculates the (x, y) exit mouth coordinates of the acrylic card shoe."""
+        """Calculates the (x, y) exit mouth coordinates of the acrylic card shoe inside pit_right."""
         s = self.scale_factor
         w = max(20, self.canvas_width)
+        _, _, pit_right = resolve_pit_bounds(w, getattr(self, "pit_max_width", w))
         shoe_cfg = get_ui_layout("table_felt", "shoe_tray")
-        sw = int(shoe_cfg.get("width", 82) * s)
-        sx = w - sw - int(shoe_cfg.get("offset_right", 12) * s)
-        sy = int(shoe_cfg.get("offset_top", 2) * s)
+        sw = int(shoe_cfg.get("width", 94) * s)
+        sx = pit_right - sw - int(shoe_cfg.get("offset_right", 14) * s)
+        sy = int(shoe_cfg.get("offset_top", 3) * s)
         # Exit mouth is on the left side of the shoe tray
         exit_x = sx + int(3 * s)
         exit_y = sy + int(14 * s)
@@ -2984,7 +3314,7 @@ class TableFeltCanvas(tkinter.Canvas):
         timer_id = self.after(interval_ms, lambda: _step_anim(0))
         self._card_anim_timers[item_id] = timer_id
 
-    def cancel_card_animation(self, item_id: int):
+    def cancel_card_animation(self, item_id: int, snap_to_target: bool = True):
         """Cancels an active slide animation for a specific card sprite."""
         timer_id = self._card_anim_timers.pop(item_id, None)
         if timer_id:
@@ -2993,25 +3323,35 @@ class TableFeltCanvas(tkinter.Canvas):
             except Exception:
                 pass
         target = self._card_anim_targets.pop(item_id, None)
-        if target:
+        if snap_to_target and target:
             try:
                 self.move_card_sprite(item_id, target[0], target[1])
             except Exception:
                 pass
         cb = self._card_anim_callbacks.pop(item_id, None)
-        if cb:
+        if snap_to_target and cb:
             try:
                 cb()
             except Exception:
                 pass
 
-    def cancel_card_animations(self):
-        """Cancels all active card slide animation timers, snapping sprites to target coordinates."""
+    def cancel_card_animations(self, snap_to_target: bool = True):
+        """Cancels all active card slide animation timers."""
         for item_id in list(self._card_anim_timers.keys()):
-            self.cancel_card_animation(item_id)
+            self.cancel_card_animation(item_id, snap_to_target=snap_to_target)
         self._card_anim_timers.clear()
         self._card_anim_targets.clear()
         self._card_anim_callbacks.clear()
+
+    def cancel_animations(self):
+        """Quiesces all active card slide and turn-halo timers before profile transitions."""
+        self.cancel_card_animations(snap_to_target=False)
+        if getattr(self, "_halo_pulse_timer_id", None):
+            try:
+                self.after_cancel(self._halo_pulse_timer_id)
+            except Exception:
+                pass
+            self._halo_pulse_timer_id = None
 
     def has_active_card_animations(self) -> bool:
         """Returns True if any card slide animations are currently in-flight."""
@@ -3022,16 +3362,40 @@ class TableFeltCanvas(tkinter.Canvas):
         # Find item IDs matching tag
         items = self.find_withtag(tag)
         for item_id in items:
-            self.cancel_card_animation(item_id)
+            self.cancel_card_animation(item_id, snap_to_target=False)
         self.delete(tag)
 
     # ------------------------------------------------------------------------
     # Layer 4: Multi-Seat Betting Spots & Geometric Hit Dispatching
     # ------------------------------------------------------------------------
+    def _get_live_seat_origin(self, seat_idx: int) -> dict[str, int]:
+        """Resolves final pixel seat coordinates for the live canvas dimensions and active DisplayProfile."""
+        w = max(100, self.winfo_width() if self.winfo_width() > 1 else self.canvas_width)
+        h = max(100, self.winfo_height() if self.winfo_height() > 1 else self.canvas_height)
+        return get_seat_origin(
+            seat_idx,
+            canvas_w=w,
+            canvas_h=h,
+            profile=getattr(self, "_display_profile", None),
+        )
+
     def set_table_seats(self, seats: int):
-        """Sets the active table seats configuration (1 or 3) and refreshes felt spots."""
-        self.table_seats = max(1, min(3, seats))
+        """Sets the active table seats configuration (1 or 3) and refreshes felt geometry and spots."""
+        new_seats = max(1, min(3, seats))
+        changed = (getattr(self, "table_seats", 1) != new_seats)
+        self.table_seats = new_seats
+        if changed:
+            self._felt_cache.clear()
+            self._redraw_felt()
         self.draw_betting_spots()
+
+    def get_edge_baize_hex(self) -> str:
+        """Returns the edge-vignetted baize hex matching the current felt theme for seamless wing frame blending."""
+        cfg = self.THEME_COLORS.get(self.current_theme, self.THEME_COLORS["casino"])
+        r, g, b = cfg["base"]
+        # Outer edge vignette factor (~0.88x base RGB)
+        er, eg, eb = max(0, int(r * 0.88)), max(0, int(g * 0.88)), max(0, int(b * 0.88))
+        return f"#{er:02x}{eg:02x}{eb:02x}"
 
     def update_seat_bet(self, seat_idx: int, amount: int):
         """Updates staged bet display for a seat and refreshes spots."""
@@ -3065,11 +3429,11 @@ class TableFeltCanvas(tkinter.Canvas):
         visible_seats = [1, 2, 3]
 
         for s_idx in visible_seats:
-            origin = get_seat_origin(s_idx)
-            cx = int(origin["x"] * s)
-            cy = int(origin["y"] * s)
-            sb_offset_x = int(origin.get("side_bet_offset_x", 82) * s)
-            side_y = int(origin.get("side_bet_y", origin["y"]) * s)
+            origin = self._get_live_seat_origin(s_idx)
+            cx = int(origin["x"])
+            cy = int(origin["y"])
+            sb_offset_x = int(origin.get("side_bet_offset_x", int(76 * s)))
+            side_y = int(origin.get("side_bet_y", cy))
 
             # 1. Left Flanking Spot: Perfect Pairs (cx - sb_offset_x)
             pp_x = cx - sb_offset_x
@@ -3090,8 +3454,8 @@ class TableFeltCanvas(tkinter.Canvas):
                 draw_felt_chip_stack(self, pp_x, side_y, pp_bet, tag_prefix=f"chip_pp_{s_idx}", scale=s * 0.8, compact=True)
             else:
                 self.create_text(
-                    pp_x, side_y, text="PAIRS", fill="#8a6d1b",
-                    font=get_element_font("betting_spot_watermark", scale=0.75 * s),
+                    pp_x, side_y, text="PAIRS", fill="#d4b44a",
+                    font=get_element_font("betting_spot_watermark", scale=s),
                     tags=("betting_spot", f"spot_pp_txt_{s_idx}")
                 )
 
@@ -3113,8 +3477,8 @@ class TableFeltCanvas(tkinter.Canvas):
                 draw_felt_chip_stack(self, cx, cy, main_bet, tag_prefix=f"chip_main_{s_idx}", scale=s * 0.95, compact=False)
             else:
                 self.create_text(
-                    cx, cy, text=f"SEAT {s_idx}", fill="#8a6d1b",
-                    font=get_element_font("betting_spot_watermark", scale=0.85 * s),
+                    cx, cy, text=f"SEAT {s_idx}", fill="#d4b44a",
+                    font=get_element_font("betting_spot_watermark", scale=s),
                     tags=("betting_spot", f"spot_txt_{s_idx}")
                 )
 
@@ -3128,7 +3492,7 @@ class TableFeltCanvas(tkinter.Canvas):
                 tags=("betting_spot", f"spot_t13_{s_idx}")
             )
             self.create_oval(
-                t13_x - t13_in_rx, side_y - t13_ry, t13_x + t13_in_rx, side_y + t13_ry,
+                t13_x - t13_in_rx, side_y - t13_in_ry, t13_x + t13_in_rx, side_y + t13_in_ry,
                 outline="#8a6d1b", width=1, dash=(2, 2), fill="",
                 tags=("betting_spot", f"spot_t13_inner_{s_idx}")
             )
@@ -3137,8 +3501,8 @@ class TableFeltCanvas(tkinter.Canvas):
                 draw_felt_chip_stack(self, t13_x, side_y, t13_bet, tag_prefix=f"chip_t13_{s_idx}", scale=s * 0.8, compact=True)
             else:
                 self.create_text(
-                    t13_x, side_y, text="21+3", fill="#8a6d1b",
-                    font=get_element_font("betting_spot_watermark", scale=0.75 * s),
+                    t13_x, side_y, text="21+3", fill="#d4b44a",
+                    font=get_element_font("betting_spot_watermark", scale=s),
                     tags=("betting_spot", f"spot_t13_txt_{s_idx}")
                 )
 
@@ -3208,8 +3572,8 @@ class TableFeltCanvas(tkinter.Canvas):
         if self.table_seats == 1 or seat_index not in (1, 2, 3):
             return
         s = getattr(self, "scale_factor", 1.0)
-        origin = get_seat_origin(seat_index)
-        cx, cy = int(origin["x"] * s), int(origin["y"] * s)
+        origin = self._get_live_seat_origin(seat_index)
+        cx, cy = int(origin["x"]), int(origin["y"])
         rx, ry = int(54 * s), int(22 * s)
 
         # 1. Base dashed emerald boundary disc
@@ -3287,7 +3651,7 @@ class TableFeltCanvas(tkinter.Canvas):
         w = max(100, self.winfo_width() if self.winfo_width() > 1 else self.canvas_width)
         h = max(100, self.winfo_height() if self.winfo_height() > 1 else self.canvas_height)
         cx = w // 2
-        base_y = max(int(355 * s), h - int(45 * s))
+        base_y = max(int(260 * s), h - int(46 * s))
 
         denoms = (5, 25, 100, 500, 1000)
         piles = breakdown_bankroll_piles(avail)
@@ -3349,7 +3713,7 @@ class TableFeltCanvas(tkinter.Canvas):
         w = max(100, self.winfo_width() if self.winfo_width() > 1 else self.canvas_width)
         h = max(100, self.winfo_height() if self.winfo_height() > 1 else self.canvas_height)
         cx = w // 2
-        base_y = max(int(355 * s), h - int(45 * s))
+        base_y = max(int(260 * s), h - int(46 * s))
         denoms = (5, 25, 100, 500, 1000)
         spacing = int(48 * s)
         total_span = spacing * (len(denoms) - 1)
@@ -3404,11 +3768,11 @@ class TableFeltCanvas(tkinter.Canvas):
 
         # 2. Check 3-Seat Betting Spots
         for s_idx in (1, 2, 3):
-            origin = get_seat_origin(s_idx)
-            cx = int(origin["x"] * s)
-            cy = int(origin["y"] * s)
-            sb_offset_x = int(origin.get("side_bet_offset_x", 82) * s)
-            side_y = int(origin.get("side_bet_y", origin["y"]) * s)
+            origin = self._get_live_seat_origin(s_idx)
+            cx = int(origin["x"])
+            cy = int(origin["y"])
+            sb_offset_x = int(origin.get("side_bet_offset_x", int(76 * s)))
+            side_y = int(origin.get("side_bet_y", cy))
 
             # Check Perfect Pairs side bet (left flank)
             pp_x = cx - sb_offset_x
@@ -3446,9 +3810,9 @@ class TableFeltCanvas(tkinter.Canvas):
 
         # 2. Check 3-Seat Betting Spots (clear wager)
         for s_idx in (1, 2, 3):
-            origin = get_seat_origin(s_idx)
-            cx = int(origin["x"] * s)
-            cy = int(origin["y"] * s)
+            origin = self._get_live_seat_origin(s_idx)
+            cx = int(origin["x"])
+            cy = int(origin["y"])
             if abs(event.x - cx) <= int(80 * s) and abs(event.y - cy) <= int(32 * s):
                 if self.on_spot_clear_callback:
                     self.on_spot_clear_callback(s_idx)
@@ -3461,21 +3825,38 @@ class MahoganyRailCanvas(tkinter.Canvas):
     Houses the contextual player control docks (Betting Phase vs In-Play Phase) with brass rivets and gold trim.
     """
 
-    def __init__(self, master, height: int = 70, background: str = "#140a05", **kwargs):
+    def __init__(
+        self,
+        master,
+        height: int = 72,
+        background: str = "#140a05",
+        display_profile: Optional[Any] = None,
+        art_scale: Optional[int] = None,
+        **kwargs,
+    ):
+        eff_art = (
+            int(getattr(display_profile, "art_scale", 1))
+            if display_profile is not None
+            else (int(art_scale) if art_scale is not None else 1)
+        )
+        eff_h = int(getattr(display_profile, "rail_h", height)) if display_profile is not None else height
         super().__init__(
-            master, height=height, background=background,
+            master, height=eff_h, background=background,
             highlightthickness=0, borderwidth=0, relief="flat", **kwargs
         )
+        self.display_profile = display_profile
         self.grid_propagate(False)
         self.pack_propagate(False)
-        self.rail_height = height
-        self.scale_factor: float = 1.0
+        self.rail_height = eff_h
+        self.art_scale: int = max(1, eff_art)
+        self.scale_factor: float = float(self.art_scale)
+        self._current_width: int = 0
         self._panel: Optional[Any] = None
-        self.bind("<Configure>", self._on_resize)
+        self.bind("<Configure>", self._on_configure)
         self._draw_rail()
 
     def _draw_rail(self):
-        w = max(100, self.winfo_width() if self.winfo_width() > 1 else 900)
+        w = max(100, self.winfo_width() if self.winfo_width() > 1 else 1280)
         h = self.rail_height
         s = getattr(self, "scale_factor", 1.0)
         self.delete("rail_bg")
@@ -3498,11 +3879,37 @@ class MahoganyRailCanvas(tkinter.Canvas):
         self.create_line(0, trim_y, w, trim_y, fill="#d4af37", width=max(1, int(2 * s)), tags="rail_bg")
         self.create_line(0, accent_y, w, accent_y, fill="#7d5b10", width=1, tags="rail_bg")
 
-    def _on_resize(self, event):
-        if event.width > 20:
+    def _on_configure(self, event):
+        if event.width > 20 and event.width != self._current_width:
+            self._current_width = int(event.width)
             self._draw_rail()
 
+    def _on_resize(self, event):
+        self._on_configure(event)
+
+    def set_display_profile(self, profile: Any) -> None:
+        """Applies `rail_h` and integer `art_scale` from an active `DisplayProfile`."""
+        self.display_profile = profile
+        art_scale = max(1, int(getattr(profile, "art_scale", 1)))
+        self.art_scale = art_scale
+        self.scale_factor = float(art_scale)
+        self.rail_height = int(getattr(profile, "rail_h", 72 * art_scale))
+        self._current_width = 0
+        try:
+            self.configure(height=self.rail_height)
+        except Exception:
+            pass
+        self._draw_rail()
+
     def set_scale(self, scale: float):
-        self.scale_factor = scale
+        art_scale = 2 if scale >= 1.8 else 1
+        self.art_scale = art_scale
+        self.scale_factor = float(art_scale)
+        self.rail_height = 72 * art_scale
+        self._current_width = 0
+        try:
+            self.configure(height=self.rail_height)
+        except Exception:
+            pass
         self._draw_rail()
 

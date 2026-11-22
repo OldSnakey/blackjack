@@ -56,14 +56,14 @@ class TestVenueTourGui(unittest.TestCase):
             pass
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    def test_ui_layout_tour_button_parity_and_scoreboard_fit_under_900px(self) -> None:
-        """ui_layout.py and assets/ui_config.json match on tour_button and scoreboard fits <= 900px."""
+    def test_ui_layout_tour_button_parity_and_stage_wing_fit(self) -> None:
+        """ui_layout.py and assets/ui_config.json match on tour_button and stage wings fit <= 140px * art_scale."""
         cfg_path = Path(__file__).resolve().parent.parent / "assets" / "ui_config.json"
         disk_cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
-        self.assertIn("tour_button", DEFAULT_UI_CONFIG["top_bar"]["elements"])
+        self.assertIn("tour_button", DEFAULT_UI_CONFIG["stage_wings"]["right_stage_wing"]["buttons"])
         self.assertEqual(
-            DEFAULT_UI_CONFIG["top_bar"]["elements"]["tour_button"],
-            disk_cfg["top_bar"]["elements"]["tour_button"],
+            DEFAULT_UI_CONFIG["stage_wings"]["right_stage_wing"]["buttons"]["tour_button"],
+            disk_cfg["stage_wings"]["right_stage_wing"]["buttons"]["tour_button"],
         )
 
         # Unlock both Exorcist (maps tour_button) and Cursed Stakes (maps cursed_stakes_button)
@@ -74,11 +74,46 @@ class TestVenueTourGui(unittest.TestCase):
         self.root.update_idletasks()
 
         self.assertTrue(bool(self.app.tour_button.grid_info()))
+        max_wing_w = 140 * self.app.display_profile.art_scale
         self.assertLessEqual(
             self.app.scoreboard_frame.winfo_reqwidth(),
-            900,
-            f"Top scoreboard bar overflowed 900px width: {self.app.scoreboard_frame.winfo_reqwidth()}px",
+            max_wing_w,
+            f"Left stage wing scoreboard overflowed {max_wing_w}px width: {self.app.scoreboard_frame.winfo_reqwidth()}px",
         )
+        self.assertLessEqual(
+            self.app.right_stage_wing.winfo_reqwidth(),
+            max_wing_w,
+            f"Right stage wing overflowed {max_wing_w}px width: {self.app.right_stage_wing.winfo_reqwidth()}px",
+        )
+
+    def test_backdrop_sample_1x_and_2x_and_widescreen_scaling(self) -> None:
+        """VenueTour loads valid 1x/2x backdrop samples, uses dark ink on gold buttons, and scales cleanly to 2x."""
+        from display_profile import make_profile_preset
+
+        self.app.save_manager.unlock_achievement("exorcist")
+        self.app.enter_venue_tour()
+        self.root.update_idletasks()
+
+        tf = self.app.tour_frame
+        renderer = tf.renderer
+        sample_1x = renderer._get_backdrop_sample("casino")
+        self.assertIsNotNone(sample_1x, "1x backdrop sample must load backdrop_casino.png")
+        self.assertEqual(int(tf.canvas.cget("width")), 1000)
+        self.assertEqual(int(tf.canvas.cget("height")), 390)
+
+        enter_btn = self.app.tour_dock.buttons["enter_salon"]
+        self.assertEqual(enter_btn.theme, "gold")
+        self.assertEqual(enter_btn.text_color.lower(), "#141008")
+
+        # Switch live to 1440p (2x art_scale) while Tour Map is open
+        self.app.apply_display_profile(make_profile_preset("qhd_1440p"))
+        self.root.update_idletasks()
+        self.assertEqual(int(tf.canvas.cget("width")), 2000)
+        self.assertEqual(int(tf.canvas.cget("height")), 780)
+        sample_2x = renderer._get_backdrop_sample("cyber")
+        self.assertIsNotNone(sample_2x, "2x backdrop sample must load backdrop_cyber_2x.png")
+        hb0 = renderer.node_hit_boxes[0]
+        self.assertGreater(hb0[2] - hb0[0], 150, "2x node hitbox must scale with art_scale=2")
 
     def test_overworld_map_mount_silhouette_mystery_and_medallion_stamps(self) -> None:
         """Overworld Map mounts on row=3 beneath live DealerStageCanvas, renders ??? silhouettes, and stamps medallions."""

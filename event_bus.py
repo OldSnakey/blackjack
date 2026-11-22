@@ -33,6 +33,10 @@ class GameEventType(Enum):
     SIDE_BET_STAGED = "side_bet_staged"
     SIDE_BET_RESOLVED = "side_bet_resolved"
     HAND_RESOLVED = "hand_resolved"
+    DISPLAY_PROFILE_CHANGED = "display_profile_changed"
+
+
+EventType = GameEventType
 
 
 @dataclass(frozen=True)

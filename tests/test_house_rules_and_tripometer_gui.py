@@ -73,14 +73,14 @@ class TestHouseRulesAndTripometerGUI(unittest.TestCase):
     # 1. Declarative Layout & Felt Canvas / Banner Parity
     # ------------------------------------------------------------------
     def test_ui_layout_trip_button_parity_with_json(self) -> None:
-        """DEFAULT_UI_CONFIG and assets/ui_config.json both define top_bar.elements.trip_button."""
+        """DEFAULT_UI_CONFIG and assets/ui_config.json both define stage_wings.right_stage_wing.buttons.trip_button."""
         json_cfg = json.loads(ui_layout.UI_CONFIG_FILE.read_text(encoding="utf-8"))
-        json_trip = json_cfg["top_bar"]["elements"].get("trip_button")
-        default_trip = ui_layout.DEFAULT_UI_CONFIG["top_bar"]["elements"].get("trip_button")
+        json_trip = json_cfg["stage_wings"]["right_stage_wing"]["buttons"].get("trip_button")
+        default_trip = ui_layout.DEFAULT_UI_CONFIG["stage_wings"]["right_stage_wing"]["buttons"].get("trip_button")
         self.assertIsNotNone(json_trip)
         self.assertEqual(json_trip, default_trip)
         self.assertEqual(json_trip["row"], 0)
-        self.assertEqual(json_trip["column"], 10)
+        self.assertEqual(json_trip["column"], 1)
 
     def test_table_felt_cache_keys_and_announcement_payout_banner(self) -> None:
         """TableFeltCanvas caches by 6-tuple including payout_ratio and dealer_hits_soft_17."""
@@ -90,13 +90,13 @@ class TestHouseRulesAndTripometerGUI(unittest.TestCase):
         felt._redraw_felt()
         s17_32_keys = [k for k in felt._felt_cache.keys() if len(k) == 6]
         self.assertTrue(s17_32_keys, "Expected 6-tuple _felt_cache keys on TableFeltCanvas")
-        key_32 = (felt.current_theme, 900, 400, felt.scale_factor, (3, 2), False)
+        key_32 = (felt.current_theme, 900, 400, int(felt.art_scale), (3, 2), False)
         self.assertIn(key_32, felt._felt_cache)
         img_32 = felt._felt_cache[key_32][0]
 
         felt.set_house_rules_display((6, 5), True)
         felt._redraw_felt()
-        key_65 = (felt.current_theme, 900, 400, felt.scale_factor, (6, 5), True)
+        key_65 = (felt.current_theme, 900, 400, int(felt.art_scale), (6, 5), True)
         self.assertIn(key_65, felt._felt_cache)
         img_65 = felt._felt_cache[key_65][0]
         self.assertNotEqual(img_32.tobytes(), img_65.tobytes())
@@ -167,12 +167,13 @@ class TestHouseRulesAndTripometerGUI(unittest.TestCase):
     def test_top_bar_trip_button_bounds_privacy_and_hotkey_guards(self) -> None:
         """trip_button fits within 900px, updates only between rounds, and guards T hotkey."""
         self.assertTrue(hasattr(self.app, "trip_button"))
-        self.root.geometry("900x700")
+        self.root.geometry("1280x720")
         self.root.deiconify()
         self.root.update_idletasks()
         self.root.update()
-        right_edge = self.app.scoreboard_frame.winfo_reqwidth()
-        self.assertLessEqual(right_edge, 900)
+        max_wing = 140 * self.app.display_profile.art_scale
+        self.assertLessEqual(self.app.scoreboard_frame.winfo_reqwidth(), max_wing)
+        self.assertLessEqual(self.app.right_stage_wing.winfo_reqwidth(), max_wing)
         self.root.withdraw()
 
         initial_text = self.app.trip_button.cget("text")
@@ -234,16 +235,17 @@ class TestHouseRulesAndTripometerGUI(unittest.TestCase):
     # ------------------------------------------------------------------
     def test_settings_dialog_two_tabs_button_widths_and_staged_apply(self) -> None:
         """SettingsDialog supports 2 tabs, >=100px buttons, staged Apply Rules, and mid-hand lock."""
+        self.root.geometry("1280x800")
+        self.root.update_idletasks()
         dlg = SettingsDialog(self.root, self.app)
         dlg.update_idletasks()
         dlg.update()
         try:
             self.assertEqual(dlg.active_tab, 0)
-            max_allowed_h = min(
-                self.root.winfo_screenheight() - 80,
-                int(config.DEFAULT_WINDOW_HEIGHT * getattr(self.app, "scale_factor", 1.0)),
-            )
-            self.assertLessEqual(dlg.winfo_height(), max_allowed_h)
+            self.assertIsInstance(dlg, tkinter.Frame)
+            self.assertNotIsInstance(dlg, tkinter.Toplevel)
+            w, h = map(int, dlg.geometry().split("+")[0].split("x"))
+            self.assertEqual((w, h), (1280, 800))
 
             # Keyboard tab switching
             dlg._on_next_tab()
@@ -254,13 +256,21 @@ class TestHouseRulesAndTripometerGUI(unittest.TestCase):
             dlg._switch_tab(0)
             self.assertEqual(dlg.active_tab, 0)
 
-            # Verify every visible tkinter.Button across both tabs has rendered width >= 100px
+            def _is_active_in_host(w: tkinter.Misc, host: tkinter.Misc) -> bool:
+                cur: Any = w
+                while cur is not None and cur is not host:
+                    if not bool(cur.winfo_manager()):
+                        return False
+                    cur = getattr(cur, "master", None)
+                return cur is host
+
+            # Verify every active tkinter.Button across both tabs has rendered width >= 100px
             for tab_idx in (0, 1):
                 dlg._switch_tab(tab_idx)
                 dlg.update_idletasks()
                 dlg.update()
                 buttons = extract_widgets(dlg, tkinter.Button)
-                mapped_buttons = [b for b in buttons if b.winfo_ismapped()]
+                mapped_buttons = [b for b in buttons if _is_active_in_host(b, dlg)]
                 self.assertGreater(len(mapped_buttons), 0)
                 for btn in mapped_buttons:
                     self.assertGreaterEqual(
@@ -408,17 +418,18 @@ class TestHouseRulesAndTripometerGUI(unittest.TestCase):
         """TripometerDialog clamps height, auto-hides/shows scrollbar, and resets only Tripometer."""
         from ui_dialogs import TripometerDialog
 
+        self.root.geometry("1280x800")
+        self.root.update_idletasks()
         self.app.tripometer.reset()
         empty_dlg = TripometerDialog(self.root, self.app)
         empty_dlg.update_idletasks()
         empty_dlg.update()
         try:
-            max_allowed_h = min(
-                self.root.winfo_screenheight() - 80,
-                int(config.DEFAULT_WINDOW_HEIGHT * getattr(self.app, "scale_factor", 1.0)),
-            )
-            self.assertLessEqual(empty_dlg.winfo_height(), max_allowed_h)
-            self.assertFalse(empty_dlg.v_scrollbar.winfo_ismapped())
+            self.assertIsInstance(empty_dlg, tkinter.Frame)
+            self.assertNotIsInstance(empty_dlg, tkinter.Toplevel)
+            w, h = map(int, empty_dlg.geometry().split("+")[0].split("x"))
+            self.assertEqual((w, h), (1280, 800))
+            self.assertFalse(bool(empty_dlg.v_scrollbar.winfo_manager()))
 
             labels = [w.cget("text") for w in extract_widgets(empty_dlg, tkinter.Label)]
             joined = "\n".join(labels)
@@ -483,12 +494,49 @@ class TestHouseRulesAndTripometerGUI(unittest.TestCase):
         bankroll_before = self.app.bankroll_var.get()
 
         pop_dlg = TripometerDialog(self.root, self.app)
-        pop_dlg.geometry("820x460")
         pop_dlg.update_idletasks()
         pop_dlg.update()
         try:
-            self.assertTrue(pop_dlg.v_scrollbar.winfo_ismapped())
+            # Standard 1280x800 uses paged layout (4 hands/page) with ZERO vertical scrollbar even with 25 hands!
+            self.assertFalse(bool(pop_dlg.v_scrollbar.winfo_manager()))
+            self.assertEqual(pop_dlg.total_filtered_hands, 25)
+            self.assertEqual(pop_dlg.page_size, 4)
+            self.assertEqual(pop_dlg.total_pages, 7)
+            self.assertEqual(pop_dlg.current_page, 0)
+            self.assertEqual(len(pop_dlg._rendered_hand_frames), 4)
+
+            # Audit cards include computed hand score totals in parentheses
+            page0_texts = "\n".join(str(lbl.cget("text")) for lbl in extract_widgets(pop_dlg.hands_list_frame, tkinter.Label))
+            self.assertIn("(25)", page0_texts)
+            self.assertIn("(18)", page0_texts)
+
+            # Keyboard / controller Right & Left arrow paging
+            pop_dlg.event_generate("<Right>")
+            pop_dlg.update_idletasks()
+            self.assertEqual(pop_dlg.current_page, 1)
+            self.assertEqual(len(pop_dlg._rendered_hand_frames), 4)
+
+            pop_dlg.event_generate("<Left>")
+            pop_dlg.update_idletasks()
+            self.assertEqual(pop_dlg.current_page, 0)
+
+            # Verify 1280x720 also fits a full page with ZERO vertical scrollbar
+            pop_dlg.geometry("1280x720")
+            pop_dlg.update_idletasks()
+            pop_dlg.update()
+            self.assertFalse(bool(pop_dlg.v_scrollbar.winfo_manager()))
+
+            # Constrained synthetic height still activates emergency scrollbar cleanly
+            pop_dlg.geometry("820x360")
+            pop_dlg.update_idletasks()
+            pop_dlg.update()
+            self.assertTrue(bool(pop_dlg.v_scrollbar.winfo_manager()))
             pop_dlg.canvas.yview_scroll(2, "units")
+
+            # Restore 1280x800 for subsequent button-width & filter checks
+            pop_dlg.geometry("1280x800")
+            pop_dlg.update_idletasks()
+            pop_dlg.update()
 
             # Verify 3 2.5D chip grading medallions render in the populated state without clipping
             pop_chip_canvases = [
@@ -532,9 +580,9 @@ class TestHouseRulesAndTripometerGUI(unittest.TestCase):
                         f"Tripometer label '{lbl.cget('text')}' ({f_family}) uses synthetic '{f_weight}' on pixel font",
                     )
 
-            # Verify all mapped buttons have rendered width >= 100px
-            mapped_btns = [b for b in extract_widgets(pop_dlg, tkinter.Button) if b.winfo_ismapped()]
-            self.assertGreaterEqual(len(mapped_btns), 4)
+            # Verify all active buttons have rendered width >= 100px
+            mapped_btns = [b for b in extract_widgets(pop_dlg, tkinter.Button) if bool(b.winfo_manager())]
+            self.assertGreaterEqual(len(mapped_btns), 6)
             for btn in mapped_btns:
                 self.assertGreaterEqual(
                     btn.winfo_width(),
@@ -542,16 +590,21 @@ class TestHouseRulesAndTripometerGUI(unittest.TestCase):
                     f"Tripometer button '{btn.cget('text')}' width {btn.winfo_width()} < 100px",
                 )
 
-            # Verify Mistakes Only filter isolates the 1 mistake hand and All Hands restores all 25
+            # Advance to page 2, then verify Mistakes Only filter resets to page 0 and isolates the 1 mistake hand
+            pop_dlg._next_page()
+            self.assertEqual(pop_dlg.current_page, 1)
             pop_dlg.filter_mistakes_btn.invoke()
             pop_dlg.update_idletasks()
             self.assertEqual(pop_dlg.filter_mode, "mistakes")
+            self.assertEqual(pop_dlg.current_page, 0)
+            self.assertEqual(pop_dlg.total_filtered_hands, 1)
             self.assertEqual(len(pop_dlg._rendered_hand_frames), 1)
 
             pop_dlg.filter_all_btn.invoke()
             pop_dlg.update_idletasks()
             self.assertEqual(pop_dlg.filter_mode, "all")
-            self.assertEqual(len(pop_dlg._rendered_hand_frames), 25)
+            self.assertEqual(pop_dlg.total_filtered_hands, 25)
+            self.assertEqual(len(pop_dlg._rendered_hand_frames), 4)
 
             # Paired Done + Reset Trip on same footer row
             self.assertIs(pop_dlg.done_btn.master, pop_dlg.reset_trip_btn.master)

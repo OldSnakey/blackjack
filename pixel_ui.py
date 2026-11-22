@@ -26,7 +26,16 @@ from PIL import Image, ImageDraw, ImageTk
 PALETTE = {
     "green":    {"bg": "#247a43", "hi": "#41a866", "sh": "#134726", "hov": "#2e9654"},  # Hit
     "red":      {"bg": "#a83232", "hi": "#d65454", "sh": "#661818", "hov": "#bf3b3b"},  # Stand / All In
-    "gold":     {"bg": "#c9982c", "hi": "#ecc260", "sh": "#7d5b10", "hov": "#dbab3b"},  # Deal / Double / New Game
+    "gold":     {
+        "bg": "#d99b26",
+        "hi": "#f2ca6b",
+        "sh": "#7d5b10",
+        "hov": "#e6ad38",
+        "text": "#141008",
+        "text_shadow": "#f2ca6b",
+        "disabled_text": "#5e4337",
+        "active_text": "#141008",
+    },  # Deal / Double / New Game (WCAG >= 7.5:1 dark ink)
     "blue":     {"bg": "#326da8", "hi": "#5a9bd9", "sh": "#1a4066", "hov": "#3d80c2"},  # Split
     "neutral":  {"bg": "#5a636b", "hi": "#849099", "sh": "#33393d", "hov": "#6b757d"},  # Surrender / Clear Bet
     "amber":    {"bg": "#b86221", "hi": "#e08743", "sh": "#6e350b", "hov": "#cc702b"},  # Rebuy
@@ -54,45 +63,45 @@ DEFAULT_FONT_CONFIG = {
     },
     "roles": {
         "title": {"family": "BoldPixels", "base_size": 32, "weight": "normal", "fallback": "m5x7"},
-        "header": {"family": "m6x11plus", "base_size": 16, "weight": "normal", "fallback": "m5x7"},
-        "display": {"family": "m6x11plus", "base_size": 32, "weight": "normal", "fallback": "m5x7"},
+        "header": {"family": "m6x11plus", "base_size": 18, "weight": "normal", "fallback": "m5x7"},
+        "display": {"family": "Round9x13", "base_size": 32, "weight": "normal", "fallback": "m5x7"},
         "body": {"family": "m5x7", "base_size": 16, "weight": "normal", "fallback": "Courier"},
-        "button": {"family": "m6x11plus", "base_size": 16, "weight": "normal", "fallback": "m5x7"},
-        "digital": {"family": "Volt5x5", "base_size": 15, "weight": "normal", "fallback": "m5x7"},
-        "badge": {"family": "Mini3x5", "base_size": 15, "weight": "normal", "fallback": "m5x7"},
-        "micro": {"family": "3x5_Block_Adjusted", "base_size": 10, "weight": "normal", "fallback": "m5x7"},
+        "button": {"family": "m6x11plus", "base_size": 18, "weight": "normal", "fallback": "m5x7"},
+        "digital": {"family": "Volt5x5", "base_size": 16, "weight": "normal", "fallback": "m5x7"},
+        "badge": {"family": "m6x11", "base_size": 16, "weight": "normal", "fallback": "m5x7"},
+        "micro": {"family": "3x5_Block_Adjusted", "base_size": 12, "weight": "normal", "fallback": "m5x7"},
     },
     "elements": {
         "top_bar_button": {"role": "button", "family": "m5x7", "base_size": 16, "description": "System buttons on top bar (Rules, Settings, Shortcuts, Wardrobe, Mute, Scale)"},
         "top_bar_status": {"role": "button", "family": "m5x7", "base_size": 16, "description": "Scale and status readouts on top bar (e.g. 🔍 1x / 2x)"},
-        "scoreboard_title": {"role": "header", "family": "m6x11plus", "base_size": 22, "description": "Headers for Dealer, Player, Ties in top bar scoreboard"},
-        "scoreboard_value": {"role": "display", "family": "m6x11plus", "base_size": 22, "description": "Win, Loss, and Tie numeric counters in top bar"},
-        "bankroll_label": {"role": "display", "family": "m6x11plus", "base_size": 32, "description": "Player bankroll display on top bar"},
+        "scoreboard_title": {"role": "header", "family": "m6x11plus", "base_size": 18, "description": "Headers for Dealer, Player, Ties in top bar scoreboard"},
+        "scoreboard_value": {"role": "display", "family": "Round9x13", "base_size": 32, "description": "Win, Loss, and Tie numeric counters in top bar"},
+        "bankroll_label": {"role": "display", "family": "m5x7", "base_size": 32, "description": "Player bankroll display on top bar"},
         "shoe_counter": {"role": "header", "family": "m5x7", "base_size": 16, "description": "Deck shoe card counter display on table felt"},
-        "hand_title": {"role": "header", "family": "m6x11plus", "base_size": 16, "description": "Banners for dealer, player, and split hand areas"},
-        "hand_score": {"role": "display", "family": "m6x11plus", "base_size": 32, "description": "Hand score plaques (19, 21, BUST, etc.)"},
+        "hand_title": {"role": "header", "family": "m6x11", "base_size": 16, "description": "Banners for dealer, player, and split hand areas"},
+        "hand_score": {"role": "display", "family": "Round9x13", "base_size": 32, "description": "Hand score plaques (19, 21, BUST, etc.)"},
         "action_button": {"role": "button", "family": "m5x7", "base_size": 32, "description": "Primary action rail buttons (Hit, Stand, Double, Split, Surrender, New Game)"},
         "cursed_stakes_button": {"role": "button", "family": "m5x7", "base_size": 32, "description": "Cursed stakes / High roller toggle button"},
         "strategy_hint": {"role": "body", "description": "Real-time basic strategy advice banner text"},
         "betting_button": {"role": "button", "family": "m5x7", "base_size": 32, "description": "Bet staging action buttons (Deal, Clear, Rebet, All-In, Rebuy)"},
         "betting_chip_button": {"role": "button", "description": "Quick chip increment buttons in casual mode"},
-        "betting_spot_watermark": {"role": "badge", "description": "Felt watermark text inside betting circle"},
-        "chip_bet_badge": {"role": "badge", "base_size": 14, "description": "Current staged bet readout above betting spot"},
-        "chip_bankroll_badge": {"role": "badge", "base_size": 12, "description": "Reserve tray bankroll header (CHIPS: $... L-Click + | R-Click -)"},
-        "chip_denomination_label": {"role": "badge", "base_size": 14, "description": "Denomination label under each reserve pile ($5, $25, $100, $500, $1K)"},
-        "chip_face_value": {"role": "micro", "description": "Denomination and multiplier text stamped on individual chip sprites"},
+        "betting_spot_watermark": {"role": "badge", "family": "m6x11", "base_size": 16, "description": "Felt watermark text inside betting circle"},
+        "chip_bet_badge": {"role": "header", "family": "m6x11plus", "base_size": 18, "description": "Current staged bet readout above betting spot"},
+        "chip_bankroll_badge": {"role": "badge", "family": "m6x11", "base_size": 16, "description": "Reserve tray bankroll header (CHIPS: $... L-Click + | R-Click -)"},
+        "chip_denomination_label": {"role": "badge", "family": "m6x11", "base_size": 16, "description": "Denomination label under each reserve pile ($5, $25, $100, $500, $1K)"},
+        "chip_face_value": {"role": "micro", "family": "3x5_Block_Adjusted", "base_size": 12, "description": "Denomination and multiplier text stamped on individual chip sprites"},
         "chip_floating_payout": {"role": "digital", "description": "Animated floating payout text (+$150)"},
         "chip_push_banner": {"role": "header", "description": "Push announcement banner on betting spot"},
-        "insurance_prompt_label": {"role": "header", "base_size": 16, "description": "Insurance inquiry text prompt"},
-        "insurance_prompt_button": {"role": "button", "base_size": 16, "description": "Take / Decline Insurance action buttons"},
-        "dealer_nameplate": {"role": "header", "base_size": 16, "description": "Dealer character nameplate on narrative dialogue stage"},
-        "dealer_speech": {"role": "body", "family": "m5x7", "base_size": 20, "description": "Dialogue box typewriter speech and narrative subtitles"},
+        "insurance_prompt_label": {"role": "header", "family": "m6x11plus", "base_size": 18, "description": "Insurance inquiry text prompt"},
+        "insurance_prompt_button": {"role": "button", "family": "m6x11plus", "base_size": 18, "description": "Take / Decline Insurance action buttons"},
+        "dealer_nameplate": {"role": "header", "family": "m6x11plus", "base_size": 18, "description": "Dealer character nameplate on narrative dialogue stage"},
+        "dealer_speech": {"role": "header", "family": "m6x11plus", "base_size": 18, "description": "Dialogue box typewriter speech and narrative subtitles"},
         "table_announcement": {"role": "title", "description": "Centered floating banner announcements (BLACKJACK!, DEALER BUSTS, PUSH)"},
-        "hilo_trainer_title": {"family": "m6x11plus", "base_size": 18, "description": "Hi-Lo Card Counting Trainer header tab"},
-        "hilo_trainer_label": {"family": "m5x7", "base_size": 18, "description": "Trainer HUD metric title badges (RC, TC, DECKS, EDGE, BET)"},
-        "hilo_trainer_value": {"family": "m6x11plus", "base_size": 20, "weight": "bold", "description": "Trainer HUD numeric readouts"},
-        "hilo_trainer_button": {"family": "m6x11plus", "base_size": 16, "description": "Trainer HUD control buttons (Quiz, Assisted, Close)"},
-        "hilo_trainer_advice": {"family": "m6x11plus", "base_size": 18, "weight": "bold", "description": "Trainer drill hint and betting recommendation text"},
+        "hilo_trainer_title": {"family": "m6x11plus", "base_size": 18, "weight": "normal", "description": "Hi-Lo Card Counting Trainer header tab"},
+        "hilo_trainer_label": {"family": "m6x11", "base_size": 16, "weight": "normal", "description": "Trainer HUD metric title badges (RC, TC, DECKS, EDGE, BET)"},
+        "hilo_trainer_value": {"family": "m6x11plus", "base_size": 18, "weight": "normal", "description": "Trainer HUD numeric readouts"},
+        "hilo_trainer_button": {"family": "m6x11", "base_size": 16, "weight": "normal", "description": "Trainer HUD control buttons (Quiz, Assisted, Close)"},
+        "hilo_trainer_advice": {"family": "m6x11plus", "base_size": 18, "weight": "normal", "description": "Trainer drill hint and betting recommendation text"},
         "hilo_floating_badge": {"role": "display", "description": "Transient floating count particle badges (+1, -1, 0) above cards"},
         "soul_meter_title": {"role": "title", "description": "Soul Wager Altar HUD banner title"},
         "soul_meter_markers": {"role": "digital", "description": "Soul Meter threshold percentage markers (50%, 75%)"},
@@ -105,17 +114,17 @@ DEFAULT_FONT_CONFIG = {
         "dialog_body": {"role": "body", "description": "Modal dialog explanatory body text, rules, and bios"},
         "dialog_badge": {"role": "badge", "description": "Modal dialog shortcut key badges ([Space], [Esc], etc.)"},
         "dialog_button": {"role": "button", "description": "Modal dialog action and dismissal buttons"},
-        "dialog_action_label": {"family": "m6x11plus", "base_size": 16, "weight": "normal", "fallback": "m5x7", "description": "Shortcuts and controls action verb label"},
-        "dialog_hint_label": {"family": "m6x11plus", "base_size": 15, "weight": "normal", "fallback": "m5x7", "description": "Shortcuts and controls secondary description and hint label"},
-        "dialog_tip_label": {"family": "m6x11plus", "base_size": 16, "weight": "normal", "fallback": "m5x7", "description": "Dialog bottom footer navigation tip banner"},
-        "story_dialog_speaker": {"role": "header", "base_size": 20, "description": "Speaker name in narrative story dialogue modal"},
-        "story_dialog_body": {"role": "body", "base_size": 18, "description": "Story narrative text in story dialogue modal"},
-        "story_dialog_button": {"role": "button", "base_size": 16, "description": "Dismiss / proceed button in story dialogue modal"},
-        "angelic_draft_subtitle": {"role": "header", "base_size": 16, "description": "Angelic draft dialog subtitle instruction"},
-        "angelic_draft_title": {"role": "header", "base_size": 18, "description": "Relic card title in angelic blessing draft dialog"},
-        "angelic_draft_tagline": {"role": "badge", "base_size": 16, "description": "Relic card tagline in angelic blessing draft dialog"},
-        "angelic_draft_description": {"role": "body", "base_size": 18, "description": "Relic card power description in angelic blessing draft dialog"},
-        "angelic_draft_button": {"role": "button", "base_size": 16, "description": "Equip relic button in angelic blessing draft dialog"}
+        "dialog_action_label": {"family": "m6x11plus", "base_size": 18, "weight": "normal", "fallback": "m5x7", "description": "Shortcuts and controls action verb label"},
+        "dialog_hint_label": {"family": "m6x11plus", "base_size": 18, "weight": "normal", "fallback": "m5x7", "description": "Shortcuts and controls secondary description and hint label"},
+        "dialog_tip_label": {"family": "m6x11plus", "base_size": 18, "weight": "normal", "fallback": "m5x7", "description": "Dialog bottom footer navigation tip banner"},
+        "story_dialog_speaker": {"role": "title", "family": "BoldPixels", "base_size": 32, "description": "Speaker name in narrative story dialogue modal"},
+        "story_dialog_body": {"role": "header", "family": "m6x11plus", "base_size": 18, "description": "Story narrative text in story dialogue modal"},
+        "story_dialog_button": {"role": "button", "family": "m6x11plus", "base_size": 18, "description": "Dismiss / proceed button in story dialogue modal"},
+        "angelic_draft_subtitle": {"role": "header", "family": "m6x11plus", "base_size": 18, "description": "Angelic draft dialog subtitle instruction"},
+        "angelic_draft_title": {"role": "header", "family": "m6x11plus", "base_size": 18, "description": "Relic card title in angelic blessing draft dialog"},
+        "angelic_draft_tagline": {"role": "badge", "family": "m6x11", "base_size": 16, "description": "Relic card tagline in angelic blessing draft dialog"},
+        "angelic_draft_description": {"role": "header", "family": "m6x11plus", "base_size": 18, "description": "Relic card power description in angelic blessing draft dialog"},
+        "angelic_draft_button": {"role": "button", "family": "m6x11plus", "base_size": 18, "description": "Equip relic button in angelic blessing draft dialog"}
     }
 }
 
@@ -167,64 +176,195 @@ def reload_font_config(path: Optional[Path | str] = None) -> dict:
     return load_font_config(path)
 
 
-def load_all_pixel_fonts(root: Optional[tkinter.Tk] = None, fonts_dir: Optional[Path | str] = None) -> dict[str, bool]:
-    """
-    Registers all pixel font files in assets/fonts/ with Windows GDI and Tkinter.
-    Returns a dictionary of registered font families and their availability status.
-    """
-    global _ALL_FONTS_LOADED, _REGISTERED_FONTS, _PIXEL_FONT_REGISTERED, _PIXEL_FONT_FAMILY
-    cfg = load_font_config()
+_OS_FONTS_REGISTERED: bool = False
+_LAST_OS_FONT_MODE: str = "uninitialized"
 
+
+def snap_pixel_font_size(base_pt: int, font_scale: float | int = 1) -> int:
+    """Snaps bitmap pixel-font point sizes strictly to integer 1x or 2x multiples."""
+    mult = 2 if float(font_scale) >= 1.75 else 1
+    return max(6, abs(int(base_pt)) * mult)
+
+
+def _resolve_fonts_dir(fonts_dir: Optional[Path | str] = None) -> Path:
     if fonts_dir is None:
         base_dir = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
-        target_dir = (base_dir / "assets" / "fonts").resolve()
-    else:
-        target_dir = Path(fonts_dir).resolve()
+        return (base_dir / "assets" / "fonts").resolve()
+    return Path(fonts_dir).resolve()
 
-    if target_dir.exists() and sys.platform.startswith("win"):
+
+def _iter_ttf_paths(target_dir: Path, cfg: dict) -> list[Path]:
+    paths: list[Path] = []
+    seen: set[Path] = set()
+    if not target_dir.exists():
+        return paths
+    for record in cfg.get("fonts", {}).values():
+        fn = record.get("file")
+        if fn:
+            p = (target_dir / fn).resolve()
+            if p.exists() and p not in seen:
+                paths.append(p)
+                seen.add(p)
+    for p in sorted(target_dir.glob("*.ttf")):
+        rp = p.resolve()
+        if rp not in seen:
+            paths.append(rp)
+            seen.add(rp)
+    return paths
+
+
+def register_os_pixel_fonts(fonts_dir: Optional[Path | str] = None) -> str:
+    """
+    Registers custom .ttf pixel fonts at the OS level BEFORE tkinter.Tk() initializes.
+    - Windows: GDI AddFontResourceExW(..., FR_PRIVATE, 0).
+    - Linux / SteamOS: libfontconfig.so.1 FcConfigAppFontAddFile(FcConfigGetCurrent(), path).
+    """
+    global _OS_FONTS_REGISTERED, _LAST_OS_FONT_MODE
+    if _OS_FONTS_REGISTERED and fonts_dir is None:
+        return _LAST_OS_FONT_MODE
+
+    cfg = load_font_config()
+    target_dir = _resolve_fonts_dir(fonts_dir)
+    ttf_paths = _iter_ttf_paths(target_dir, cfg)
+    if not ttf_paths:
+        _LAST_OS_FONT_MODE = "missing_fonts_dir"
+        return _LAST_OS_FONT_MODE
+
+    if sys.platform.startswith("win"):
         FR_PRIVATE = 0x10
-        # First register known fonts from config
-        font_records = cfg.get("fonts", {})
-        for record in font_records.values():
-            fn = record.get("file")
-            if fn:
-                p = (target_dir / fn).resolve()
-                if p.exists():
-                    try:
-                        ctypes.windll.gdi32.AddFontResourceExW(str(p), FR_PRIVATE, 0)
-                    except Exception:
-                        pass
-        # Also register any remaining .ttf files in target directory
-        for p in target_dir.glob("*.ttf"):
+        added = 0
+        for p in ttf_paths:
             try:
-                ctypes.windll.gdi32.AddFontResourceExW(str(p.resolve()), FR_PRIVATE, 0)
+                if ctypes.windll.gdi32.AddFontResourceExW(str(p), FR_PRIVATE, 0) > 0:
+                    added += 1
+                else:
+                    added += 1  # May already be loaded in process
             except Exception:
                 pass
+        _OS_FONTS_REGISTERED = added > 0
+        _LAST_OS_FONT_MODE = "win32_gdi_private" if added > 0 else "win32_gdi_failed"
+        return _LAST_OS_FONT_MODE
 
-    # Verify recognized families in Tkinter
+    if sys.platform.startswith("linux"):
+        try:
+            fc = ctypes.CDLL("libfontconfig.so.1")
+            fc.FcConfigGetCurrent.restype = ctypes.c_void_p
+            fc.FcConfigAppFontAddFile.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+            fc.FcConfigAppFontAddFile.restype = ctypes.c_int
+            fc_cfg = fc.FcConfigGetCurrent()
+            added = 0
+            for p in ttf_paths:
+                if fc.FcConfigAppFontAddFile(fc_cfg, os.fsencode(str(p))):
+                    added += 1
+            _OS_FONTS_REGISTERED = added > 0
+            _LAST_OS_FONT_MODE = "linux_fontconfig_app" if added > 0 else "linux_fontconfig_empty"
+            return _LAST_OS_FONT_MODE
+        except Exception:
+            _LAST_OS_FONT_MODE = "linux_fontconfig_unavailable"
+            return _LAST_OS_FONT_MODE
+
+    _LAST_OS_FONT_MODE = "platform_default"
+    return _LAST_OS_FONT_MODE
+
+
+def _stage_linux_user_fonts_fallback(ttf_paths: list[Path]) -> bool:
+    """Stages .ttf files into $XDG_DATA_HOME/fonts/blackjack_pixel and reinitializes fontconfig."""
+    if not sys.platform.startswith("linux") or not ttf_paths:
+        return False
     try:
-        dummy_root = root or tkinter._default_root
-        if dummy_root is not None:
-            available = set(tkfont.families(dummy_root))
-            font_records = cfg.get("fonts", {})
-            for fam_key, record in font_records.items():
-                fam_name = record.get("family", fam_key)
-                _REGISTERED_FONTS[fam_name] = (fam_name in available)
+        import shutil
 
-            # Ensure m5x7 compatibility flags
-            if "m5x7" in available:
-                _PIXEL_FONT_FAMILY = "m5x7"
-                _PIXEL_FONT_REGISTERED = True
-            elif any("m5x7" in f.lower() for f in available):
-                for f in available:
-                    if "m5x7" in f.lower():
-                        _PIXEL_FONT_FAMILY = f
-                        _PIXEL_FONT_REGISTERED = True
-                        break
+        xdg_data = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+        dest_dir = Path(xdg_data) / "fonts" / "blackjack_pixel"
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        for src in ttf_paths:
+            dst = dest_dir / src.name
+            if not dst.exists() or dst.stat().st_size != src.stat().st_size:
+                shutil.copy2(src, dst)
+        try:
+            fc = ctypes.CDLL("libfontconfig.so.1")
+            fc.FcInitReinitialize.restype = ctypes.c_int
+            fc.FcInitReinitialize()
+        except Exception:
+            pass
+        return True
     except Exception:
-        pass
+        return False
 
-    _ALL_FONTS_LOADED = True
+
+def verify_and_finalize_pixel_fonts(
+    root: Optional[tkinter.Tk] = None,
+    fonts_dir: Optional[Path | str] = None,
+    allow_linux_user_dir_fallback: bool = True,
+) -> tuple[str, tuple[str, ...]]:
+    """
+    Verifies registered font families against Tkinter AFTER Tk() creation.
+    Sets _ALL_FONTS_LOADED = True only when a live Tk interpreter is available.
+    Returns (registration_mode, missing_family_names).
+    """
+    global _ALL_FONTS_LOADED, _REGISTERED_FONTS, _PIXEL_FONT_REGISTERED, _PIXEL_FONT_FAMILY
+    os_mode = register_os_pixel_fonts(fonts_dir)
+    cfg = load_font_config()
+    target_dir = _resolve_fonts_dir(fonts_dir)
+    font_records = cfg.get("fonts", {})
+
+    dummy_root = root or tkinter._default_root
+    if dummy_root is None:
+        return (os_mode, tuple(rec.get("family", k) for k, rec in font_records.items()))
+
+    def _scan_available() -> set[str]:
+        return set(tkfont.families(dummy_root))
+
+    try:
+        available = _scan_available()
+        available_lower = {f.lower(): f for f in available}
+        missing: list[str] = []
+        for fam_key, record in font_records.items():
+            fam_name = record.get("family", fam_key)
+            matched = (fam_name in available) or (fam_name.lower() in available_lower)
+            _REGISTERED_FONTS[fam_name] = matched
+            if not matched:
+                missing.append(fam_name)
+
+        if missing and allow_linux_user_dir_fallback and sys.platform.startswith("linux"):
+            if _stage_linux_user_fonts_fallback(_iter_ttf_paths(target_dir, cfg)):
+                available = _scan_available()
+                available_lower = {f.lower(): f for f in available}
+                missing.clear()
+                for fam_key, record in font_records.items():
+                    fam_name = record.get("family", fam_key)
+                    matched = (fam_name in available) or (fam_name.lower() in available_lower)
+                    _REGISTERED_FONTS[fam_name] = matched
+                    if not matched:
+                        missing.append(fam_name)
+                os_mode = "linux_user_fonts_dir"
+
+        if "m5x7" in available:
+            _PIXEL_FONT_FAMILY = "m5x7"
+            _PIXEL_FONT_REGISTERED = True
+        elif any("m5x7" in f.lower() for f in available):
+            for f in available:
+                if "m5x7" in f.lower():
+                    _PIXEL_FONT_FAMILY = f
+                    _PIXEL_FONT_REGISTERED = True
+                    break
+        else:
+            _PIXEL_FONT_REGISTERED = False
+            _PIXEL_FONT_FAMILY = "Courier"
+
+        _ALL_FONTS_LOADED = True
+        final_mode = "fallback_system" if len(missing) == len(font_records) and font_records else os_mode
+        return (final_mode, tuple(missing))
+    except Exception:
+        return ("verification_error", tuple(rec.get("family", k) for k, rec in font_records.items()))
+
+
+def load_all_pixel_fonts(root: Optional[tkinter.Tk] = None, fonts_dir: Optional[Path | str] = None) -> dict[str, bool]:
+    """
+    Registers all pixel font files in assets/fonts/ with OS font APIs and verifies in Tkinter.
+    Returns a dictionary of registered font families and their availability status.
+    """
+    verify_and_finalize_pixel_fonts(root=root, fonts_dir=fonts_dir)
     return dict(_REGISTERED_FONTS)
 
 
@@ -259,7 +399,7 @@ def get_role_font(
     base_size = role_def.get("base_size", 14)
     weight = weight_override if weight_override is not None else role_def.get("weight", "normal")
 
-    final_size = size_override if size_override is not None else int(base_size * scale)
+    final_size = size_override if size_override is not None else snap_pixel_font_size(base_size, scale)
     final_size = -abs(int(final_size))
 
     # Determine best registered font family
@@ -305,7 +445,7 @@ def get_element_font(
     base_size = elem_def.get("base_size", role_def.get("base_size", 14))
     weight = weight_override if weight_override is not None else elem_def.get("weight", role_def.get("weight", "normal"))
 
-    final_size = size_override if size_override is not None else int(base_size * scale)
+    final_size = size_override if size_override is not None else snap_pixel_font_size(base_size, scale)
     final_size = -abs(int(final_size))
 
     # Determine best registered font family
@@ -931,16 +1071,20 @@ class PixelPlaqueFrame(tkinter.Frame):
         scale_ratio = self.scale / 2.0
         max_inner_w = int((self.base_width - 24) * scale_ratio)
 
-        candidate_sizes = (32, 28, 24, 20, 16, 14, 12)
-        family = "BoldPixels"
         role_font = get_element_font("hand_score", scale=scale_ratio)
-        if isinstance(role_font, tuple) and len(role_font) > 0:
-            family = role_font[0]
+        primary_fam = role_font[0] if isinstance(role_font, tuple) and len(role_font) > 0 else "Round9x13"
 
+        candidates = (
+            (primary_fam, 32),
+            ("m6x11plus", 18),
+            ("m6x11", 16),
+            ("m5x7", 16),
+            ("m5x7", 12),
+        )
         chosen_font = None
-        for base_sz in candidate_sizes:
+        for fam, base_sz in candidates:
             actual_sz = -max(8, int(base_sz * scale_ratio))
-            test_font = (family, actual_sz)
+            test_font = (fam, actual_sz)
             try:
                 tk_f = tkfont.Font(font=test_font)
                 w = tk_f.measure(str(text_val))
@@ -951,7 +1095,7 @@ class PixelPlaqueFrame(tkinter.Frame):
                 continue
 
         if chosen_font is None:
-            chosen_font = (family, -max(8, int(12 * scale_ratio)))
+            chosen_font = ("m5x7", -max(8, int(12 * scale_ratio)))
 
         try:
             self.canvas.itemconfigure(self._score_id, font=chosen_font)
@@ -1057,9 +1201,9 @@ class PixelDialogueFrame(tkinter.Frame):
         self._bg = bg
         self._nameplate_fg = nameplate_fg
         s = self.scale / 2.0
-        self.width_px = int(280 * s)
+        self.width_px = int(304 * s)
         self.nameplate_h = int(40 * s)
-        self.speech_h = int(102 * s)
+        self.speech_h = int(96 * s)
         self.height_px = self.nameplate_h
 
         self.canvas = tkinter.Canvas(
@@ -1111,7 +1255,7 @@ class PixelDialogueFrame(tkinter.Frame):
         speech_font = get_element_font("dealer_speech", scale=s)
         sy = int(34 * s)
         pad_x = int(12 * s)
-        wrap_w = int(256 * s)
+        wrap_w = int(280 * s)
         init_speech = speech_var.get() if speech_var is not None else ""
         self._speech_sh = self.canvas.create_text(
             pad_x + 1, sy + 1, text=init_speech, font=speech_font, fill="#0c0603",
@@ -1154,9 +1298,9 @@ class PixelDialogueFrame(tkinter.Frame):
     def set_scale(self, scale_factor: float):
         self.scale = max(1, int(2 * scale_factor))
         s = scale_factor
-        self.width_px = int(280 * s)
+        self.width_px = int(304 * s)
         self.nameplate_h = int(40 * s)
-        self.speech_h = int(102 * s)
+        self.speech_h = int(96 * s)
         is_packed = self.speech_label._is_managed
         self.height_px = self.speech_h if is_packed else self.nameplate_h
         self.canvas.config(width=self.width_px, height=self.height_px)
@@ -1168,7 +1312,7 @@ class PixelDialogueFrame(tkinter.Frame):
         self.canvas.coords(self._name_id, cx, ny)
         sy = int(34 * s)
         pad_x = int(12 * s)
-        wrap_w = int(256 * s)
+        wrap_w = int(280 * s)
         self.canvas.coords(self._speech_sh, pad_x + 1, sy + 1)
         self.canvas.coords(self._speech_id, pad_x, sy)
         self.canvas.itemconfigure(self._speech_sh, width=wrap_w)
@@ -1214,9 +1358,9 @@ class PixelButtonWidget(tkinter.Button):
         self.scale = max(1, int(scale))
         p = PALETTE.get(theme, PALETTE["neutral"])
         bg = kwargs.pop("bg", kwargs.pop("background", p.get("bg", "#283339")))
-        fg = kwargs.pop("fg", kwargs.pop("foreground", "#e6edf2"))
+        fg = kwargs.pop("fg", kwargs.pop("foreground", p.get("text", "#e6edf2")))
         abg = kwargs.pop("activebackground", p.get("hov", "#3c4a54"))
-        afg = kwargs.pop("activeforeground", "#ffd700")
+        afg = kwargs.pop("activeforeground", p.get("active_text", "#ffd700"))
         bd = kwargs.pop("bd", kwargs.pop("borderwidth", 2))
         hl = kwargs.pop("highlightthickness", 1)
         hlbg = kwargs.pop("highlightbackground", p.get("sh", "#13191c"))
@@ -1300,7 +1444,7 @@ class CanvasPixelButton:
         command: Optional[Callable[[], None]] = None,
         theme: str = "green",
         font: Optional[tuple[str, int, str]] = None,
-        text_color: str = "#f4efe6",
+        text_color: Optional[str] = None,
         scale: int = 3,
         enabled: bool = True,
         disabled_text_color: Optional[str] = None,
@@ -1320,7 +1464,10 @@ class CanvasPixelButton:
         self.enabled = enabled
         self.disabled_text_color = disabled_text_color
         self.font = font or get_pixel_font(size_px=14 * self.scale // 2, weight="normal")
-        self.text_color = text_color
+        self._explicit_text_color = text_color
+        theme_pal = PALETTE.get(self.theme, PALETTE["neutral"])
+        self.text_color = text_color if text_color is not None else theme_pal.get("text", "#f4efe6")
+        self.shadow_color = theme_pal.get("text_shadow", "#0e1410")
         self.group_tag = group_tag
 
         self.tag = f"pxbtn_{id(self)}"
@@ -1401,7 +1548,7 @@ class CanvasPixelButton:
             self.x, self.y, image=self.sprites["normal"], anchor="center", tags=self.tags
         )
         self.shadow_text_id = self.canvas.create_text(
-            self.x + so, self.y + so, text=self.text, font=self.font, fill="#0e1410", anchor="center", tags=self.tags
+            self.x + so, self.y + so, text=self.text, font=self.font, fill=self.shadow_color, anchor="center", tags=self.tags
         )
         self.text_id = self.canvas.create_text(
             self.x, self.y - 1, text=self.text, font=self.font, fill=self.text_color, anchor="center", tags=self.tags
@@ -1415,18 +1562,22 @@ class CanvasPixelButton:
 
     def _update_visuals(self):
         so = self._shadow_offset
+        theme_pal = PALETTE.get(self.theme, PALETTE["neutral"])
+        if self._explicit_text_color is None:
+            self.text_color = theme_pal.get("text", "#f4efe6")
+        self.shadow_color = theme_pal.get("text_shadow", "#0e1410")
+        vis_state = "normal" if self._is_mapped else "hidden"
         if not self.enabled:
             self.canvas.itemconfigure(self.bg_id, image=self.sprites["disabled"])
-            dis_color = self.disabled_text_color or PALETTE["disabled"]["text"]
+            dis_color = self.disabled_text_color or theme_pal.get("disabled_text", PALETTE["disabled"]["text"])
             self.canvas.itemconfigure(self.text_id, fill=dis_color)
-            shadow_color = "#0a0503" if self.disabled_text_color else "#0e1410"
-            self.canvas.itemconfigure(self.shadow_text_id, fill=shadow_color)
+            self.canvas.itemconfigure(self.shadow_text_id, state="hidden")
             self.canvas.coords(self.text_id, self.x, self.y + 1)
             self.canvas.coords(self.shadow_text_id, self.x + so, self.y + 1 + so)
             return
 
         self.canvas.itemconfigure(self.text_id, fill=self.text_color)
-        self.canvas.itemconfigure(self.shadow_text_id, fill="#0e1410")
+        self.canvas.itemconfigure(self.shadow_text_id, fill=self.shadow_color, state=vis_state)
         if self._is_pressed:
             self.canvas.itemconfigure(self.bg_id, image=self.sprites["pressed"])
             # Shift text down by 1 pixel unit (scale) when pressed
@@ -1595,6 +1746,7 @@ class CanvasPixelButton:
         self._is_mapped = True
         try:
             self.canvas.itemconfigure(self.tag, state="normal")
+            self._update_visuals()
         except Exception:
             pass
 
@@ -1628,6 +1780,7 @@ class CanvasPixelButton:
         self._is_mapped = True
         try:
             self.canvas.itemconfigure(self.tag, state="normal")
+            self._update_visuals()
         except Exception:
             pass
 

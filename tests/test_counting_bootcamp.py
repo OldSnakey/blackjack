@@ -926,6 +926,36 @@ class TestBootcampHeadlessGUI(unittest.TestCase):
         self.assertLessEqual(c3a_xs[1] - c3a_xs[0], 80)
         self.assertLessEqual(c3a_xs[3] - c3a_xs[2], 80)
 
+    def test_bootcamp_card_scale_on_1080p_and_2x_scaling_on_1440p(self):
+        """
+        On fhd_1080p (art_scale=1, card_scale=1.5), Bootcamp resolves 1.0x (74x107) cards so sprites
+        fit inside the 150px hand boxes of the 880x390 board; on qhd_1440p (art_scale=2), Bootcamp
+        scales the board to 1760x780 and resolves 2.0x (148x214) cards.
+        """
+        from display_profile import make_profile_preset
+
+        self.app.enter_counting_bootcamp(start_view="map")
+        bf = self.app.bootcamp_frame
+        self.assertIsNotNone(bf)
+
+        self.app.apply_display_profile(make_profile_preset("fhd_1080p"))
+        self.root.update_idletasks()
+        self.assertEqual(int(bf.canvas.cget("width")), 1000)
+        self.assertEqual(int(bf.canvas.cget("height")), 390)
+        card_1080 = bf._get_card_image("ace", "spade")
+        self.assertIsNotNone(card_1080)
+        self.assertEqual(card_1080.width(), 74)
+        self.assertEqual(card_1080.height(), 107)
+
+        self.app.apply_display_profile(make_profile_preset("qhd_1440p"))
+        self.root.update_idletasks()
+        self.assertEqual(int(bf.canvas.cget("width")), 2000)
+        self.assertEqual(int(bf.canvas.cget("height")), 780)
+        card_1440 = bf._get_card_image("ace", "spade")
+        self.assertIsNotNone(card_1440)
+        self.assertEqual(card_1440.width(), 148)
+        self.assertEqual(card_1440.height(), 214)
+
 
 if __name__ == "__main__":
     unittest.main()

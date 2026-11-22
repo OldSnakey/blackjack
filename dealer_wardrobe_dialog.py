@@ -20,8 +20,9 @@ Provides:
 
 from __future__ import annotations
 
+import os
 import tkinter
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 from PIL import ImageTk
 
 from dealer_actor import CHARACTERS, CharacterProfile, CostumeVariant
@@ -36,6 +37,7 @@ from pixel_ui import (
     get_badge_font,
     get_body_font,
 )
+from ui_dialogs import InWindowScreenHost
 
 
 CHARACTER_VOICE_QUOTES: Dict[str, str] = {
@@ -274,12 +276,19 @@ class DealerCardPanel(tkinter.Canvas):
         is_equipped: bool,
         unlocked: bool,
         scale: int = 2,
+        card_width: int = 436,
+        card_height: int = 222,
+        art_scale: int = 1,
         **kwargs,
     ):
+        s = max(1, int(art_scale))
+        compact_2x = bool(s >= 2 and getattr(dialog, "is_compact_2x", False))
+        cw = max(436 * s, int(card_width))
+        ch = max((182 * s) if compact_2x else (222 * s), int(card_height))
         super().__init__(
             master,
-            width=436,
-            height=222,
+            width=cw,
+            height=ch,
             background="#0d1f14",
             highlightthickness=0,
             borderwidth=0,
@@ -289,7 +298,10 @@ class DealerCardPanel(tkinter.Canvas):
         self.char_id = char_id
         self.profile = profile
         self.dialog = dialog
-        self.scale = scale
+        self.scale = scale * s if scale == 2 and s > 1 else scale
+        self.art_scale = s
+        self.card_width = cw
+        self.card_height = ch
         self.unlocked = unlocked
         self.is_equipped = is_equipped
 
@@ -308,6 +320,21 @@ class DealerCardPanel(tkinter.Canvas):
         self._speech_text_id: Optional[int] = None
         self._speech_active: bool = False
 
+        # Responsive geometry anchors inside (cw, ch)
+        pad_xy = 10 * s if compact_2x else 16 * s
+        px = pad_xy
+        py = pad_xy
+        btn_h = (25 * s) if compact_2x else (34 * s)
+        btn_cy = ch - ((18 * s) if compact_2x else (26 * s))
+        max_p = (126 * s) if compact_2x else (182 * s if s == 1 else 156 * s)
+        p_size = max(116 * s, min(max_p, btn_cy - btn_h // 2 - py - 6 * s))
+        p_cx = px + p_size // 2
+        p_cy = py + p_size // 2
+        rx = px + p_size + 18 * s
+        r_end = cw - 18 * s
+        right_w = max(240 * s, r_end - rx)
+        self._layout_geom = (px, py, p_size, p_cx, p_cy, rx, r_end, right_w, btn_cy, btn_h)
+
         # 1. 9-slice background panel with corner brass rivets
         border_col = "#ecc260" if is_equipped else "#06140b"
         inner_hi_col = "#ffd700" if is_equipped else "#1f4d30"
@@ -315,32 +342,32 @@ class DealerCardPanel(tkinter.Canvas):
             self,
             x=0,
             y=0,
-            width=436,
-            height=222,
+            width=cw,
+            height=ch,
             bg="#0c2917",
             border=border_col,
             inner_hi=inner_hi_col,
             inner_sh="#071a0e",
             rivet_color="#d4af37",
-            scale=scale,
+            scale=2 * s,
             recessed=True,
             anchor="nw",
             tag="card_panel",
         )
 
-        # 2. Left Column: 128x128 Recessed Gold Portrait Frame
+        # 2. Left Column: Recessed Gold Portrait Frame
         self.portrait_frame = CanvasPixelPanel(
             self,
-            x=16,
-            y=16,
-            width=128,
-            height=128,
+            x=px,
+            y=py,
+            width=p_size,
+            height=p_size,
             bg="#060c08",
             border="#8a6d1b",
             inner_hi="#12271c",
             inner_sh="#040805",
             rivet_color=None,
-            scale=scale,
+            scale=2 * s,
             recessed=True,
             anchor="nw",
             tag="portrait_frame",
@@ -348,163 +375,198 @@ class DealerCardPanel(tkinter.Canvas):
 
         cur_variant = self.costumes[self.costume_idx] if self.costumes else None
         init_costume_id = cur_variant.costume_id if cur_variant else char_id
-        bust_pil = dialog.app.dealer_actor.get_bust_image(char_id, scale_factor=1.0, costume_id=init_costume_id)
+        bust_scale = 2.0 if s >= 2 else 1.0
+        bust_pil = dialog.app.dealer_actor.get_bust_image(char_id, scale_factor=bust_scale, costume_id=init_costume_id)
         if bust_pil:
             self.portrait_photo = ImageTk.PhotoImage(bust_pil, master=self)
-            dialog._photo_cache[f"bust_{init_costume_id}"] = self.portrait_photo
-            self.portrait_item = self.create_image(80, 80, image=self.portrait_photo, anchor="center")
+            dialog._photo_cache[f"bust_{init_costume_id}_{s}"] = self.portrait_photo
+            self.portrait_item = self.create_image(p_cx, p_cy, image=self.portrait_photo, anchor="center")
         else:
             self.portrait_photo = None
             self.portrait_item = self.create_text(
-                80, 80, text="[No Bust]", font=get_role_font("body", size_override=-16), fill="#b0bec5", anchor="center"
+                p_cx,
+                p_cy,
+                text="[No Bust]",
+                font=get_role_font("body", size_override=-16 * s),
+                fill="#b0bec5",
+                anchor="center",
             )
 
-        # Voice Button: centered at cx=80, cy=180, width=128, height=32, scale=2
+        # Voice Button: aligned on bottom button baseline under portrait
         self.voice_btn = CanvasPixelButton(
             self,
-            x=80,
-            y=180,
-            width=128,
-            height=32,
+            x=p_cx,
+            y=btn_cy,
+            width=p_size,
+            height=btn_h,
             text="🔊 Voice",
             theme="neutral",
-            font=get_role_font("button", size_override=-16),
-            scale=2,
+            font=get_role_font("button", size_override=-18 * s),
+            scale=2 * s,
             command=self._play_voice,
         )
 
         # 3. Right Column:
-        # y=16: Dealer Name (m6x11plus @ -32) - spans full width
+        top_title_y = (8 * s) if compact_2x else (14 * s)
+        sub_y = (31 * s) if compact_2x else (50 * s if s == 1 else 48 * s)
+        name_font = ("m6x11", -24 * s, "normal") if compact_2x else get_role_font("header", size_override=-36 * s)
         self.name_text_id = self.create_text(
-            164,
-            16,
+            rx,
+            top_title_y,
             text=profile.name.upper(),
-            font=get_role_font("header", size_override=-32),
+            font=name_font,
             fill="#ffd700",
             anchor="nw",
         )
 
-        # y=48: Subtitle (m6x11plus @ -16) on left + Status Badge (m6x11plus @ -16) on right at x=414
         self.subtitle_text_id = self.create_text(
-            164,
-            48,
+            rx,
+            sub_y,
             text=profile.title,
-            font=get_role_font("header", size_override=-16),
+            font=("m6x11", -16 * s, "normal") if compact_2x else get_role_font("header", size_override=-18 * s),
             fill=profile.nameplate_fg,
             anchor="nw",
         )
 
         status_text, status_col = self._get_status_info()
         self.status_badge_id = self.create_text(
-            414,
-            48,
+            r_end,
+            sub_y,
             text=status_text,
-            font=get_role_font("badge", size_override=-16),
+            font=("m6x11", -16 * s, "normal"),
             fill=status_col,
             anchor="ne",
         )
 
-        # y=74: In-Card Costume Carousel Row
-        # [◄] button: center x=176, y=86
+        # In-Card Costume Carousel Row
         has_multi = len(self.costumes) > 1
+        car_y = (50 * s) if compact_2x else (74 * s)
+        car_h = (21 * s) if compact_2x else (28 * s)
+        car_cy = car_y + car_h // 2
+        arrow_w = (26 * s) if compact_2x else (30 * s)
+        strip_x = rx + arrow_w + 6 * s
+        strip_w = max(140 * s, right_w - 2 * (arrow_w + 6 * s))
+
         self.prev_costume_btn = CanvasPixelButton(
             self,
-            x=176,
-            y=86,
-            width=24,
-            height=24,
+            x=rx + arrow_w // 2,
+            y=car_cy,
+            width=arrow_w,
+            height=car_h,
             text="◄",
             theme="neutral",
-            scale=2,
+            font=get_role_font("button", size_override=-18 * s),
+            scale=2 * s,
             enabled=has_multi,
             command=self._prev_costume,
         )
 
-        # Carousel label panel: x=192, y=74, w=188, h=24
         self.carousel_panel = CanvasPixelPanel(
             self,
-            x=192,
-            y=74,
-            width=188,
-            height=24,
+            x=strip_x,
+            y=car_y,
+            width=strip_w,
+            height=car_h,
             bg="#08140c",
             border="#040a06",
             inner_hi="#0e2416",
             inner_sh="#020503",
             rivet_color=None,
-            scale=scale,
+            scale=2 * s,
             recessed=True,
             anchor="nw",
             tag="carousel_panel",
         )
         c_label = self._get_carousel_label()
         self.carousel_text_id = self.create_text(
-            286,
-            86,
+            strip_x + strip_w // 2,
+            car_cy,
             text=c_label,
-            font=get_role_font("body", size_override=-16),
-            fill="#e0e0e0",
+            font=("m6x11", -16 * s, "normal") if compact_2x else get_role_font("header", size_override=-18 * s),
+            fill="#f0f4f1",
             anchor="center",
         )
 
-        # [►] button: center x=396, y=86
         self.next_costume_btn = CanvasPixelButton(
             self,
-            x=396,
-            y=86,
-            width=24,
-            height=24,
+            x=r_end - arrow_w // 2,
+            y=car_cy,
+            width=arrow_w,
+            height=car_h,
             text="►",
             theme="neutral",
-            scale=2,
+            font=get_role_font("button", size_override=-18 * s),
+            scale=2 * s,
             enabled=has_multi,
             command=self._next_costume,
         )
 
-        # y=104: Lore Blurb (when unlocked) or Unlock Requirement (when locked)
+        # Lore Blurb (when unlocked) or Unlock Requirement (when locked) + Live Costume Quote
+        lore_top_y = car_y + car_h + (5 * s if compact_2x else 10 * s)
+        lore_wrap = max(240 * s, right_w - 4 * s)
+        bio_font = ("m5x7", -16 * s, "normal") if (compact_2x or ch < 268 * s) else get_role_font("header", size_override=-18 * s)
+        quote_font = ("m5x7", -16 * s, "normal")
         if self.unlocked:
             self.req_header_id = None
             self.lore_text_id = self.create_text(
-                164,
-                104,
+                rx,
+                lore_top_y,
                 text=profile.lore,
-                font=get_role_font("body", size_override=-16),
+                font=bio_font,
                 fill="#d8e2dc",
-                width=250,
+                width=lore_wrap,
                 anchor="nw",
             )
         else:
             self.req_header_id = self.create_text(
-                164,
-                102,
+                rx,
+                lore_top_y,
                 text="🔒 UNLOCK REQUIREMENT:",
-                font=get_role_font("header", size_override=-16),
+                font=("m6x11", -16 * s, "normal") if compact_2x else get_role_font("header", size_override=-18 * s),
                 fill="#ffd54f",
                 anchor="nw",
             )
             crit = self.dialog.UNLOCK_CRITERIA.get(self.char_id, "Complete casino objectives to unlock.")
             self.lore_text_id = self.create_text(
-                164,
-                120,
+                rx,
+                lore_top_y + (18 * s if compact_2x else 22 * s),
                 text=crit,
-                font=get_role_font("body", size_override=-16),
+                font=bio_font,
                 fill="#f0f4f1",
-                width=250,
+                width=lore_wrap,
                 anchor="nw",
             )
+        self.bio_text_id = self.lore_text_id
 
-        # y=180: Equip / Equipped Button: cx=290, cy=180, width=252, height=32, scale=3
+        # Position live costume flavor quote cleanly in the lower right space above Equip button
+        lore_bbox = self.bbox(self.lore_text_id)
+        quote_top_y = (lore_bbox[3] + (4 * s if compact_2x else 10 * s)) if lore_bbox else (lore_top_y + 42 * s)
+        max_quote_bot = btn_cy - btn_h // 2 - (4 * s if compact_2x else 6 * s)
+        self._max_quote_bot = max_quote_bot
+        init_quote_txt = self._get_costume_quote_preview() if (max_quote_bot - quote_top_y >= 16 * s) else ""
+        self.costume_quote_id = self.create_text(
+            rx,
+            quote_top_y,
+            text=init_quote_txt,
+            font=quote_font,
+            fill="#80cbc4",
+            width=lore_wrap,
+            anchor="nw",
+        )
+        self._clamp_quote_to_button_clearance()
+
+        # Equip / Equipped Button sharing baseline with Voice Button
         btn_text, btn_theme, btn_enabled, dis_text_color = self._get_action_state()
         self.equip_btn = CanvasPixelButton(
             self,
-            x=290,
-            y=180,
-            width=252,
-            height=32,
+            x=rx + right_w // 2,
+            y=btn_cy,
+            width=right_w,
+            height=btn_h,
             text=btn_text,
             theme=btn_theme,
-            font=get_role_font("button", size_override=-16),
-            scale=3,
+            font=get_role_font("button", size_override=-18 * s),
+            scale=3 * s,
             enabled=btn_enabled,
             disabled_text_color=dis_text_color,
             command=self._on_equip_click,
@@ -539,6 +601,36 @@ class DealerCardPanel(tkinter.Canvas):
         # Unlocked variant ready to equip
         return ("Equip Costume", "green", True, None)
 
+    def _get_costume_quote_preview(self) -> str:
+        cur_variant = self.costumes[self.costume_idx] if self.costumes else None
+        costume_id = cur_variant.costume_id if cur_variant else self.char_id
+        raw = (
+            COSTUME_VOICE_QUOTES.get(costume_id)
+            or CHARACTER_VOICE_QUOTES.get(self.char_id)
+            or f"Greetings from {self.profile.name}!"
+        )
+        return f'"{raw}"'
+
+    def _clamp_quote_to_button_clearance(self) -> None:
+        """Guarantees costume flavor quote never overlaps or touches the bottom Equip Costume button."""
+        if not getattr(self, "costume_quote_id", None):
+            return
+        max_bot = getattr(self, "_max_quote_bot", 0)
+        if max_bot <= 0:
+            return
+        q_txt = self.itemcget(self.costume_quote_id, "text")
+        if not q_txt:
+            return
+        q_bbox = self.bbox(self.costume_quote_id)
+        while q_bbox and q_bbox[3] > max_bot and len(q_txt) > 28:
+            trimmed = q_txt.strip('"')
+            cut = trimmed.rfind(" ", 0, max(20, len(trimmed) - 10))
+            if cut <= 16:
+                break
+            q_txt = f'"{trimmed[:cut].rstrip(",;:- ")}..."'
+            self.itemconfigure(self.costume_quote_id, text=q_txt)
+            q_bbox = self.bbox(self.costume_quote_id)
+
     def _prev_costume(self):
         if len(self.costumes) > 1:
             self.costume_idx = (self.costume_idx - 1) % len(self.costumes)
@@ -554,9 +646,15 @@ class DealerCardPanel(tkinter.Canvas):
         self.itemconfigure(self.carousel_text_id, text=c_label)
         cur_variant = self.costumes[self.costume_idx] if self.costumes else None
         variant_id = cur_variant.costume_id if cur_variant else self.char_id
-        bust_pil = self.dialog.app.dealer_actor.get_bust_image(self.char_id, scale_factor=1.0, costume_id=variant_id)
+        s = getattr(self, "art_scale", 1)
+        bust_scale = 2.0 if s >= 2 else 1.0
+        bust_pil = self.dialog.app.dealer_actor.get_bust_image(
+            self.char_id,
+            scale_factor=bust_scale,
+            costume_id=variant_id,
+        )
         if bust_pil and self.portrait_item and self.type(self.portrait_item) == "image":
-            cache_key = f"bust_{variant_id}"
+            cache_key = f"bust_{variant_id}_{s}"
             photo = self.dialog._photo_cache.get(cache_key)
             if photo is None:
                 photo = ImageTk.PhotoImage(bust_pil, master=self)
@@ -568,6 +666,9 @@ class DealerCardPanel(tkinter.Canvas):
         self.equip_btn.configure(theme=btn_theme)
         self.equip_btn.set_disabled_text_color(dis_text_color)
         self.equip_btn.set_enabled(btn_enabled)
+        if getattr(self, "costume_quote_id", None):
+            self.itemconfigure(self.costume_quote_id, text=self._get_costume_quote_preview())
+            self._clamp_quote_to_button_clearance()
 
     def _play_voice(self):
         """Renders speech balloon with directional tail to head and streams Animalese dialogue."""
@@ -595,65 +696,70 @@ class DealerCardPanel(tkinter.Canvas):
         header_col = border_col
         text_col = "#ffffff"
 
-        # 5. Render speech balloon geometry
-        x1, y1, x2, y2 = 146, 14, 422, 162
+        # 5. Render responsive speech balloon geometry
+        s = getattr(self, "art_scale", 1)
+        px, py, p_size, p_cx, p_cy, rx, r_end, right_w, btn_cy, btn_h = self._layout_geom
+        x1 = rx - 14 * s
+        y1 = 14 * s
+        x2 = self.card_width - 14 * s
+        y2 = btn_cy - btn_h // 2 - 8 * s
 
-        # A. Directional pointer tail pointing directly to dealer's head at (98, 52)
-        tail_base_top = (147, 44)
-        tail_base_bot = (147, 62)
-        tail_tip = (98, 52)
+        # A. Directional pointer tail pointing directly to dealer's head
+        tail_base_top = (x1 + 1, py + 28 * s)
+        tail_base_bot = (x1 + 1, py + 46 * s)
+        tail_tip = (px + p_size - 24 * s, py + 36 * s)
         self.create_polygon(
             tail_base_top[0], tail_base_top[1],
             tail_tip[0], tail_tip[1],
             tail_base_bot[0], tail_base_bot[1],
             fill=bg_col,
             outline=border_col,
-            width=2,
+            width=2 * s,
             tags="speech_bubble",
         )
 
         # B. Notched retro pixel balloon background
         self.create_rectangle(
-            x1 + 2, y1, x2 - 2, y2,
+            x1 + 2 * s, y1, x2 - 2 * s, y2,
             fill=bg_col,
             outline="",
             tags="speech_bubble",
         )
         self.create_rectangle(
-            x1, y1 + 2, x2, y2 - 2,
+            x1, y1 + 2 * s, x2, y2 - 2 * s,
             fill=bg_col,
             outline="",
             tags="speech_bubble",
         )
 
         # C. Balloon borders
-        self.create_line(x1 + 2, y1, x2 - 2, y1, fill=border_col, width=2, tags="speech_bubble")
-        self.create_line(x1 + 2, y2, x2 - 2, y2, fill=border_col, width=2, tags="speech_bubble")
-        self.create_line(x1, y1 + 2, x1, tail_base_top[1], fill=border_col, width=2, tags="speech_bubble")
-        self.create_line(x1, tail_base_bot[1], x1, y2 - 2, fill=border_col, width=2, tags="speech_bubble")
-        self.create_line(x2, y1 + 2, x2, y2 - 2, fill=border_col, width=2, tags="speech_bubble")
+        self.create_line(x1 + 2 * s, y1, x2 - 2 * s, y1, fill=border_col, width=2 * s, tags="speech_bubble")
+        self.create_line(x1 + 2 * s, y2, x2 - 2 * s, y2, fill=border_col, width=2 * s, tags="speech_bubble")
+        self.create_line(x1, y1 + 2 * s, x1, tail_base_top[1], fill=border_col, width=2 * s, tags="speech_bubble")
+        self.create_line(x1, tail_base_bot[1], x1, y2 - 2 * s, fill=border_col, width=2 * s, tags="speech_bubble")
+        self.create_line(x2, y1 + 2 * s, x2, y2 - 2 * s, fill=border_col, width=2 * s, tags="speech_bubble")
 
         # Seam bridge between tail and balloon interior
         self.create_line(
-            147, tail_base_top[1] + 1, 147, tail_base_bot[1] - 1,
+            x1 + 1, tail_base_top[1] + s, x1 + 1, tail_base_bot[1] - s,
             fill=bg_col,
-            width=3,
+            width=3 * s,
             tags="speech_bubble",
         )
 
         # D. Header & dismiss button
         self.create_text(
-            160, 24,
+            x1 + 14 * s, y1 + 10 * s,
             text=f"✦ {self.profile.name.upper()}",
-            font=get_role_font("header", size_override=-16),
+            font=get_role_font("header", size_override=-16 * s),
             fill=header_col,
             anchor="nw",
             tags="speech_bubble",
         )
         self.create_text(
-            412, 24,
+            x2 - 10 * s, y1 + 10 * s,
             text="[✕]",
-            font=get_role_font("body", size_override=-16),
+            font=get_role_font("body", size_override=-16 * s),
             fill="#78909c",
             anchor="ne",
             tags="speech_bubble",
@@ -661,11 +767,11 @@ class DealerCardPanel(tkinter.Canvas):
 
         # E. Text body item (starts empty and streams character-by-character)
         self._speech_text_id = self.create_text(
-            160, 48,
+            x1 + 14 * s, y1 + 34 * s,
             text="",
-            font=get_role_font("body", size_override=-16),
+            font=get_role_font("body", size_override=-16 * s),
             fill=text_col,
-            width=250,
+            width=max(240 * s, (x2 - x1) - 28 * s),
             anchor="nw",
             tags="speech_bubble",
         )
@@ -771,150 +877,173 @@ class DealerCardPanel(tkinter.Canvas):
 
 class MysteryDealerCardPanel(tkinter.Canvas):
     """
-    Renders a 436x222 recessed mystery silhouette card for empty grid slots.
+    Renders a responsive recessed mystery silhouette card for empty grid slots.
     Guarantees the 2x2 grid is always visually balanced on every page.
     """
 
-    def __init__(self, master: Any, scale: int = 2, **kwargs):
+    def __init__(
+        self,
+        master: Any,
+        scale: int = 2,
+        card_width: int = 436,
+        card_height: int = 222,
+        art_scale: int = 1,
+        **kwargs,
+    ):
+        s = max(1, int(art_scale))
+        cw = max(436 * s, int(card_width))
+        ch = max(222 * s, int(card_height))
         super().__init__(
             master,
-            width=436,
-            height=222,
+            width=cw,
+            height=ch,
             background="#0d1f14",
             highlightthickness=0,
             borderwidth=0,
             relief="flat",
             **kwargs,
         )
+        px = 16 * s
+        py = 16 * s
+        btn_h = 34 * s
+        btn_cy = ch - 26 * s
+        p_size = max(128 * s, min(156 * s, btn_cy - btn_h // 2 - py - 12 * s))
+        p_cx = px + p_size // 2
+        p_cy = py + p_size // 2
+        rx = px + p_size + 20 * s
+        r_end = cw - 20 * s
+        right_w = max(240 * s, r_end - rx)
+
         self.panel = CanvasPixelPanel(
             self,
             x=0,
             y=0,
-            width=436,
-            height=222,
+            width=cw,
+            height=ch,
             bg="#08140c",
             border="#040a06",
             inner_hi="#0e2416",
             inner_sh="#020503",
             rivet_color="#555544",
-            scale=scale,
+            scale=2 * s,
             recessed=True,
             anchor="nw",
             tag="mystery_card_panel",
         )
 
-        # Recessed silhouette frame at (16, 16)
         self.portrait_frame = CanvasPixelPanel(
             self,
-            x=16,
-            y=16,
-            width=128,
-            height=128,
+            x=px,
+            y=py,
+            width=p_size,
+            height=p_size,
             bg="#040805",
             border="#1c3022",
             inner_hi="#0a150e",
             inner_sh="#020403",
             rivet_color=None,
-            scale=scale,
+            scale=2 * s,
             recessed=True,
             anchor="nw",
             tag="mystery_portrait_frame",
         )
 
-        self.bust_photo = get_pixel_icon("mystery_bust", scale=2, master=self)
+        self.bust_photo = get_pixel_icon("mystery_bust", scale=2 * s, master=self)
         if self.bust_photo:
-            self.create_image(80, 80, image=self.bust_photo, anchor="center")
+            self.create_image(p_cx, p_cy, image=self.bust_photo, anchor="center")
 
         self.voice_btn = CanvasPixelButton(
             self,
-            x=80,
-            y=180,
-            width=128,
-            height=32,
+            x=p_cx,
+            y=btn_cy,
+            width=p_size,
+            height=btn_h,
             text="???",
             theme="neutral",
-            font=get_role_font("button", size_override=-16),
-            scale=2,
+            font=get_role_font("button", size_override=-16 * s),
+            scale=2 * s,
             enabled=False,
         )
 
-        # Right column
         self.create_text(
-            164,
-            16,
+            rx,
+            16 * s,
             text="??? (COMING SOON)",
-            font=get_role_font("header", size_override=-32),
+            font=get_role_font("header", size_override=-32 * s),
             fill="#8a6d1b",
             anchor="nw",
         )
         self.create_text(
-            164,
-            48,
+            rx,
+            48 * s,
             text="Unknown Casino Persona",
-            font=get_role_font("header", size_override=-16),
+            font=get_role_font("header", size_override=-16 * s),
             fill="#3e5948",
             anchor="nw",
         )
         self.create_text(
-            414,
-            48,
+            r_end,
+            48 * s,
             text="[🔒] Mystery",
-            font=get_role_font("badge", size_override=-16),
+            font=get_role_font("badge", size_override=-16 * s),
             fill="#8a6d1b",
             anchor="ne",
         )
 
-        # Carousel placeholder
+        car_y = 76 * s
+        car_h = 26 * s
+        strip_x = rx + 32 * s
+        strip_w = max(140 * s, right_w - 64 * s)
         self.carousel_panel = CanvasPixelPanel(
             self,
-            x=192,
-            y=74,
-            width=188,
-            height=24,
+            x=strip_x,
+            y=car_y,
+            width=strip_w,
+            height=car_h,
             bg="#050d08",
             border="#020503",
             inner_hi="#09180e",
             inner_sh="#010302",
             rivet_color=None,
-            scale=scale,
+            scale=2 * s,
             recessed=True,
             anchor="nw",
             tag="mystery_carousel_panel",
         )
         self.create_text(
-            286,
-            86,
+            strip_x + strip_w // 2,
+            car_y + car_h // 2,
             text="Classified",
-            font=get_role_font("body", size_override=-16),
+            font=get_role_font("body", size_override=-16 * s),
             fill="#557766",
             anchor="center",
         )
 
         self.create_text(
-            164,
-            104,
+            rx,
+            car_y + car_h + 10 * s,
             text="A mysterious casino figure shrouded in secrecy. Check back in future table updates!",
-            font=get_role_font("body", size_override=-16),
+            font=get_role_font("body", size_override=-16 * s),
             fill="#557766",
-            width=250,
+            width=max(240 * s, right_w - 6 * s),
             anchor="nw",
         )
 
         self.equip_btn = CanvasPixelButton(
             self,
-            x=290,
-            y=180,
-            width=252,
-            height=32,
+            x=rx + right_w // 2,
+            y=btn_cy,
+            width=right_w,
+            height=btn_h,
             text="[ Locked ]",
             theme="neutral",
-            font=get_role_font("button", size_override=-16),
-            scale=3,
+            font=get_role_font("button", size_override=-16 * s),
+            scale=3 * s,
             enabled=False,
         )
 
 
-class WardrobeDialog(tkinter.Toplevel):
+class WardrobeDialog(InWindowScreenHost):
     """
     Dealer Wardrobe & Casino Hall of Fame Modal.
     Two-tab interface providing character dressing room and trophy achievements shelf.
@@ -934,18 +1063,19 @@ class WardrobeDialog(tkinter.Toplevel):
 
     PAGE_CONFIG = [
         {
-            "title": "Casino Floor & Workshop",
-            "characters": ["julian", "tiffany", "dummy"],
+            "title": "Casino Floor & High Rollers",
+            "characters": ["julian", "tiffany", "professor", "selene"],
         },
         {
-            "title": "Supernatural Legends",
-            "characters": ["malphas", "uriel", "mortimer"],
-        },
-        {
-            "title": "The Masters & High Rollers",
-            "characters": ["selene", "vladimir", "professor"],
+            "title": "Nocturne & Supernatural Legends",
+            "characters": ["vladimir", "mortimer", "malphas", "uriel"],
         },
     ]
+
+    DEBUG_PAGE_ENTRY = {
+        "title": "Puppet Rig & Testing Workshop",
+        "characters": ["dummy"],
+    }
 
     ACHIEVEMENT_SPECS = [
         {
@@ -1048,49 +1178,132 @@ class WardrobeDialog(tkinter.Toplevel):
         },
     ]
 
-    def __init__(self, parent: tkinter.Tk, app: Any, initial_tab: int = 0):
-        super().__init__(parent)
+    HOF_PAGE_CONFIG = [
+        {"title": "Casino Honors & Supernatural Lore", "slice": (0, 6)},
+        {"title": "Advantage Counting & Side Bets", "slice": (6, 12)},
+        {"title": "Grand Casino Venue Tour", "slice": (12, 14)},
+    ]
+
+    def __init__(
+        self,
+        parent: tkinter.Tk,
+        app: Any,
+        initial_tab: int = 0,
+        on_close_callback: Optional[Callable[[], None]] = None,
+        include_debug_dummy: Optional[bool] = None,
+    ):
+        super().__init__(
+            parent,
+            app=app,
+            profile=getattr(app, "display_profile", None),
+            background="#0d1f14",
+            base_pad=22,
+        )
         self.app = app
+        self._external_close_cb = on_close_callback
+        self._include_debug_dummy = include_debug_dummy
         self.title("🎩 Dealer Wardrobe & Dressing Room")
-        self.transient(parent)
-        self.resizable(False, False)
-        self.configure(background="#0d1f14", padx=16, pady=10)
 
-        if getattr(app, "_icon_photo", None):
-            try:
-                self.iconphoto(False, app._icon_photo)
-            except Exception:
-                pass
-
-        dialog_w = 940
-        screen_h = parent.winfo_screenheight() if parent else 800
-        dialog_h = min(640, max(540, screen_h - 80))
-        try:
-            root_x = parent.winfo_rootx()
-            root_y = parent.winfo_rooty()
-            root_w = parent.winfo_width()
-            root_h = parent.winfo_height()
-            x = max(0, root_x + (root_w - dialog_w) // 2)
-            y = max(0, root_y + (root_h - dialog_h) // 2)
-            self.geometry(f"{dialog_w}x{dialog_h}+{x}+{y}")
-        except Exception:
-            self.geometry(f"{dialog_w}x{dialog_h}")
+        current_char = getattr(getattr(self.app, "dealer_actor", None), "current_character", "julian")
+        show_dummy = (
+            bool(include_debug_dummy)
+            if include_debug_dummy is not None
+            else (os.environ.get("BLACKJACK_DEBUG_RIG") == "1" or current_char == "dummy")
+        )
+        self.page_config: List[Dict[str, Any]] = [dict(p) for p in self.PAGE_CONFIG]
+        if show_dummy:
+            self.page_config.append(dict(self.DEBUG_PAGE_ENTRY))
 
         self.current_tab = 0
         self.current_page = 0
+        self.current_hof_page = 0
         self.cards: Dict[str, Dict[str, Any]] = {}
         self.plaque_widgets: Dict[str, Dict[str, Any]] = {}
         self._photo_cache: Dict[str, ImageTk.PhotoImage] = {}
         self._page_frames: Dict[int, tkinter.Frame] = {}
+        self._hof_page_frames: Dict[int, tkinter.Frame] = {}
+        self._built_content_wh: Optional[tuple[int, int, int]] = None
 
         self._build_ui()
         if initial_tab in (0, 1) and initial_tab != 0:
             self._switch_tab(initial_tab)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.bind("<Escape>", lambda e: self._on_close())
-        self.bind("<Left>", lambda e: self._prev_page() if self.current_tab == 0 else None)
-        self.bind("<Right>", lambda e: self._next_page() if self.current_tab == 0 else None)
+        self.bind("<Left>", lambda e: self._prev_page() if self.current_tab == 0 else self._prev_hof_page())
+        self.bind("<Right>", lambda e: self._next_page() if self.current_tab == 0 else self._next_hof_page())
+        self.bind("1", lambda e: self._switch_tab(0))
+        self.bind("2", lambda e: self._switch_tab(1))
+        self.bind("<Tab>", lambda e: self._switch_tab(1 if self.current_tab == 0 else 0))
+        self.bind("<MouseWheel>", self._on_mousewheel, add="+")
         self.focus_set()
+
+    def handle_modal_key(self, event: Any) -> Optional[str]:
+        ks = getattr(event, "keysym", "")
+        ch = str(getattr(event, "char", "") or "")
+        if ks == "Escape":
+            self._on_close()
+        elif ks in ("Left", "Prior"):
+            if self.current_tab == 0:
+                self._prev_page()
+            else:
+                self._prev_hof_page()
+        elif ks in ("Right", "Next"):
+            if self.current_tab == 0:
+                self._next_page()
+            else:
+                self._next_hof_page()
+        elif ch == "1":
+            self._switch_tab(0)
+        elif ch == "2":
+            self._switch_tab(1)
+        elif ks == "Tab":
+            self._switch_tab(1 if self.current_tab == 0 else 0)
+        elif self.current_tab == 0 and ch.lower() in ("q", "e", "v", "[", "]"):
+            chars = self.page_config[self.current_page]["characters"]
+            if chars:
+                focus_cid = getattr(self, "_focused_char_id", chars[0])
+                if focus_cid not in chars:
+                    focus_cid = chars[0]
+                panel = self.cards.get(focus_cid, {}).get("panel")
+                if panel is not None:
+                    if ch.lower() in ("q", "["):
+                        panel._prev_costume()
+                    elif ch.lower() in ("e", "]"):
+                        panel._next_costume()
+                    elif ch.lower() == "v":
+                        panel._play_voice()
+        return "break"
+
+    def _compute_wardrobe_metrics(self) -> tuple[int, int, int]:
+        s = self.menu_scale
+        compact = self.is_compact_2x
+        vw, vh = self._resolve_host_wh()
+        outer_px = (12 * s) if compact else self.compute_outer_padx(vw)
+        v_pad = (6 * s) if compact else (10 * s)
+        content_w = max(908 * s, vw - 2 * outer_px)
+        content_h = max(500 * s, vh - 2 * v_pad)
+        return (content_w, content_h, outer_px)
+
+    def _on_viewport_resized(self, width: int, height: int) -> None:
+        if not hasattr(self, "_built_content_wh") or self._built_content_wh is None:
+            return
+        cw, ch, _ = self._compute_wardrobe_metrics()
+        prev_cw, prev_ch, prev_s = self._built_content_wh
+        if abs(cw - prev_cw) > 12 or abs(ch - prev_ch) > 12 or self.menu_scale != prev_s:
+            saved_tab = self.current_tab
+            saved_page = self.current_page
+            saved_hof_page = self.current_hof_page
+            self._stop_all_voices()
+            for child in list(self.winfo_children()):
+                child.destroy()
+            self.cards.clear()
+            self.plaque_widgets.clear()
+            self._page_frames.clear()
+            self._hof_page_frames.clear()
+            self._build_ui()
+            self._switch_page(saved_page)
+            self._switch_hof_page(saved_hof_page)
+            self._switch_tab(saved_tab)
 
     def _is_character_unlocked(self, char_id: str) -> bool:
         """Evaluates whether the given character persona is unlocked."""
@@ -1152,95 +1365,128 @@ class WardrobeDialog(tkinter.Toplevel):
         return False
 
     def _build_ui(self):
-        # 1. Header Banner with Pixel Top Hat
+        s = self.menu_scale
+        compact = self.is_compact_2x
+        content_w, content_h, outer_px = self._compute_wardrobe_metrics()
+        self._built_content_wh = (content_w, content_h, s)
+        cx = content_w // 2
+
+        v_pad = (6 * s) if compact else (10 * s)
+        root_wrap = tkinter.Frame(self, background="#0d1f14", padx=outer_px, pady=v_pad)
+        root_wrap.pack(fill="both", expand=True)
+        self._root_wrap = root_wrap
+
+        # 1. Full-Width Header Banner with Pixel Top Hat
+        hdr_h = (28 * s) if compact else (38 * s)
         header_canvas = tkinter.Canvas(
-            self, width=908, height=36, background="#0d1f14", highlightthickness=0, borderwidth=0
+            root_wrap,
+            width=content_w,
+            height=hdr_h,
+            background="#0d1f14",
+            highlightthickness=0,
+            borderwidth=0,
         )
-        header_canvas.pack(fill="x", pady=(0, 2))
+        header_canvas.pack(fill="x", pady=(0, (2 * s) if compact else (4 * s)))
 
-        top_hat_icon = get_pixel_icon("top_hat", scale=2, master=self)
-        if top_hat_icon:
-            self._photo_cache["top_hat_header"] = top_hat_icon
-            header_canvas.create_image(174, 18, image=top_hat_icon, anchor="center")
-
-        header_canvas.create_text(
-            454,
-            18,
+        top_hat_icon = get_pixel_icon("top_hat", scale=2 * s, master=self)
+        banner_font = ("BoldPixels", -48 if compact else (-32 * s), "normal")
+        title_id = header_canvas.create_text(
+            cx + 14 * s,
+            hdr_h // 2,
             text="CASINO WARDROBE & HALL OF FAME",
-            font=get_role_font("header", size_override=-32),
+            font=banner_font,
             fill="#ffd700",
             anchor="center",
         )
+        if top_hat_icon:
+            self._photo_cache["top_hat_header"] = top_hat_icon
+            t_bbox = header_canvas.bbox(title_id)
+            hat_x = (t_bbox[0] - 20 * s) if t_bbox else (cx - 310 * s)
+            header_canvas.create_image(hat_x, hdr_h // 2, image=top_hat_icon, anchor="center")
 
-        # 2. Tab Navigation Bar
-        tab_nav_frame = tkinter.Frame(self, background="#0d1f14")
-        tab_nav_frame.pack(fill="x", pady=(2, 6))
+        # 2. Full-Width Tab Navigation Bar
+        tab_nav_frame = tkinter.Frame(root_wrap, background="#0d1f14")
+        tab_nav_frame.pack(fill="x", pady=((1 * s) if compact else (2 * s), (4 * s) if compact else (8 * s)))
 
+        tab_bar_h = (30 * s) if compact else (38 * s)
+        tab_btn_h = (27 * s) if compact else (34 * s)
         tab_canvas = tkinter.Canvas(
-            tab_nav_frame, width=908, height=36, background="#0d1f14", highlightthickness=0, borderwidth=0
+            tab_nav_frame,
+            width=content_w,
+            height=tab_bar_h,
+            background="#0d1f14",
+            highlightthickness=0,
+            borderwidth=0,
         )
         tab_canvas.pack(fill="x")
 
+        tab_btn_w = min(440 * s, max(240 * s, (content_w - 24 * s) // 2))
+        tab_font = ("m6x11", -16 * s, "normal") if compact else get_role_font("button", size_override=-18 * s)
         self.btn_tab_wardrobe = CanvasPixelButton(
             tab_canvas,
-            x=115,
-            y=18,
-            width=210,
-            height=32,
-            text="🎩 Wardrobe Closet",
+            x=cx - tab_btn_w // 2 - 6 * s,
+            y=tab_bar_h // 2,
+            width=tab_btn_w,
+            height=tab_btn_h,
+            text="[1] 🎩 Wardrobe Closet",
             theme="green",
-            font=get_role_font("button", size_override=-16),
-            scale=2,
+            font=tab_font,
+            scale=2 * s,
             command=lambda: self._switch_tab(0),
         )
 
         self.btn_tab_hof = CanvasPixelButton(
             tab_canvas,
-            x=350,
-            y=18,
-            width=240,
-            height=32,
-            text="🏆 Hall of Fame & Trophy Shelf",
+            x=cx + tab_btn_w // 2 + 6 * s,
+            y=tab_bar_h // 2,
+            width=tab_btn_w,
+            height=tab_btn_h,
+            text="[2] 🏆 Hall of Fame & Trophies",
             theme="neutral",
-            font=get_role_font("button", size_override=-16),
-            scale=2,
+            font=tab_font,
+            scale=2 * s,
             command=lambda: self._switch_tab(1),
         )
 
-        # 3. Content Container
-        self.content_container = tkinter.Frame(self, background="#0d1f14")
-        self.content_container.pack(fill="both", expand=True)
+        # 3. Footer with Close Button (packed bottom before content_container so it stays anchored)
+        footer_frame = tkinter.Frame(root_wrap, background="#0d1f14")
+        footer_frame.pack(side="bottom", fill="x", pady=((4 * s) if compact else (6 * s), 0))
 
-        self.tab_wardrobe_frame = tkinter.Frame(self.content_container, background="#0d1f14")
-        self.tab_hof_frame = tkinter.Frame(self.content_container, background="#0d1f14")
-
-        # Build Tabs
-        self._build_wardrobe_tab()
-        self._build_hof_tab()
-
-        # 4. Footer with Close Button
-        footer_frame = tkinter.Frame(self, background="#0d1f14")
-        footer_frame.pack(fill="x", pady=(4, 0))
-
+        foot_h = (30 * s) if compact else (40 * s)
+        foot_btn_h = (27 * s) if compact else (34 * s)
         close_canvas = tkinter.Canvas(
-            footer_frame, width=908, height=38, background="#0d1f14", highlightthickness=0, borderwidth=0
+            footer_frame,
+            width=content_w,
+            height=foot_h,
+            background="#0d1f14",
+            highlightthickness=0,
+            borderwidth=0,
         )
         close_canvas.pack(fill="x")
 
         self.close_btn = CanvasPixelButton(
             close_canvas,
-            x=454,
-            y=19,
-            width=144,
-            height=34,
-            text="Close Dialog",
-            theme="neutral",
-            font=get_role_font("button", size_override=-16),
-            scale=3,
+            x=cx,
+            y=foot_h // 2,
+            width=320 * s,
+            height=foot_btn_h,
+            text="✔ Return to Table (Esc)",
+            theme="green",
+            font=tab_font,
+            scale=3 * s,
             command=self._on_close,
         )
 
-        # Show initial tab
+        # 4. Content Container
+        self.content_container = tkinter.Frame(root_wrap, background="#0d1f14")
+        self.content_container.pack(side="top", fill="both", expand=True)
+
+        self.tab_wardrobe_frame = tkinter.Frame(self.content_container, background="#0d1f14")
+        self.tab_hof_frame = tkinter.Frame(self.content_container, background="#0d1f14")
+
+        self._build_wardrobe_tab(content_w, content_h)
+        self._build_hof_tab(content_w, content_h)
+
         self._switch_tab(0)
 
     def _switch_tab(self, tab_idx: int):
@@ -1258,70 +1504,85 @@ class WardrobeDialog(tkinter.Toplevel):
             self.btn_tab_hof.configure(theme="green")
             self.btn_tab_wardrobe.configure(theme="neutral")
             self._refresh_hof_display()
-            if hasattr(self, "hof_canvas"):
-                self.hof_canvas.yview_moveto(0.0)
-                self.hof_scroll_frame.update_idletasks()
-                self.hof_canvas.configure(scrollregion=self.hof_canvas.bbox("all"))
 
     # ------------------------------------------------------------------------
     # Tab 1: Wardrobe Closet Implementation
     # ------------------------------------------------------------------------
 
-    def _build_wardrobe_tab(self):
+    def _build_wardrobe_tab(self, content_w: int, content_h: int):
+        s = self.menu_scale
+        compact = self.is_compact_2x
+        nav_h = (28 * s) if compact else (34 * s)
+        nav_btn_h = (25 * s) if compact else (30 * s)
+        nav_font = ("m6x11", -16 * s, "normal") if compact else get_role_font("button", size_override=-18 * s)
         # Navigation Bar: Prev | Page X of Y : Title | Next
         nav_canvas = tkinter.Canvas(
-            self.tab_wardrobe_frame, width=908, height=32, background="#0d1f14", highlightthickness=0, borderwidth=0
+            self.tab_wardrobe_frame,
+            width=content_w,
+            height=nav_h,
+            background="#0d1f14",
+            highlightthickness=0,
+            borderwidth=0,
         )
-        nav_canvas.pack(fill="x", pady=(0, 4))
+        nav_canvas.pack(fill="x", pady=(0, (3 * s) if compact else (6 * s)))
 
+        nav_btn_w = 136 * s
         self.prev_btn = CanvasPixelButton(
             nav_canvas,
-            x=50,
-            y=16,
-            width=90,
-            height=28,
+            x=nav_btn_w // 2 + 4 * s,
+            y=nav_h // 2,
+            width=nav_btn_w,
+            height=nav_btn_h,
             text="◀ Previous",
             theme="neutral",
-            font=get_role_font("button", size_override=-15),
-            scale=2,
+            font=nav_font,
+            scale=2 * s,
+            disabled_text_color="#a1887f",
             command=self._prev_page,
         )
 
         self.page_lbl_id = nav_canvas.create_text(
-            454,
-            16,
+            content_w // 2,
+            nav_h // 2,
             text="",
-            font=get_role_font("header", size_override=-16),
+            font=nav_font,
             fill="#ffd700",
             anchor="center",
         )
-        # Compatibility label proxy for existing test inspections
         self.page_lbl = _TextLabelShim(nav_canvas, self.page_lbl_id)
 
         self.next_btn = CanvasPixelButton(
             nav_canvas,
-            x=858,
-            y=16,
-            width=90,
-            height=28,
+            x=content_w - nav_btn_w // 2 - 4 * s,
+            y=nav_h // 2,
+            width=nav_btn_w,
+            height=nav_btn_h,
             text="Next ▶",
             theme="neutral",
-            font=get_role_font("button", size_override=-15),
-            scale=2,
+            font=nav_font,
+            scale=2 * s,
+            disabled_text_color="#a1887f",
             command=self._next_page,
         )
 
         cards_container = tkinter.Frame(self.tab_wardrobe_frame, background="#0d1f14")
-        cards_container.pack(fill="both", expand=True, pady=(0, 2))
+        cards_container.pack(fill="both", expand=True, pady=(0, 2 * s))
+
+        # Compute expanded 2x2 card dimensions utilizing full viewport width & height without clipping Row 2
+        chrome_used = (132 * s) if compact else (178 * s)
+        min_grid_h = (376 * s) if compact else (456 * s)
+        avail_grid_h = max(min_grid_h, content_h - chrome_used)
+        grid_pady = (3 * s) if compact else (4 * s)
+        card_w = max(436 * s, (content_w - 20 * s) // 2)
+        card_h = max((182 * s) if compact else (222 * s), (avail_grid_h - 4 * grid_pady - 4 * s) // 2)
 
         current_char = getattr(getattr(self.app, "dealer_actor", None), "current_character", "julian")
 
-        for p_idx, p_data in enumerate(self.PAGE_CONFIG):
+        for p_idx, p_data in enumerate(self.page_config):
             p_frame = tkinter.Frame(cards_container, background="#0d1f14")
             self._page_frames[p_idx] = p_frame
 
             characters_list = p_data["characters"]
-            # 2x2 grid always has 4 slots (0..3)
             for slot_idx in range(4):
                 row = slot_idx // 2
                 col = slot_idx % 2
@@ -1341,8 +1602,11 @@ class WardrobeDialog(tkinter.Toplevel):
                         dialog=self,
                         is_equipped=is_equipped,
                         unlocked=unlocked,
+                        card_width=card_w,
+                        card_height=card_h,
+                        art_scale=s,
                     )
-                    card_panel.grid(row=row, column=col, padx=6, pady=4)
+                    card_panel.grid(row=row, column=col, padx=6 * s, pady=grid_pady)
 
                     self.cards[char_id] = {
                         "panel": card_panel,
@@ -1353,13 +1617,16 @@ class WardrobeDialog(tkinter.Toplevel):
                         "action_frame": card_panel,
                     }
                 else:
-                    # Empty grid slot: render mystery silhouette card to balance the 2x2 grid
-                    mystery_panel = MysteryDealerCardPanel(p_frame)
-                    mystery_panel.grid(row=row, column=col, padx=6, pady=4)
+                    mystery_panel = MysteryDealerCardPanel(
+                        p_frame,
+                        card_width=card_w,
+                        card_height=card_h,
+                        art_scale=s,
+                    )
+                    mystery_panel.grid(row=row, column=col, padx=6 * s, pady=4 * s)
 
-        # Select initial page showing currently equipped character
         initial_page = 0
-        for p_idx, p_data in enumerate(self.PAGE_CONFIG):
+        for p_idx, p_data in enumerate(self.page_config):
             if current_char in p_data["characters"]:
                 initial_page = p_idx
                 break
@@ -1367,7 +1634,7 @@ class WardrobeDialog(tkinter.Toplevel):
 
     def _switch_page(self, page_idx: int):
         self._stop_all_voices()
-        total = len(self.PAGE_CONFIG)
+        total = len(self.page_config)
         self.current_page = max(0, min(total - 1, page_idx))
         for p_idx, frame in self._page_frames.items():
             if p_idx == self.current_page:
@@ -1375,7 +1642,7 @@ class WardrobeDialog(tkinter.Toplevel):
             else:
                 frame.pack_forget()
 
-        cfg = self.PAGE_CONFIG[self.current_page]
+        cfg = self.page_config[self.current_page]
         title_str = f"Page {self.current_page + 1} of {total} : {cfg['title']}"
         self.page_lbl.configure(text=title_str)
         self.prev_btn.set_enabled(self.current_page > 0)
@@ -1386,7 +1653,7 @@ class WardrobeDialog(tkinter.Toplevel):
             self._switch_page(self.current_page - 1)
 
     def _next_page(self):
-        if self.current_page < len(self.PAGE_CONFIG) - 1:
+        if self.current_page < len(self.page_config) - 1:
             self._switch_page(self.current_page + 1)
 
     def _equip_costume(self, char_id: str, costume_id: Optional[str] = None):
@@ -1429,187 +1696,377 @@ class WardrobeDialog(tkinter.Toplevel):
     # Tab 2: Hall of Fame & Trophy Shelf Implementation
     # ------------------------------------------------------------------------
 
-    def _build_hof_tab(self):
-        # 1. Statistics Summary Card in CanvasPixelPanel
+    def _build_hof_tab(self, content_w: int, content_h: int):
+        s = self.menu_scale
+        compact = self.is_compact_2x
+        rec_h = (94 * s) if compact else (106 * s)
+        # 1. Full-Width Statistics Summary Card in CanvasPixelPanel
         records_canvas = tkinter.Canvas(
-            self.tab_hof_frame, width=908, height=106, background="#0d1f14", highlightthickness=0, borderwidth=0
+            self.tab_hof_frame,
+            width=content_w,
+            height=rec_h,
+            background="#0d1f14",
+            highlightthickness=0,
+            borderwidth=0,
         )
-        records_canvas.pack(fill="x", pady=(0, 6))
+        records_canvas.pack(fill="x", pady=(0, (4 * s) if compact else (6 * s)))
 
         self.records_panel = CanvasPixelPanel(
             records_canvas,
             x=0,
             y=0,
-            width=908,
-            height=106,
+            width=content_w,
+            height=rec_h,
             bg="#0c2917",
             border="#06140b",
             inner_hi="#1f4d30",
             inner_sh="#071a0e",
             rivet_color="#d4af37",
-            scale=2,
+            scale=2 * s,
             recessed=True,
             anchor="nw",
             tag="records_panel",
         )
 
+        col_mid = int(content_w * 0.37)
+        col_right = int(content_w * 0.72)
+        col_b_2 = int(content_w * 0.28)
+        col_b_3 = int(content_w * 0.50)
+
+        rec_hdr_font = ("m6x11", -16 * s, "normal") if compact else get_role_font("header", size_override=-18 * s)
+        rec_row1_font = ("m6x11", -16 * s, "normal")
+        rec_body_font = ("m5x7", -16 * s, "normal")
+        y_hdr = (9 * s) if compact else (12 * s)
+        y_r1 = (32 * s) if compact else (38 * s)
+        y_dot1 = (y_r1 + 1) if s >= 2 else 41
+        y_r2 = (52 * s) if compact else (60 * s)
+        y_r3 = (71 * s) if compact else (82 * s)
+
         records_canvas.create_text(
-            16,
-            12,
+            16 * s,
+            y_hdr,
             text="📊 ALL-TIME CASINO RECORDS & FINANCIAL TELEMETRY",
-            font=get_role_font("header", size_override=-16),
+            font=rec_hdr_font,
             fill="#ffd700",
             anchor="nw",
         )
         self.lbl_tour_record = records_canvas.create_text(
-            892,
-            13,
+            content_w - 16 * s,
+            y_hdr + (1 * s),
             text="🗺 Tour: ★ 0/8 • ♦ 0/8",
-            font=get_role_font("badge", size_override=-15),
+            font=rec_row1_font,
             fill="#ffd54f",
             anchor="ne",
         )
 
         self.dot_peak_record = records_canvas.create_text(
-            24, 41, text="•", font=get_role_font("badge", size_override=-16), fill="#5ce6b5", anchor="nw"
+            24 * s, y_dot1, text="•", font=rec_row1_font, fill="#5ce6b5", anchor="nw"
         )
         self.lbl_peak_record = records_canvas.create_text(
-            36, 38, text="Peak Bankroll: $1,000", font=get_role_font("badge", size_override=-16), fill="#5ce6b5", anchor="nw"
+            36 * s, y_r1, text="Peak Bankroll: $1,000", font=rec_row1_font, fill="#5ce6b5", anchor="nw"
         )
         self.dot_streak_record = records_canvas.create_text(
-            330, 41, text="•", font=get_role_font("badge", size_override=-16), fill="#ffd54f", anchor="nw"
+            col_mid, y_dot1, text="•", font=rec_row1_font, fill="#ffd54f", anchor="nw"
         )
         self.lbl_streak_record = records_canvas.create_text(
-            342, 38, text="Longest Win Streak: 0 hands", font=get_role_font("badge", size_override=-16), fill="#ffd54f", anchor="nw"
+            col_mid + 12 * s, y_r1, text="Longest Win Streak: 0 hands", font=rec_row1_font, fill="#ffd54f", anchor="nw"
         )
         self.dot_clears_record = records_canvas.create_text(
-            660, 41, text="•", font=get_role_font("badge", size_override=-16), fill="#ff8a80", anchor="nw"
+            col_right, y_dot1, text="•", font=rec_row1_font, fill="#ff8a80", anchor="nw"
         )
         self.lbl_clears_record = records_canvas.create_text(
-            672, 38, text="Hell's Table Clears: 0", font=get_role_font("badge", size_override=-16), fill="#ff8a80", anchor="nw"
+            col_right + 12 * s, y_r1, text="Hell's Table Clears: 0", font=rec_row1_font, fill="#ff8a80", anchor="nw"
         )
 
         self.lbl_hands_record = records_canvas.create_text(
-            24, 60, text="• Hands Won / Played: 0 / 0 (0.0% Win Rate)", font=get_role_font("body", size_override=-18), fill="#e0e0e0", anchor="nw"
+            24 * s, y_r2, text="• Hands Won / Played: 0 / 0 (0.0% Win Rate)", font=rec_body_font, fill="#e0e0e0", anchor="nw"
         )
         self.lbl_bjs_record = records_canvas.create_text(
-            660, 60, text="• Total Blackjacks: 0", font=get_role_font("body", size_override=-18), fill="#80d8ff", anchor="nw"
+            col_right, y_r2, text="• Total Blackjacks: 0", font=rec_body_font, fill="#80d8ff", anchor="nw"
         )
 
         self.lbl_net_pl_record = records_canvas.create_text(
-            24, 82, text="• Net P/L: $0", font=get_role_font("body", size_override=-18), fill="#5ce6b5", anchor="nw"
+            24 * s, y_r3, text="• Net P/L: $0", font=rec_body_font, fill="#5ce6b5", anchor="nw"
         )
         self.lbl_bankruptcies_record = records_canvas.create_text(
-            260, 82, text="• Bankruptcies: 0", font=get_role_font("body", size_override=-18), fill="#e0e0e0", anchor="nw"
+            col_b_2, y_r3, text="• Bankruptcies: 0", font=rec_body_font, fill="#e0e0e0", anchor="nw"
         )
         self.lbl_bailouts_record = records_canvas.create_text(
-            460, 82, text="• Bailouts: $0", font=get_role_font("body", size_override=-18), fill="#e0e0e0", anchor="nw"
+            col_b_3, y_r3, text="• Bailouts: $0", font=rec_body_font, fill="#e0e0e0", anchor="nw"
         )
         self.lbl_wagered_record = records_canvas.create_text(
-            660, 82, text="• Total Wagered: $0", font=get_role_font("body", size_override=-18), fill="#ffd54f", anchor="nw"
+            col_right, y_r3, text="• Total Wagered: $0", font=rec_body_font, fill="#ffd54f", anchor="nw"
         )
         self._records_canvas = records_canvas
 
-        # 2. Scrollable Canvas for 8 Achievement Plaques
+        # 2. Controller-Friendly Page Navigation Bar (◀ Previous | Page X of 3 | Next ▶)
+        nav_h = (28 * s) if compact else (34 * s)
+        nav_btn_h = (25 * s) if compact else (30 * s)
+        nav_font = ("m6x11", -16 * s, "normal") if compact else get_role_font("button", size_override=-18 * s)
+        hof_nav_canvas = tkinter.Canvas(
+            self.tab_hof_frame,
+            width=content_w,
+            height=nav_h,
+            background="#0d1f14",
+            highlightthickness=0,
+            borderwidth=0,
+        )
+        hof_nav_canvas.pack(fill="x", pady=(0, (3 * s) if compact else (6 * s)))
+
+        nav_btn_w = 136 * s
+        self.hof_prev_btn = CanvasPixelButton(
+            hof_nav_canvas,
+            x=nav_btn_w // 2 + 4 * s,
+            y=nav_h // 2,
+            width=nav_btn_w,
+            height=nav_btn_h,
+            text="◀ Previous",
+            theme="neutral",
+            font=nav_font,
+            scale=2 * s,
+            disabled_text_color="#a1887f",
+            command=self._prev_hof_page,
+        )
+
+        self.hof_page_lbl_id = hof_nav_canvas.create_text(
+            content_w // 2,
+            nav_h // 2,
+            text="",
+            font=nav_font,
+            fill="#ffd700",
+            anchor="center",
+        )
+        self.hof_page_lbl = _TextLabelShim(hof_nav_canvas, self.hof_page_lbl_id)
+
+        self.hof_next_btn = CanvasPixelButton(
+            hof_nav_canvas,
+            x=content_w - nav_btn_w // 2 - 4 * s,
+            y=nav_h // 2,
+            width=nav_btn_w,
+            height=nav_btn_h,
+            text="Next ▶",
+            theme="neutral",
+            font=nav_font,
+            scale=2 * s,
+            disabled_text_color="#a1887f",
+            command=self._next_hof_page,
+        )
+
+        # 3. Zero-Scroll 3x2 Paged Grid for 14 Achievement Plaques + Page 3 Venue Tour Medallion Shelf
         plaques_container = tkinter.Frame(self.tab_hof_frame, background="#0d1f14")
         plaques_container.pack(fill="both", expand=True)
+        self._plaques_container = plaques_container
 
-        self.hof_canvas = tkinter.Canvas(
-            plaques_container, background="#0d1f14", highlightthickness=0, borderwidth=0
+        chrome_hof = (232 * s) if compact else (292 * s)
+        avail_hof_h = max(280 * s, content_h - chrome_hof)
+        plaque_w = max(436 * s, (content_w - 24 * s) // 2)
+        plaque_h = max(92 * s, min(168 * s, (avail_hof_h - 24 * s) // 3))
+
+        plaque_hdr_font = ("m6x11", -16 * s, "normal") if compact else get_role_font("header", size_override=-18 * s)
+        plaque_bdg_font = ("m6x11", -16 * s, "normal")
+        plaque_desc_font = ("m5x7", -16 * s, "normal") if compact else get_role_font("header", size_override=-18 * s)
+
+        for p_idx, p_cfg in enumerate(self.HOF_PAGE_CONFIG):
+            p_frame = tkinter.Frame(plaques_container, background="#0d1f14")
+            self._hof_page_frames[p_idx] = p_frame
+            for col in range(2):
+                p_frame.grid_columnconfigure(col, weight=1)
+            row_count = 1 if p_idx == 2 else 3
+            for row in range(row_count):
+                p_frame.grid_rowconfigure(row, weight=0 if p_idx == 2 else 1)
+
+            i_start, i_end = p_cfg["slice"]
+            page_specs = self.ACHIEVEMENT_SPECS[i_start:i_end]
+            for slot_idx, spec in enumerate(page_specs):
+                row = slot_idx // 2
+                col = slot_idx % 2
+
+                p_canvas = tkinter.Canvas(
+                    p_frame,
+                    width=plaque_w,
+                    height=plaque_h,
+                    background="#0d1f14",
+                    highlightthickness=0,
+                    borderwidth=0,
+                )
+                p_canvas.grid(row=row, column=col, padx=6 * s, pady=(3 * s) if compact else (4 * s))
+
+                panel = CanvasPixelPanel(
+                    p_canvas,
+                    x=0,
+                    y=0,
+                    width=plaque_w,
+                    height=plaque_h,
+                    bg="#0c2917",
+                    border="#06140b",
+                    inner_hi="#1f4d30",
+                    inner_sh="#071a0e",
+                    rivet_color="#d4af37",
+                    scale=2 * s,
+                    recessed=True,
+                    anchor="nw",
+                    tag=f"plaque_{spec['id']}",
+                )
+
+                p_canvas.create_text(
+                    14 * s,
+                    10 * s,
+                    text=spec["title"],
+                    font=plaque_hdr_font,
+                    fill="#ffd700",
+                    anchor="nw",
+                )
+                p_canvas.create_text(
+                    plaque_w - 14 * s,
+                    10 * s,
+                    text=f"[{spec['reward']}]",
+                    font=plaque_bdg_font,
+                    fill="#80cbc4",
+                    anchor="ne",
+                )
+                p_canvas.create_text(
+                    14 * s,
+                    34 * s if s == 1 else (30 * s if compact else 34 * s),
+                    text=spec["desc"],
+                    font=plaque_desc_font,
+                    fill="#d8e2dc",
+                    width=plaque_w - 28 * s,
+                    anchor="nw",
+                )
+                status_text_id = p_canvas.create_text(
+                    14 * s,
+                    plaque_h - (22 * s if compact else 26 * s),
+                    text="🔒 LOCKED",
+                    font=plaque_bdg_font,
+                    fill="#ff8a80",
+                    anchor="nw",
+                )
+
+                status_lbl_shim = _CanvasTextShim(p_canvas, status_text_id)
+
+                self.plaque_widgets[spec["id"]] = {
+                    "frame": p_canvas,
+                    "panel": panel,
+                    "status_lbl": status_lbl_shim,
+                    "status_text_id": status_text_id,
+                    "spec": spec,
+                }
+
+        # 4. Page 3 Companion Showcase: 8-Salon Grand Casino Venue Tour Medallion Board
+        self.hof_tour_shelf_frame = tkinter.Frame(
+            plaques_container,
+            background="#0c2917",
+            highlightbackground="#8a6d1b",
+            highlightthickness=max(1, 2 * s),
+            padx=12 * s,
+            pady=(6 * s) if compact else (10 * s),
         )
-        self.hof_scrollbar = tkinter.Scrollbar(
-            plaques_container, orient="vertical", command=self.hof_canvas.yview
+        self._tour_salon_labels: List[tkinter.Label] = []
+        self._build_hof_tour_shelf(s, compact)
+
+        self._switch_hof_page(0)
+
+    def _build_hof_tour_shelf(self, s: int, compact: bool) -> None:
+        from tour_domain import SALON_SPECS
+
+        hdr_font = ("m6x11", -16 * s, "normal") if compact else get_role_font("header", size_override=-18 * s)
+        cell_title_font = ("m6x11", -16 * s, "normal")
+        cell_sub_font = ("m5x7", -16 * s, "normal")
+
+        tkinter.Label(
+            self.hof_tour_shelf_frame,
+            text="🗺 GRAND CASINO VENUE TOUR — 8-SALON MEDALLION SHOWCASE",
+            font=hdr_font,
+            fg="#ffd700",
+            background="#0c2917",
+            anchor="w",
+        ).pack(fill="x", pady=(0, (4 * s) if compact else (8 * s)))
+
+        grid_box = tkinter.Frame(self.hof_tour_shelf_frame, background="#0c2917")
+        grid_box.pack(fill="both", expand=True)
+        for c in range(4):
+            grid_box.columnconfigure(c, weight=1)
+        for r in range(2):
+            grid_box.rowconfigure(r, weight=1)
+
+        self._tour_salon_labels.clear()
+        for idx, spec in enumerate(SALON_SPECS):
+            r = idx // 4
+            c = idx % 4
+            cell = tkinter.Frame(
+                grid_box,
+                background="#071a0e",
+                highlightbackground="#1f4d30",
+                highlightthickness=max(1, s),
+                padx=8 * s,
+                pady=(4 * s) if compact else (6 * s),
+            )
+            cell.grid(row=r, column=c, sticky="nsew", padx=4 * s, pady=3 * s)
+            lbl_name = tkinter.Label(
+                cell,
+                text=f"S{idx + 1}. {spec.short_name}",
+                font=cell_title_font,
+                fg="#d8e2dc",
+                background="#071a0e",
+                anchor="w",
+            )
+            lbl_name.pack(fill="x")
+            lbl_med = tkinter.Label(
+                cell,
+                text="☆ Locked  •  ♢ Locked",
+                font=cell_sub_font,
+                fg="#8fa89b",
+                background="#071a0e",
+                anchor="w",
+            )
+            lbl_med.pack(fill="x")
+            self._tour_salon_labels.append((lbl_name, lbl_med, spec))
+
+    def _switch_hof_page(self, page_idx: int) -> None:
+        total = len(self.HOF_PAGE_CONFIG)
+        self.current_hof_page = max(0, min(total - 1, int(page_idx)))
+        if hasattr(self, "hof_tour_shelf_frame"):
+            self.hof_tour_shelf_frame.pack_forget()
+        for p_idx, frame in self._hof_page_frames.items():
+            if p_idx == self.current_hof_page:
+                if p_idx == 2:
+                    frame.pack(fill="x", expand=False)
+                else:
+                    frame.pack(fill="both", expand=True)
+            else:
+                frame.pack_forget()
+        if self.current_hof_page == 2 and hasattr(self, "hof_tour_shelf_frame"):
+            self.hof_tour_shelf_frame.pack(fill="both", expand=True, padx=6 * self.menu_scale, pady=(4 * self.menu_scale, 2 * self.menu_scale))
+        cfg = self.HOF_PAGE_CONFIG[self.current_hof_page]
+        self.hof_page_lbl.configure(
+            text=f"Page {self.current_hof_page + 1} of {total} : {cfg['title']}"
         )
-        self.hof_scroll_frame = tkinter.Frame(self.hof_canvas, background="#0d1f14")
+        self.hof_prev_btn.set_enabled(self.current_hof_page > 0)
+        self.hof_next_btn.set_enabled(self.current_hof_page < total - 1)
 
-        self.hof_canvas_win = self.hof_canvas.create_window(
-            (0, 0), window=self.hof_scroll_frame, anchor="nw"
-        )
-        self.hof_canvas.configure(yscrollcommand=self._on_hof_scroll_update)
+    _show_hof_page = _switch_hof_page
 
-        self.hof_scroll_frame.bind("<Configure>", self._on_hof_frame_configure)
-        self.hof_canvas.bind("<Configure>", self._on_hof_canvas_configure)
+    def _prev_hof_page(self) -> None:
+        if self.current_hof_page > 0:
+            self._switch_hof_page(self.current_hof_page - 1)
 
-        self.hof_canvas.pack(side="left", fill="both", expand=True)
+    def _next_hof_page(self) -> None:
+        if self.current_hof_page < len(self.HOF_PAGE_CONFIG) - 1:
+            self._switch_hof_page(self.current_hof_page + 1)
 
-        self.bind("<MouseWheel>", self._on_mousewheel, add="+")
-        self.hof_canvas.bind("<MouseWheel>", self._on_mousewheel)
-        self.hof_scroll_frame.bind("<MouseWheel>", self._on_mousewheel)
-
-        for idx, spec in enumerate(self.ACHIEVEMENT_SPECS):
-            row = idx // 2
-            col = idx % 2
-            self.hof_scroll_frame.grid_columnconfigure(col, weight=1)
-            self.hof_scroll_frame.grid_rowconfigure(row, weight=1)
-
-            p_canvas = tkinter.Canvas(
-                self.hof_scroll_frame,
-                width=436,
-                height=94,
-                background="#0d1f14",
-                highlightthickness=0,
-                borderwidth=0,
-            )
-            p_canvas.grid(row=row, column=col, padx=6, pady=4, sticky="nsew")
-
-            panel = CanvasPixelPanel(
-                p_canvas,
-                x=0,
-                y=0,
-                width=436,
-                height=94,
-                bg="#0c2917",
-                border="#06140b",
-                inner_hi="#1f4d30",
-                inner_sh="#071a0e",
-                rivet_color="#d4af37",
-                scale=2,
-                recessed=True,
-                anchor="nw",
-                tag=f"plaque_{spec['id']}",
-            )
-
-            p_canvas.create_text(
-                14, 10, text=spec["title"], font=get_role_font("header", size_override=-16), fill="#ffd700", anchor="nw"
-            )
-            p_canvas.create_text(
-                422, 10, text=f"[{spec['reward']}]", font=get_role_font("badge", size_override=-15), fill="#80cbc4", anchor="ne"
-            )
-            p_canvas.create_text(
-                14, 32, text=spec["desc"], font=get_role_font("body", size_override=-18), fill="#d8e2dc", width=408, anchor="nw"
-            )
-            status_text_id = p_canvas.create_text(
-                14, 68, text="🔒 LOCKED", font=get_role_font("badge", size_override=-15), fill="#ff8a80", anchor="nw"
-            )
-
-            status_lbl_shim = _CanvasTextShim(p_canvas, status_text_id)
-
-            self.plaque_widgets[spec["id"]] = {
-                "frame": p_canvas,
-                "panel": panel,
-                "status_lbl": status_lbl_shim,
-                "status_text_id": status_text_id,
-                "spec": spec,
-            }
-
-    def _on_hof_scroll_update(self, first, last):
-        self.hof_scrollbar.set(first, last)
-        if float(first) <= 0.0 and float(last) >= 1.0:
-            if self.hof_scrollbar.winfo_ismapped():
-                self.hof_scrollbar.pack_forget()
-        else:
-            if not self.hof_scrollbar.winfo_ismapped():
-                self.hof_scrollbar.pack(side="right", fill="y")
-
-    def _on_hof_frame_configure(self, event):
-        self.hof_canvas.configure(scrollregion=self.hof_canvas.bbox("all"))
-
-    def _on_hof_canvas_configure(self, event):
-        self.hof_canvas.itemconfig(self.hof_canvas_win, width=event.width)
-
-    def _on_mousewheel(self, event):
-        if self.current_tab == 1 and hasattr(self, "hof_canvas") and self.hof_canvas.winfo_exists():
-            self.hof_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+    def _on_mousewheel(self, event: Any) -> None:
+        """Allows mousewheel up/down to flip pages cleanly across Tab 0 and Tab 1."""
+        delta = int(getattr(event, "delta", 0) or 0)
+        if delta > 0:
+            if self.current_tab == 0:
+                self._prev_page()
+            else:
+                self._prev_hof_page()
+        elif delta < 0:
+            if self.current_tab == 0:
+                self._next_page()
+            else:
+                self._next_hof_page()
 
     _on_hof_mousewheel = _on_mousewheel
 
@@ -1626,6 +2083,20 @@ class WardrobeDialog(tkinter.Toplevel):
                 self.lbl_tour_record,
                 text=f"🗺 Tour: ★ {vt.forgiving_salons_cleared}/8 • ♦ {vt.ironman_salons_cleared}/8",
             )
+            f_cleared = int(getattr(vt, "forgiving_salons_cleared", 0) or 0)
+            i_cleared = int(getattr(vt, "ironman_salons_cleared", 0) or 0)
+            for idx, (lbl_name, lbl_med, spec) in enumerate(getattr(self, "_tour_salon_labels", [])):
+                discovered = idx <= max(f_cleared, i_cleared)
+                lbl_name.configure(
+                    text=f"S{idx + 1}. {spec.short_name}" if discovered else f"S{idx + 1}. Mystery Salon",
+                    fg="#ffd700" if idx < f_cleared else ("#d8e2dc" if discovered else "#607d8b"),
+                )
+                std_tag = "★ Gold" if idx < f_cleared else "☆ Locked"
+                iro_tag = "♦ Obsidian" if idx < i_cleared else "♢ Locked"
+                lbl_med.configure(
+                    text=f"{std_tag}  •  {iro_tag}",
+                    fg="#5ce6b5" if idx < f_cleared else "#8fa89b",
+                )
         self._records_canvas.itemconfigure(self.lbl_peak_record, text=f"Peak Bankroll: ${hs.peak_bankroll:,}")
         self._records_canvas.itemconfigure(self.lbl_streak_record, text=f"Longest Win Streak: {hs.longest_win_streak:,} hands")
         self._records_canvas.itemconfigure(self.lbl_clears_record, text=f"Hell's Table Clears: {hs.hell_table_clears:,}")
@@ -1680,12 +2151,18 @@ class WardrobeDialog(tkinter.Toplevel):
     def _on_close(self):
         """Dismisses the wardrobe dialog gracefully."""
         self._stop_all_voices()
+        cb = getattr(self, "_external_close_cb", None)
         try:
-            if hasattr(self.app, "_wardrobe_dialog"):
+            if hasattr(self.app, "_wardrobe_dialog") and self.app._wardrobe_dialog is self:
                 self.app._wardrobe_dialog = None
             self.destroy()
         except Exception:
             pass
+        if cb:
+            try:
+                cb()
+            except Exception:
+                pass
 
 
 class _TextLabelShim:

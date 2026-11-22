@@ -71,27 +71,33 @@ class TestWelcomeSplashDialog(unittest.TestCase):
             shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def test_welcome_splash_creation_and_geometry(self):
-        """Verifies WelcomeSplashDialog instantiates, embeds scroll container, and satisfies display bounds."""
+        """Verifies WelcomeSplashDialog mounts full-screen in-window with 3 side-by-side mode columns."""
+        self.root.geometry("1280x800")
+        self.root.update_idletasks()
         dialog = WelcomeSplashDialog(self.root, self.app)
         dialog.update_idletasks()
+        dialog.update()
 
         self.assertTrue(dialog.winfo_exists())
+        self.assertIsInstance(dialog, tkinter.Frame)
+        self.assertNotIsInstance(dialog, tkinter.Toplevel)
         self.assertIsNotNone(dialog.canvas)
         self.assertIsNotNone(dialog.scroll_content)
 
-        # Dynamic geometry compliance as per AGENTS.md
-        scale = getattr(self.app, "scale_factor", 1.0)
-        max_allowed_h = min(
-            self.root.winfo_screenheight() - 80,
-            int(config.DEFAULT_WINDOW_HEIGHT * scale * 1.15),
-        )
-        dialog_h = dialog.winfo_height()
-        self.assertLessEqual(dialog_h, max_allowed_h)
+        size_part = dialog.geometry().split("+")[0]
+        w, h = map(int, size_part.split("x"))
+        self.assertEqual((w, h), (1280, 800))
+        self.assertFalse(bool(dialog.v_scrollbar.winfo_manager()))
 
-        # Content verification: 3 mode cards created
+        # Content verification: 3 mode cards laid out horizontally side-by-side
         self.assertIn("casual", dialog._mode_cards)
         self.assertIn("betting", dialog._mode_cards)
         self.assertIn("training", dialog._mode_cards)
+        x_casual = dialog._mode_cards["casual"]["frame"].winfo_x()
+        x_betting = dialog._mode_cards["betting"]["frame"].winfo_x()
+        x_training = dialog._mode_cards["training"]["frame"].winfo_x()
+        self.assertLess(x_casual, x_betting)
+        self.assertLess(x_betting, x_training)
 
         dialog.destroy()
 

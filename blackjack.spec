@@ -5,8 +5,10 @@ Configured for reproducible standalone directory builds (--onedir) suitable for 
 """
 
 from pathlib import Path
+import sys
 
 block_cipher = None
+is_win = sys.platform.startswith("win")
 
 # Base directory for relative asset resolution
 base_dir = Path.cwd()
@@ -26,6 +28,7 @@ hiddenimports = [
     "pygame._sdl2.audio",
     "tkinter",
     "config",
+    "display_profile",
     "rules",
     "audio_assets",
     "ui_canvases",
@@ -87,7 +90,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=str(base_dir / "assets" / "icon.ico"),
+    icon=str(base_dir / "assets" / ("icon.ico" if is_win else "icon.png")),
 )
 
 coll = COLLECT(
@@ -98,5 +101,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name="Blackjack-Windows",
+    name="Blackjack-Windows" if is_win else "Blackjack-Linux",
 )

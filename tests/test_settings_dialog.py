@@ -47,11 +47,12 @@ class TestSettingsDialog(unittest.TestCase):
             pass
 
     def test_settings_button_presence_in_scoreboard(self):
-        """Settings button is present on scoreboard_frame."""
+        """Settings button is present on right_stage_wing Salon Menu."""
         self.assertTrue(hasattr(self.app, "settings_button"))
-        self.assertEqual(self.app.settings_button.master, self.app.scoreboard_frame)
+        self.assertEqual(self.app.settings_button.master, self.app.right_stage_wing)
         info = self.app.settings_button.grid_info()
-        self.assertEqual(info["row"], 0)
+        self.assertEqual(info["row"], 1)
+        self.assertEqual(info["column"], 0)
 
     def test_settings_dialog_lifecycle(self):
         """Settings dialog opens as modal, renders controls, and closes cleanly."""
@@ -111,51 +112,66 @@ class TestSettingsDialog(unittest.TestCase):
         self.assertFalse(bool(self.app.cursed_stakes_button.grid_info()))
 
     def test_settings_dialog_button_grid_layout(self):
-        """Settings buttons are organized in two tiers with sufficient width (no truncation)."""
+        """Settings buttons are organized in two tiers with sufficient width (no truncation) and retired dealer_btn."""
         self.app._open_settings_dialog()
         dialog = self.app._settings_dialog
         self.assertIsNotNone(dialog)
 
-        # Check preference buttons exist (scale_btn removed)
+        # Check preference buttons exist (scale_btn and dealer_btn retired; display controls added)
         self.assertTrue(hasattr(dialog, "sound_btn"))
         self.assertFalse(hasattr(dialog, "scale_btn"))
-        self.assertTrue(hasattr(dialog, "dealer_btn"))
+        self.assertFalse(hasattr(dialog, "dealer_btn"))
         self.assertTrue(hasattr(dialog, "wardrobe_btn"))
+        self.assertTrue(hasattr(dialog, "card_scale_btn"))
+        self.assertTrue(hasattr(dialog, "window_size_btn"))
+        self.assertTrue(hasattr(dialog, "fullscreen_btn"))
+        self.assertTrue(hasattr(dialog, "diagnostics_lbl"))
         self.assertTrue(hasattr(dialog, "voice_btn"))
 
         # Verify buttons are mapped and rendered width is not squished (all buttons >= 100px actual width)
         dialog.update()
-        for btn in (dialog.sound_btn, dialog.voice_btn, dialog.dealer_btn, dialog.wardrobe_btn):
+        for btn in (
+            dialog.sound_btn,
+            dialog.voice_btn,
+            dialog.wardrobe_btn,
+            dialog.card_scale_btn,
+            dialog.window_size_btn,
+            dialog.fullscreen_btn,
+        ):
             w = btn.winfo_width()
             self.assertGreaterEqual(w, 100, f"Button {btn} actual width {w} is too narrow and will truncate text")
 
         self.app._close_settings_dialog()
 
-    def test_dealer_view_button_toggles_dealer_stage(self):
-        """Clicking the Dealer button toggles upper stage visibility and updates status variable."""
+    def test_dealer_view_retired_and_display_profile_controls_persist(self):
+        """_on_toggle_dealer_view is a safe no-op; Card Scale and Window Size controls persist and re-apply profile."""
+        # Dealer stage stays permanently ON
+        self.assertTrue(self.app.dealer_view_var.get())
+        self.app._on_toggle_dealer_view()
+        self.assertTrue(self.app.dealer_view_var.get())
+        self.assertTrue(bool(self.app.dealer_stage_frame.grid_info()))
+        self.assertTrue(bool(self.app.horizon_rail.grid_info()))
+
         self.app._open_settings_dialog()
         dialog = self.app._settings_dialog
         self.assertIsNotNone(dialog)
 
-        # Initial state: Dealer ON, frames mapped
-        self.assertTrue(self.app.dealer_view_var.get())
-        self.assertEqual(self.app.dealer_view_status_var.get(), "👤 Dealer: ON")
-        self.assertTrue(bool(self.app.dealer_stage_frame.grid_info()))
-        self.assertTrue(bool(self.app.horizon_rail.grid_info()))
+        # Toggle strict_integer_cards via card_scale_btn
+        self.assertFalse(self.app.save_manager.data.strict_integer_cards)
+        dialog.card_scale_btn.invoke()
+        self.assertTrue(self.app.save_manager.data.strict_integer_cards)
+        self.assertIn("1x Crisp", dialog.card_scale_btn.cget("text"))
 
-        # Click dealer toggle button
-        dialog.dealer_btn.invoke()
-        self.assertFalse(self.app.dealer_view_var.get())
-        self.assertEqual(self.app.dealer_view_status_var.get(), "👤 Dealer: OFF")
-        self.assertFalse(bool(self.app.dealer_stage_frame.grid_info()))
-        self.assertFalse(bool(self.app.horizon_rail.grid_info()))
+        # Cycle window_profile_override via window_size_btn
+        self.assertEqual(self.app.save_manager.data.window_profile_override, "auto")
+        dialog.window_size_btn.invoke()
+        self.assertEqual(self.app.save_manager.data.window_profile_override, "hd_720p")
+        self.assertEqual(self.app.display_profile.name, "hd_720p")
 
-        # Click again to restore
-        dialog.dealer_btn.invoke()
-        self.assertTrue(self.app.dealer_view_var.get())
-        self.assertEqual(self.app.dealer_view_status_var.get(), "👤 Dealer: ON")
-        self.assertTrue(bool(self.app.dealer_stage_frame.grid_info()))
-        self.assertTrue(bool(self.app.horizon_rail.grid_info()))
+        # Diagnostics label includes profile name and resolution
+        diag_txt = dialog.diagnostics_lbl.cget("text")
+        self.assertIn("hd_720p", diag_txt)
+        self.assertIn("1280x720", diag_txt)
 
         self.app._close_settings_dialog()
 
@@ -177,19 +193,38 @@ class TestSettingsDialog(unittest.TestCase):
         self.app._close_settings_dialog()
 
     def test_settings_dialog_scrollable_container_and_screen_clamping(self):
-        """Settings dialog embeds content in a scrollable frame with mousewheel support."""
+        """Settings screen mounts in-window at 100% viewport size with adaptive scroll safety and zero Toplevels."""
+        self.root.geometry("1280x800")
+        self.root.update_idletasks()
         self.app._open_settings_dialog()
         dialog = self.app._settings_dialog
         self.assertIsNotNone(dialog)
+        self.assertIsInstance(dialog, tkinter.Frame)
+        self.assertNotIsInstance(dialog, tkinter.Toplevel)
         self.assertTrue(hasattr(dialog, "_on_mousewheel") or hasattr(dialog, "canvas"))
 
         dialog.update_idletasks()
-        req_h = dialog.winfo_reqheight()
-        max_allowed_h = min(
-            self.root.winfo_screenheight() - 80,
-            int(config.DEFAULT_WINDOW_HEIGHT * getattr(self.app, "scale_factor", 1.0)),
-        )
-        self.assertLessEqual(req_h, max_allowed_h, f"Settings dialog requested height {req_h} exceeds live display allowance {max_allowed_h}")
+        dialog.update()
+        size_part = dialog.geometry().split("+")[0]
+        w, h = map(int, size_part.split("x"))
+        self.assertEqual((w, h), (1280, 800))
+
+        # Both Tab 0 and Tab 1 (House Rules) fit without vertical scrollbar on 1280x800 and 1280x720
+        for tab_idx in (0, 1):
+            dialog._switch_tab(tab_idx)
+            dialog.update_idletasks()
+            dialog.update()
+            self.assertFalse(
+                bool(dialog.v_scrollbar.winfo_manager()),
+                f"Tab {tab_idx} mapped vertical scrollbar on 1280x800 full-screen Settings",
+            )
+
+        # Pressing background betting/deal hotkeys while Settings is open must not mutate bets or deal
+        bet_before = self.app.current_bet_var.get()
+        self.app._on_key_chip(100, "3")
+        self.app._on_key_deal_or_hit()
+        self.assertEqual(self.app.current_bet_var.get(), bet_before)
+        self.assertEqual(len(self.app.player_hand), 0)
 
         self.app._close_settings_dialog()
 
@@ -208,13 +243,55 @@ class TestSettingsDialog(unittest.TestCase):
         self.assertGreaterEqual(w, 600)
         self.assertGreaterEqual(h, 600)
 
-        # Font checks (increased by additional 2pts: button 13 -> 15, header 14 -> 16, body 13 -> 15)
+        # Font checks (native m6x11plus >= 18px at 1x, >= 32px at 2x)
         btn_font = dialog.sound_btn.cget("font")
-        # font can be tuple like ('Helvetica', -15, 'bold') or string
         font_size = btn_font[1] if isinstance(btn_font, (tuple, list)) else int(str(btn_font).split()[1])
-        self.assertEqual(abs(font_size), 15)
+        self.assertGreaterEqual(abs(font_size), 18)
 
         self.app._close_settings_dialog()
+
+    def test_settings_fhd_1080p_2x_crunchy_fonts_zero_scroll_and_confirm_modal_keys(self):
+        """1920x1080 SettingsDialog uses 2x crunchy fonts with zero scrollbars, and InWindowConfirmModal supports Left/Right/Return."""
+        from display_profile import make_profile_preset
+        from ui_dialogs import InWindowConfirmModal
+
+        self.app.apply_display_profile(make_profile_preset("fhd_1080p"))
+        self.root.geometry("1920x1080")
+        self.root.update_idletasks()
+
+        self.app._open_settings_dialog()
+        dialog = self.app._settings_dialog
+        self.assertIsNotNone(dialog)
+        try:
+            dialog.update_idletasks()
+            dialog.update()
+            self.assertEqual(dialog.menu_scale, 2)
+            btn_parts = dialog.tk.splitlist(dialog.sound_btn.cget("font"))
+            self.assertGreaterEqual(abs(int(btn_parts[1])), 32)
+
+            for tab_idx in (0, 1):
+                dialog._switch_tab(tab_idx)
+                dialog.update_idletasks()
+                dialog.update()
+                self.assertFalse(
+                    bool(dialog.v_scrollbar.winfo_manager()),
+                    f"1080p Settings Tab {tab_idx} mapped unexpected vertical scrollbar",
+                )
+
+            # Test non-blocking keyboard navigation on InWindowConfirmModal via internal key handler
+            chosen = []
+            def _spawn_and_confirm():
+                pass
+            dialog.after(20, lambda: (
+                dialog._active_confirm_key("Right"),
+                dialog._active_confirm_key("Return"),
+            ))
+            res = InWindowConfirmModal.ask_yes_no(dialog, "Confirm Test", "Proceed with reset?")
+            chosen.append(res)
+            self.assertEqual(chosen, [True])
+        finally:
+            if self.app._settings_dialog is not None:
+                self.app._close_settings_dialog()
 
     def test_bottom_action_buttons_done_and_reset_data(self):
         """Bottom action area presents a green 'Done' button and a red 'Reset Data' button beside it."""
@@ -240,6 +317,12 @@ class TestSettingsDialog(unittest.TestCase):
         reset_info = dialog.clear_save_btn.grid_info()
         self.assertEqual(done_info["row"], reset_info["row"])
         self.assertNotEqual(done_info["column"], reset_info["column"])
+
+        # Tab 0 fits without mapping vertical scrollbar on standard 800p display
+        dialog._switch_tab(0)
+        dialog.update_idletasks()
+        if self.root.winfo_screenheight() >= 768:
+            self.assertFalse(bool(dialog.v_scrollbar.winfo_manager()))
 
         self.app._close_settings_dialog()
 

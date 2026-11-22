@@ -393,6 +393,89 @@ class TestPixelUI(unittest.TestCase):
         self.assertGreater(clean_q.width(), 0)
         self.assertGreater(clean_q.height(), 0)
 
+    def test_gold_button_dark_ink_contrast_and_shadow_polarity(self):
+        """Gold buttons use dark #141008 ink (>= 7.5:1 WCAG contrast) and light bevel shadow when enabled."""
+        from pixel_ui import PixelButtonWidget, snap_pixel_font_size
+
+        def rel_luminance(hex_color: str) -> float:
+            h = hex_color.lstrip("#")
+            rgb = [int(h[i : i + 2], 16) / 255.0 for i in (0, 2, 4)]
+            lin = [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in rgb]
+            return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2]
+
+        gold = PALETTE["gold"]
+        self.assertEqual(gold.get("text"), "#141008")
+        l_bg = rel_luminance(gold["bg"])
+        l_fg = rel_luminance(gold["text"])
+        contrast = (max(l_bg, l_fg) + 0.05) / (min(l_bg, l_fg) + 0.05)
+        self.assertGreaterEqual(contrast, 7.5, f"Gold button contrast {contrast:.2f}:1 must be >= 7.5:1")
+
+        btn = CanvasPixelButton(
+            self.canvas, x=120, y=80, width=120, height=40, text="Deal", theme="gold", scale=2
+        )
+        self.assertEqual(self.canvas.itemcget(btn.text_id, "fill"), "#141008")
+        self.assertEqual(self.canvas.itemcget(btn.shadow_text_id, "fill"), gold["text_shadow"])
+        self.assertEqual(self.canvas.itemcget(btn.shadow_text_id, "state"), "normal")
+
+        # Disabled state hides bright highlight shadow and uses recessed text
+        btn.set_enabled(False)
+        self.assertEqual(self.canvas.itemcget(btn.shadow_text_id, "state"), "hidden")
+        btn.set_enabled(True)
+        self.assertEqual(self.canvas.itemcget(btn.shadow_text_id, "state"), "normal")
+
+        wbtn = PixelButtonWidget(self.root, text="Enter Salon", theme="gold", scale=2)
+        self.assertEqual(wbtn.cget("fg"), "#141008")
+        self.assertEqual(wbtn.cget("activeforeground"), "#141008")
+        wbtn.destroy()
+
+        # Integer pixel-font size snapping
+        self.assertEqual(snap_pixel_font_size(6, 1), 6)
+        self.assertEqual(snap_pixel_font_size(12, 1), 12)
+        self.assertEqual(snap_pixel_font_size(16, 1), 16)
+        self.assertEqual(snap_pixel_font_size(16, 2), 32)
+        self.assertEqual(snap_pixel_font_size(18, 1), 18)
+        self.assertEqual(snap_pixel_font_size(18, 2), 36)
+
+    def test_native_integer_pixel_font_grid_and_no_synthetic_bold_smears(self):
+        """Roles and UI elements use native integer pixel grids, Round9x13 display numerals, zero synthetic bold, and zero Mini3x5 prose."""
+        from pixel_ui import load_font_config, get_element_font
+        import ui_canvases
+
+        cfg = load_font_config()
+        roles = cfg["roles"]
+        self.assertEqual(roles["header"]["family"], "m6x11plus")
+        self.assertEqual(roles["header"]["base_size"], 18)
+        self.assertEqual(roles["button"]["family"], "m6x11plus")
+        self.assertEqual(roles["button"]["base_size"], 18)
+        self.assertEqual(roles["display"]["family"], "Round9x13")
+        self.assertEqual(roles["display"]["base_size"], 32)
+        self.assertNotEqual(roles["badge"]["family"], "Mini3x5")
+
+        for role_name, r_spec in roles.items():
+            self.assertEqual(
+                r_spec.get("weight", "normal"),
+                "normal",
+                f"Role '{role_name}' must not apply synthetic GDI bold to bitmap TTF",
+            )
+        for elem_name, e_spec in cfg["elements"].items():
+            self.assertEqual(
+                e_spec.get("weight", "normal"),
+                "normal",
+                f"Element '{elem_name}' must not apply synthetic GDI bold to bitmap TTF",
+            )
+            self.assertNotEqual(
+                e_spec.get("family"),
+                "Mini3x5",
+                f"Element '{elem_name}' must not hardcode Mini3x5 micro-font",
+            )
+
+        self.assertEqual(ui_canvases.HUD_OUTCOME_FONT_WEIGHT, "normal")
+        for elem in ("angelic_draft_tagline", "chip_bet_badge", "chip_denomination_label", "chip_bankroll_badge"):
+            fam, sz, wt = get_element_font(elem)
+            self.assertNotEqual(fam, "Mini3x5")
+            self.assertEqual(wt, "normal")
+            self.assertLessEqual(sz, -16)
+
 
 if __name__ == "__main__":
     unittest.main()

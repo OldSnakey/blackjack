@@ -263,6 +263,27 @@ class TestSaveManager(unittest.TestCase):
         self.assertEqual(loaded_mgr.data.highscores.total_bailout_funds, 0)
         self.assertEqual(loaded_mgr.data.highscores.lifetime_wagered, 0)
         self.assertEqual(loaded_mgr.get_net_profit_loss(), 0)
+        self.assertFalse(loaded_mgr.data.strict_integer_cards)
+        self.assertEqual(loaded_mgr.data.window_profile_override, "auto")
+
+    def test_display_preferences_persistence_and_sanitization(self):
+        """strict_integer_cards and window_profile_override persist and sanitize invalid values."""
+        self.assertFalse(self.manager.data.strict_integer_cards)
+        self.assertEqual(self.manager.data.window_profile_override, "auto")
+
+        self.manager.set_display_preferences(strict_integer_cards=True, window_profile_override="hd_720p")
+        self.assertTrue(self.manager.data.strict_integer_cards)
+        self.assertEqual(self.manager.data.window_profile_override, "hd_720p")
+
+        reloaded = SaveManager(save_path=self.save_file)
+        self.assertTrue(reloaded.data.strict_integer_cards)
+        self.assertEqual(reloaded.data.window_profile_override, "hd_720p")
+
+        # Invalid window override falls back safely to 'auto'
+        raw = reloaded.data.to_dict()
+        raw["window_profile_override"] = "invalid_9999p"
+        sanitized = SaveData.from_dict(raw)
+        self.assertEqual(sanitized.window_profile_override, "auto")
 
 
 if __name__ == "__main__":

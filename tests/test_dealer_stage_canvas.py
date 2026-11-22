@@ -190,6 +190,22 @@ class TestDealerStageCanvasIntegration(unittest.TestCase):
         self.assertTrue(self.app.dealer_view_var.get())
         self.assertGreater(len(canvas.find_withtag("dealer_sprite")), 0)
 
+    def test_stage_canvas_locked_integer_dimensions_per_profile(self):
+        """DealerStageCanvas locks strictly to 1000x220 (1x) and 2000x440 (2x) with zero horizontal stretch."""
+        from display_profile import make_profile_preset
+
+        canvas = self.app.dealer_stage_canvas
+        for preset_name, exp_w, exp_h in (
+            ("deck_800p", 1000, 220),
+            ("fhd_1080p", 1000, 220),
+            ("qhd_1440p", 2000, 440),
+            ("uhd_4k", 2000, 440),
+        ):
+            prof = make_profile_preset(preset_name, is_fullscreen=(preset_name != "deck_800p"))
+            canvas.set_display_profile(prof)
+            self.assertEqual((canvas.canvas_width, canvas.canvas_height), (exp_w, exp_h))
+            self.assertEqual((int(canvas.cget("width")), int(canvas.cget("height"))), (exp_w, exp_h))
+
 
 
 if __name__ == "__main__":

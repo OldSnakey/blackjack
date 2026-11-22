@@ -51,10 +51,11 @@ graph TD
         save[save_manager.py: SaveManager, SaveData, Achievements, BootcampProgress, VenueTourProgress]
     end
 
-    subgraph Audio & Assets [Audio & Theme Subsystem]
+    subgraph Audio & Assets [Audio, DisplayProfile & Theme Subsystem]
         audio[audio_assets.py: SoundManager, AssetScaler]
         voice[dialogue_voice_engine.py: AnimaleseVoiceEngine]
         config[config.py: ThemePalette]
+        disp[display_profile.py: DisplayProfile, resolve_display_profile, bootstrap_os_display_and_fonts]
     end
 
     subgraph Dealer Actor [Puppet & Actor Subsystem]
@@ -247,7 +248,12 @@ graph TD
 #### `AssetScaler` ([audio_assets.py](../audio_assets.py#L28))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Active UI scale multiplier (`1.0x` standard, `2.0x` HiDPI).<br>**Does**: Resolves absolute asset paths across development directories and PyInstaller bundles (`sys._MEIPASS`). Scales card images, icons, and textures using PIL with high-quality resampling filters. | Collaborates with [BlackjackApp](../blackjack.py) and all presentation canvases. |
+| **Knows**: Active `DisplayProfile` integer `art_scale` (`1` or `2`) and `card_scale` (`1.0`, `1.5`, or `2.0`).<br>**Does**: Resolves absolute asset paths across development directories and PyInstaller bundles (`sys._MEIPASS`). Scales icons/UI textures with integer `NEAREST` and playing cards with `1.0x`/`2.0x` `NEAREST` or `1.5x` (`111x160`) `LANCZOS` RGB + binary alpha thresholding (`a >= 128`) and `#1e1e1e` border re-stroking. | Collaborates with [DisplayProfile](../display_profile.py), [BlackjackApp](../blackjack.py), and all presentation canvases. |
+
+#### `DisplayProfile` & OS Display Bootstrap ([display_profile.py](../display_profile.py))
+| Responsibility | Collaboration |
+| :--- | :--- |
+| **Knows**: Discrete display profiles (`hd_720p`, `deck_800p`, `fhd_1080p`, `qhd_1440p`, `uhd_4k`), OS environment probe (`DisplayEnvironmentProbe`: physical monitor geometry, usable desktop work area, Linux/X11/Wayland/SteamOS `SteamDeck=1` flags), and font/DPI diagnostics (`DisplayDiagnostics`).<br>**Does**: Resolves exact integer `art_scale` (`1` or `2`), `card_scale` (`1.0`, `1.5`, or `2.0`), `pit_max_width`, and stage pillar widths (`min(width_tier, height_tier)` in Fullscreen; `1280x800` default stepping down to `1280x720` when work-area height `< 840px`); registers Windows Per-Monitor v2 DPI awareness and Linux `libfontconfig` `.ttf` fonts before `Tk()`; locks `tk scaling 1.0`; and configures transient `-type dialog` modals. | Collaborates with [SaveData](../save_manager.py), [AssetScaler](../audio_assets.py), [pixel_ui](../pixel_ui.py), [ui_layout](../ui_layout.py), [SettingsDialog](../ui_dialogs.py), and [BlackjackApp](../blackjack.py). |
 
 #### `KeyboardIconLoader` ([audio_assets.py](../audio_assets.py#L210))
 | Responsibility | Collaboration |
@@ -285,7 +291,7 @@ graph TD
 #### `TableFeltCanvas` ([ui_canvases.py](../ui_canvases.py#L1675))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Casino table boundaries, dynamic rule arc text (`BLACKJACK PAYS 3 TO 2` vs `6 TO 5`, `DEALER MUST STAND ON ALL 17s` vs `HITS SOFT 17`), 6-tuple `_felt_cache` key, vignette shading, child widget background slice coordinates, and multi-seat table felt spots (Seats 1..3) from centralized configuration.<br>**Does**: Draws baize felt texture, authentic rule-synchronized table markings, 3 crescent betting spots (Option B: Seat 3 at $X=235, Y=285$, Seat 2 at $X=490, Y=298$, Seat 1 at $X=745, Y=285$) with horizontal flanking side bets ($X \pm 82\,\text{px}$) and 3D chip stacks (via `ui_chip_renderer.py`), active turn glowing halos, and executes canvas-level geometric click dispatching (left-click stage, right-click clear) without event bubbling. In 1-seat mode, cleanly suppresses felt spots so the baize remains pristine. | Collaborates with [BlackjackApp](../blackjack.py), [HouseRules](../rules.py), [ui_chip_renderer](../ui_chip_renderer.py), and [ui_layout](../ui_layout.py). |
+| **Knows**: Casino table boundaries, dynamic rule arc text (`BLACKJACK PAYS 3 TO 2` vs `6 TO 5`, `DEALER MUST STAND ON ALL 17s` vs `HITS SOFT 17`), bounded `OrderedDict` `maxsize=2` 6-tuple `_felt_cache` (`(theme, width, height, art_scale, payout_ratio, dealer_hits_soft_17)`), pure-Pillow `128x128` seamless baize grain tile + `64x48` radial vignette, child widget background slice coordinates (`sync_children_felt()`), and multi-seat table felt spots (Seats 1..3) centered in widescreen `resolve_pit_bounds`.<br>**Does**: Draws zero-NumPy baize felt texture (100% parity between source runs and PyInstaller builds), authentic rule-synchronized table markings, 3 crescent betting spots with horizontal flanking side bets and 3D chip stacks (via `ui_chip_renderer.py`), active turn glowing halos, and canvas-level geometric click dispatching (left-click stage, right-click clear) without event bubbling. In 1-seat mode, cleanly suppresses felt spots so the baize remains pristine. | Collaborates with [BlackjackApp](../blackjack.py), [DisplayProfile](../display_profile.py), [HouseRules](../rules.py), [ui_chip_renderer](../ui_chip_renderer.py), and [ui_layout](../ui_layout.py). |
 
 #### `ChipRenderer` ([ui_chip_renderer.py](../ui_chip_renderer.py))
 | Responsibility | Collaboration |
@@ -320,61 +326,66 @@ graph TD
 #### `CountingBootcampFrame`, `BootcampCanvasRenderer` & `BootcampControlDock` ([counting_bootcamp.py](../counting_bootcamp.py), [bootcamp_domain.py](../bootcamp_domain.py))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Active Bootcamp sub-view (`teacher_intro`, `map`, `lecture`, `challenge`, `report_card`), focused DAG node index, active `BootcampDrillSession`, tracked `.after()` timer handles, and bottom dock button definitions.<br>**Does**: Separates pure domain curriculum/drill state ([`BootcampCurriculumDAG`](../bootcamp_domain.py), [`BootcampDrillSession`](../bootcamp_domain.py)), stateless 2.5D baize drawing ([`BootcampCanvasRenderer`](../counting_bootcamp.py)), bottom dock controls ([`BootcampControlDock`](../counting_bootcamp.py)), and navigation/timer orchestration ([`CountingBootcampFrame`](../counting_bootcamp.py)). Swaps cleanly into `row=3` (felt area) and `row=4` (mahogany control dock) while preserving `DealerStageCanvas` (`row=1`) so the live dealer acts as instructor. | Collaborates with [BootcampCurriculumDAG](../bootcamp_domain.py), [ChipRenderer](../ui_chip_renderer.py), [MahoganyRailCanvas](../ui_canvases.py), [SaveManager](../save_manager.py#L182), and [BlackjackApp](../blackjack.py). |
+| **Knows**: Active Bootcamp sub-view (`teacher_intro`, `map`, `lecture`, `challenge`, `report_card`), focused DAG node index, active `BootcampDrillSession`, tracked `.after()` timer handles, and bottom dock button definitions.<br>**Does**: Separates pure domain curriculum/drill state ([`BootcampCurriculumDAG`](../bootcamp_domain.py), [`BootcampDrillSession`](../bootcamp_domain.py)), stateless 2.5D baize drawing (`1000x390` at `1x`, `2000x780` at `2x` aligned 1:1 with `DealerStageCanvas` via [`BootcampCanvasRenderer`](../counting_bootcamp.py)), bottom dock controls ([`BootcampControlDock`](../counting_bootcamp.py)), and navigation/timer orchestration ([`CountingBootcampFrame`](../counting_bootcamp.py)). Swaps cleanly into `row=2` (felt area) and `row=3` (mahogany control dock) while preserving `DealerStageCanvas` (`row=0`) so the live dealer acts as instructor. | Collaborates with [BootcampCurriculumDAG](../bootcamp_domain.py), [ChipRenderer](../ui_chip_renderer.py), [MahoganyRailCanvas](../ui_canvases.py), [SaveManager](../save_manager.py#L182), and [BlackjackApp](../blackjack.py). |
 
-#### `VenueTourFrame`, `TourMapRenderer` & `TourControlDock` ([venue_tour.py](../venue_tour.py), [tour_domain.py](../tour_domain.py))
+#### `VenueTourFrame`, `VenueTourCanvasRenderer` & `TourControlDock` ([venue_tour.py](../venue_tour.py), [tour_domain.py](../tour_domain.py))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Focused Overworld salon index (`0`–`7`), cached zone gradients, `ImageTk.PhotoImage` references bound to `master=self.canvas`, single-source geometric `node_hit_boxes`, and bottom `MahoganyRailCanvas` dock buttons (`Enter Salon [Enter]`, `Mode: Standard` / `Mode: Ironman`, `Top Up` / `Reset Run [$500]`, `Free Play [Esc]`).<br>**Does**: Mounts the 2.5D Super Mario World Overworld Map into `row=3` and `TourControlDock` into `row=4` beneath Tour Coordinator *Julian* (`row=1`); renders 8 procedural 2.5D pixel-art landmarks, darkened `'???'` silhouettes, velvet ropes on promoted salons, and dual Gold (`★`) & Obsidian (`♦`) casino chip medallions via `ui_chip_renderer.py`. | Collaborates with [SalonSpec](../tour_domain.py), [ChipRenderer](../ui_chip_renderer.py), [MahoganyRailCanvas](../ui_canvases.py), [SaveManager](../save_manager.py), and [BlackjackApp](../blackjack.py). |
+| **Knows**: Focused Overworld salon index (`0`–`7`), cached zone gradients, `ImageTk.PhotoImage` references bound to `master=self.canvas`, single-source geometric `node_hit_boxes`, and bottom `MahoganyRailCanvas` dock buttons (`Enter Salon [Enter]`, `Mode: Standard` / `Mode: Ironman`, `Top Up` / `Reset Run [\$500]`, `Free Play [Esc]`).<br>**Does**: Mounts the `1000x390` (`2000x780` at `2x`) 2.5D Super Mario World Overworld Map into `row=2` and `TourControlDock` into `row=3` aligned 1:1 beneath Tour Coordinator *Julian* (`row=0`); renders 8 procedural 2.5D pixel-art landmarks, darkened `'???'` silhouettes, velvet ropes on promoted salons, and dual Gold (`★`) & Obsidian (`♦`) casino chip medallions via `ui_chip_renderer.py`. | Collaborates with [SalonSpec](../tour_domain.py), [ChipRenderer](../ui_chip_renderer.py), [MahoganyRailCanvas](../ui_canvases.py), [SaveManager](../save_manager.py), and [BlackjackApp](../blackjack.py). |
 
 ---
 
-### Subsystem G: Modal Dialogs & Specialized Views
+### Subsystem G: Two-Tier In-Window Menus & Floating Gameplay Overlays (`InWindowScreenHost`)
 
-#### `SettingsDialog` ([ui_dialogs.py](../ui_dialogs.py#L468))
+#### `InWindowScreenHost` & `InWindowConfirmModal` ([ui_dialogs.py](../ui_dialogs.py))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Two-tab configuration state (`[1] Table & Audio` and `[2] House Rules`): audio/voice toggles, Haunted Mode toggle, Card Counting HUD/tag toggles, table play mode (Casual, Betting, Training), table seat count (1-Seat vs 3-Seat), 6 curated Casino Venue Presets (`VENUE_PRESETS`), custom `HouseRules` parameters (decks, `S17`/`H17`, `3:2`/`6:5`, `DAS`, double restriction, late surrender, min/max bet limits), and live Estimated House Edge % badge.<br>**Does**: Provides adaptive scrollable two-tab configuration controls (`Left`/`Right`/`Tab`/`1`/`2`), blocks rule mutations while a hand is mid-deal/turn, and applies changes to [BlackjackApp](../blackjack.py) with confirmation safety for save resets. | Collaborates with [HouseRules](../rules.py), [SoundManager](../audio_assets.py#L140), and [BlackjackApp](../blackjack.py). |
+| **Knows**: Host root `Tk` window, active `DisplayProfile` (`art_scale`, `window_wh`, `pit_max_width`), `menu_scale` (`2` on `>= 1800x1000` `1080p`/`1440p`/`4K`, `1` on `720p`/`800p`), `is_compact_2x` (`True` on `1080p`), optional `overlay_wh` / `overlay_rely`, `_active_inwindow_screens` modal stack, `<Configure>` resize listener, and active confirmation hooks (`_active_confirm_cancel`, `_active_confirm_key`).<br>**Does**: Mounts all screens directly inside the root `Tk` window so zero external X11/Win32 `Toplevel` or `messagebox` windows ever spawn on SteamOS Gamescope: **Tier 1 (`overlay_wh=None`)** fills `100%` of the viewport for zero-scroll paged menus with true `2x` integer portraits/icons/fonts on Full-HD+; **Tier 2 (`overlay_wh=(w, h)`)** floats centered strictly within the `CardTable` felt band (clamped below `HorizonRail` and above `MahoganyRail`, temporarily hiding empty `0`-card score plaques) with `grab_set()` pointer confinement. Provides `InWindowConfirmModal.ask_yes_no(...)` with `#ffd700` `<Left>`/`<Right>`/D-pad focus routing. | Collaborates with [BlackjackApp](../blackjack.py), [DisplayProfile](../display_profile.py), and all Subsystem G screens. |
+
+#### `SettingsDialog` ([ui_dialogs.py](../ui_dialogs.py))
+| Responsibility | Collaboration |
+| :--- | :--- |
+| **Knows**: Full-screen two-tab configuration state (`[1] Table, Audio & Records` and `[2] Casino House Rules & Limits`): audio/voice toggles, display profile/card-scale/fullscreen controls, Play Mode & Table Seats, 6-metric Career KPI grid + clickable Quick Salon Launchers, 6 curated Casino Venue Presets (`VENUE_PRESETS`), custom `HouseRules` parameters, and live/draft Estimated House Edge % badge.<br>**Does**: Renders 2-column widescreen layouts on both tabs (`1x` at `720p`/`800p`, `2x` crunchy integer fonts at `1080p`/`1440p`/`4K`) with zero vertical scrolling, highlights unsaved rule drafts (`[Enter]` to apply), blocks rule mutations mid-hand, and guards save resets via a floating `InWindowConfirmModal`. | Collaborates with [InWindowScreenHost](../ui_dialogs.py), [HouseRules](../rules.py), [DisplayProfile](../display_profile.py), [SoundManager](../audio_assets.py#L140), and [BlackjackApp](../blackjack.py). |
 
 #### `TripometerDialog` ([ui_dialogs.py](../ui_dialogs.py))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Live `TripometerTracker` summary metrics (Basic Strategy %, Illustrious 18 %, Kelly Bet Sizing %, Trip Net P&L, and `All Hands` vs `Mistakes Only` filter state) and the 50-hand audit log (`HandHistoryRecord`).<br>**Does**: Renders a non-intrusive scrollable audit modal (`📊 Trip` top-bar button or `T` key) with 3 beveled Grade Plaques, rule-badged hand rows (`"6D · H17 · 3:2 · DAS · LS"`), color-coded decision/betting step feedback, auto-hiding scrollbar, and paired `✔ Done` + confirmation-guarded `🗑 Reset Trip` footer controls. | Collaborates with [TripometerTracker](../tripometer.py) and [BlackjackApp](../blackjack.py). |
+| **Knows**: Live `TripometerTracker` summary metrics (Basic Strategy %, Illustrious 18 %, Kelly Bet Sizing %, Trip Net P&L, `All Hands` vs `Mistakes Only` filter state, and `current_page` / `page_size` pagination state) across the 50-hand audit log (`HandHistoryRecord`).<br>**Does**: Renders a full-viewport zero-scroll strategy audit screen (`📊 Trip` wing button or `T` key) with 3 full-width beveled Grade Plaques (`Round9x13` `%`), computed `(total)` hand scores, controller-friendly `◀ Prev [◄]` / `Page X / Y` / `Next [►] ▶` pagination (`3` hands/page on `720p`, `4` hands/page on `800p`/`1080p`/`1440p`/`4K`), and `2:1` paired `✔ Done` + `InWindowConfirmModal`-guarded `🗑 Reset Trip Stats` footer controls. | Collaborates with [InWindowScreenHost](../ui_dialogs.py), [TripometerTracker](../tripometer.py), and [BlackjackApp](../blackjack.py). |
 
-#### `MultiSeatInsuranceDialog` ([ui_dialogs.py](../ui_dialogs.py#L282))
+#### `MultiSeatInsuranceDialog` ([ui_dialogs.py](../ui_dialogs.py))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Insurable seats (active multi-seat positions when dealer shows an Ace), required insurance bets ($\frac{1}{2}$ main bet per seat), and player bankroll.<br>**Does**: Renders sequential per-seat insurance decision prompts with bankroll clamping, escape auto-decline safety, and emits decision outcomes to [BlackjackEngine](../game_engine.py). | Collaborates with [BlackjackApp](../blackjack.py) and [BlackjackEngine](../game_engine.py). |
+| **Knows**: Insurable seats (active multi-seat positions when dealer shows an Ace), required insurance bets ($\frac{1}{2}$ main bet per seat), focused seat card index, and player bankroll.<br>**Does**: Mounts as a compact centered floating banner (`overlay_wh=(800, 265)`) over the live table so the dealer's Ace above and all 3 dealt seat hands below remain visible, rendering 3 horizontal Seat Toggle Cards (`[3] Left`, `[2] Center`, `[1] Right`) controlled via `[1]`/`[2]`/`[3]`, `[◄/► + Space]`, `[A/Y]` Insure All, `[Enter]` Confirm, and `[Esc/N]` Decline. | Collaborates with [InWindowScreenHost](../ui_dialogs.py), [BlackjackApp](../blackjack.py), and [BlackjackEngine](../game_engine.py). |
 
-#### `ShortcutsDialog` ([ui_dialogs.py](../ui_dialogs.py#L848))
+#### `ShortcutsDialog` ([ui_dialogs.py](../ui_dialogs.py))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: All keyboard and mouse shortcut mappings across Gameplay, Wagering (`1`--`5` for \$5--\$1,000 chips, `Left`/`Right` for 3-Seat focus), Card Counting, Strategy Tripometer (`T`), and System controls (`Shift+W`, `Shift+H`, `F1`/`?`).<br>**Does**: Renders scrollable two-column modal HUD with Kenney graphical keycap icons, auto-hiding scrollbar, and mousewheel bindings. | Collaborates with [KeyboardIconLoader](../audio_assets.py#L210) and [BlackjackApp](../blackjack.py). |
+| **Knows**: All keyboard and mouse shortcut mappings across Gameplay, Wagering (`1`--`5` for \$5--\$1,000 chips, `Left`/`Right` for 3-Seat focus, Left/Right Mouse spot clicks), Card Counting, Strategy Tripometer (`T`), and System controls (`Shift+W`, `Shift+H`, `F1`/`?`).<br>**Does**: Renders a full-screen zero-scroll two-column controls reference (`[1] Gameplay & Betting` and `[2] System, Trainer & Modes`) with zebra row striping, `1x`/`2x` Kenney graphical keycap & mouse sprites (`m6x11plus`), `?`/`F1` toggle-close parity, and a bottom `✔ Return to Table` bar. | Collaborates with [InWindowScreenHost](../ui_dialogs.py), [KeyboardIconLoader](../audio_assets.py#L210), and [BlackjackApp](../blackjack.py). |
 
-#### `WelcomeSplashDialog` ([ui_dialogs.py](../ui_dialogs.py#L1171))
+#### `WelcomeSplashDialog` ([ui_dialogs.py](../ui_dialogs.py))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: First-launch overview of Classic Casino, Haunted Mode, Card Counting Trainer, and essential shortcuts.<br>**Does**: Displays introductory splash modal on first run (or via Help button) with adaptive scrolling. | Collaborates with [BlackjackApp](../blackjack.py). |
+| **Knows**: Three Play Modes (`[1] Casual Mode`, `[2] Casino Betting`, `[3] Strategy Trainer`), active croupier greeting banner (`112x112` `1x` or `224x224` `2x` bust), and startup `Remember my preference` (`[R]`) state.<br>**Does**: Renders a full-screen zero-scroll 3-column horizontal mode showcase on startup (or via Settings) with tactile `[✓ SELECTED]` / `[Click to Select]` pills, `[1]`/`[2]`/`[3]`, `Left`/`Right`, and click-selected-to-launch support. | Collaborates with [InWindowScreenHost](../ui_dialogs.py) and [BlackjackApp](../blackjack.py). |
 
-#### `StoryDialogueDialog` ([ui_dialogs.py](../ui_dialogs.py#L42))
+#### `StoryDialogueDialog` ([ui_dialogs.py](../ui_dialogs.py))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Narrative story script branches, speaker character, portraits, and proceed callbacks.<br>**Does**: Displays modal narrative dialogues during major Haunted mode milestone transitions (Hell's Table descent and Celestial Exorcism victory). | Collaborates with [DealerActor](../dealer_actor.py#L133) and [BlackjackApp](../blackjack.py). |
+| **Knows**: Narrative story script branches, speaker character, portraits, and proceed callbacks.<br>**Does**: Mounts as a centered floating theatrical cutscene banner (`overlay_wh=(740, 215)` / `(760, 235)`, `overlay_rely=0.57`) over the lower felt, suppressing duplicate speaker portraits and temporarily hiding stage speech bubbles + tails when the speaker (`malphas`) is already live on `DealerStageCanvas`. | Collaborates with [InWindowScreenHost](../ui_dialogs.py), [DealerActor](../dealer_actor.py#L133), and [BlackjackApp](../blackjack.py). |
 
-#### `AngelicDraftDialog` ([ui_dialogs.py](../ui_dialogs.py#L174))
+#### `AngelicDraftDialog` ([ui_dialogs.py](../ui_dialogs.py))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: 3 randomly selected Blessing cards drawn from the active pool at `50%` and `75%` Soul Meter milestones.<br>**Does**: Renders 3 selectable blessing cards and equips the chosen celestial power to `HauntedManager`. | Collaborates with [HauntedManager](../haunted_manager.py#L137) and [BlackjackApp](../blackjack.py). |
+| **Knows**: 3 randomly selected Blessing cards drawn from the active pool at `50%` and `75%` Soul Meter milestones, plus `focused_idx` D-pad/arrow selection.<br>**Does**: Mounts as a centered floating 3-column celestial relic draft overlay (`overlay_wh=(744, 348)`) inside the `CardTable` felt band clear of `HorizonRail` and `SOUL WAGER`, rendering `2x`-zoomed relic icons in recessed cyan shrines with `[◄ / ► + Enter]`, `<Tab>`, `[1]`--`[3]`, and click selection. | Collaborates with [InWindowScreenHost](../ui_dialogs.py), [HauntedManager](../haunted_manager.py#L137), and [BlackjackApp](../blackjack.py). |
 
-#### `WardrobeDialog` ([dealer_wardrobe_dialog.py](../dealer_wardrobe_dialog.py#L28))
+#### `WardrobeDialog` ([dealer_wardrobe_dialog.py](../dealer_wardrobe_dialog.py))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: All 8 dealer character profiles, unlocked statuses, unlock achievement criteria, 12 Hall of Fame achievement plaques, and `initial_tab` selection.<br>**Does**: Displays two-tab modal (Tab 0: Wardrobe Closet; Tab 1: Hall of Fame & Trophy Shelf) with interactive character sprite/voice previews and instant costume equipping. | Collaborates with [CharacterProfile](../dealer_actor.py#L33), [DealerActor](../dealer_actor.py#L133), [SaveManager](../save_manager.py#L182), and [BlackjackApp](../blackjack.py). |
+| **Knows**: All 8 dealer character profiles, unlocked statuses, unlock achievement criteria, costume-specific flavor quotes (`COSTUME_VOICE_QUOTES`), 14 Hall of Fame achievement plaques across 3 thematic pages (`HOF_PAGE_CONFIG`), and the 8-Salon Venue Tour Medallion Showcase.<br>**Does**: Renders a full-screen zero-scroll two-tab salon (`[1] Wardrobe Closet` with paged `2x2` `DealerCardPanel` cards using `224x224` `2x` crunchy portraits & `2x` pixel fonts on `1080p`/`1440p`/`4K`, live costume quotes, and `[Q]`/`[E]`/`[V]` hotkeys; `[2] Hall of Fame & Trophies` with telemetry banner, paged `3x2` plaques, and the `4x2` 8-Salon Tour Medallion Showcase on Page 3). | Collaborates with [InWindowScreenHost](../ui_dialogs.py), [CharacterProfile](../dealer_actor.py#L33), [DealerActor](../dealer_actor.py#L133), [SaveManager](../save_manager.py#L182), and [BlackjackApp](../blackjack.py). |
 
-#### `CardCountingQuizDialog` ([card_counting_hud.py](../card_counting_hud.py#L194))
+#### `CardCountingQuizDialog` ([card_counting_hud.py](../card_counting_hud.py))
 | Responsibility | Collaboration |
 | :--- | :--- |
-| **Knows**: Current ground-truth Running Count (RC) held by [HiLoCardCounter](../card_counter.py#L23) and player's streak count.<br>**Does**: Challenges player to input the current Running Count; verifies answer, plays audio cue, records streak in `SaveManager`, and unlocks `Card Shark` / `Rain Man` achievements. | Collaborates with [HiLoCardCounter](../card_counter.py#L23), [SaveManager](../save_manager.py#L182), and [BlackjackApp](../blackjack.py). |
+| **Knows**: Current ground-truth Running Count (RC) / True Count (TC) and Illustrious 18 deviation spots held by [HiLoCardCounter](../card_counter.py#L23), stepper values (`rc_val` $\pm 1$, `tc_val` $\pm 0.5$), `active_count_field` (`"rc"` vs. `"tc"`), `focused_deviation_idx`, and player's streak count.<br>**Does**: Mounts as a centered floating Count Check & Deviation Check quiz card (`overlay_wh=(680, 395)`) below `HorizonRail` using `-32` chunky `−`/`+` steppers + `Round9x13` digital readouts on Tab 1 and `#ffd700` D-pad-navigable choice frames on Tab 2, while temporarily masking `Assisted` `CardCountingHud` readouts to prevent open-book answer leaks. | Collaborates with [InWindowScreenHost](../ui_dialogs.py), [HiLoCardCounter](../card_counter.py#L23), [SaveManager](../save_manager.py#L182), and [BlackjackApp](../blackjack.py). |
 
 ---
 

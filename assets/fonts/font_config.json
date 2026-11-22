@@ -96,13 +96,13 @@
     },
     "header": {
       "family": "m6x11plus",
-      "base_size": 16,
+      "base_size": 18,
       "weight": "normal",
       "fallback": "m5x7",
       "description": "Dialog Section Headers, Mode Card Titles, Plaque Names"
     },
     "display": {
-      "family": "m6x11plus",
+      "family": "Round9x13",
       "base_size": 32,
       "weight": "normal",
       "fallback": "m5x7",
@@ -117,28 +117,28 @@
     },
     "button": {
       "family": "m6x11plus",
-      "base_size": 16,
+      "base_size": 18,
       "weight": "normal",
       "fallback": "m5x7",
       "description": "Mahogany Rail Buttons, Top Bar System Buttons, Modal Buttons"
     },
     "digital": {
       "family": "Volt5x5",
-      "base_size": 15,
+      "base_size": 16,
       "weight": "normal",
       "fallback": "m5x7",
       "description": "Hi-Lo Trainer count readouts (RC, TC, Edge, Decks)"
     },
     "badge": {
-      "family": "Mini3x5",
-      "base_size": 15,
+      "family": "m6x11",
+      "base_size": 16,
       "weight": "normal",
       "fallback": "m5x7",
-      "description": "Keyboard Shortcut Badges ([Space], [Esc], [H], [S]) and Metric Labels"
+      "description": "Compact Badge Labels, Denomination Tags, and Metric Captions"
     },
     "micro": {
       "family": "3x5_Block_Adjusted",
-      "base_size": 10,
+      "base_size": 12,
       "weight": "normal",
       "fallback": "m5x7",
       "description": "Chip stack face numbers on felt"
@@ -160,18 +160,18 @@
     "scoreboard_title": {
       "role": "header",
       "family": "m6x11plus",
-      "base_size": 22,
+      "base_size": 18,
       "description": "Headers for Dealer, Player, Ties in top bar scoreboard"
     },
     "scoreboard_value": {
       "role": "display",
-      "family": "m6x11plus",
-      "base_size": 22,
+      "family": "Round9x13",
+      "base_size": 32,
       "description": "Win, Loss, and Tie numeric counters in top bar"
     },
     "bankroll_label": {
       "role": "display",
-      "family": "m6x11plus",
+      "family": "m5x7",
       "base_size": 32,
       "description": "Player bankroll display on top bar"
     },
@@ -183,13 +183,13 @@
     },
     "hand_title": {
       "role": "header",
-      "family": "m6x11plus",
+      "family": "m6x11",
       "base_size": 16,
       "description": "Banners for dealer, player, and split hand areas"
     },
     "hand_score": {
       "role": "display",
-      "family": "m6x11plus",
+      "family": "Round9x13",
       "base_size": 32,
       "description": "Hand score plaques (19, 21, BUST, etc.)"
     },
@@ -221,26 +221,32 @@
     },
     "betting_spot_watermark": {
       "role": "badge",
+      "family": "m6x11",
+      "base_size": 16,
       "description": "Felt watermark text inside betting circle"
     },
     "chip_bet_badge": {
-      "role": "badge",
-      "base_size": 14,
+      "role": "header",
+      "family": "m6x11plus",
+      "base_size": 18,
       "description": "Current staged bet readout above betting spot"
     },
     "chip_bankroll_badge": {
       "role": "badge",
-      "base_size": 12,
+      "family": "m6x11",
+      "base_size": 16,
       "description": "Reserve tray bankroll header (CHIPS: $... L-Click + | R-Click -)"
     },
     "chip_denomination_label": {
       "role": "badge",
-      "base_size": 14,
+      "family": "m6x11",
+      "base_size": 16,
       "description": "Denomination label under each reserve pile ($5, $25, $100, $500, $1K)"
     },
     "chip_face_value": {
       "role": "micro",
-      "base_size": 5,
+      "family": "3x5_Block_Adjusted",
+      "base_size": 12,
       "description": "Denomination and multiplier text stamped on individual chip sprites"
     },
     "chip_floating_payout": {
@@ -253,23 +259,26 @@
     },
     "insurance_prompt_label": {
       "role": "header",
-      "base_size": 16,
+      "family": "m6x11plus",
+      "base_size": 18,
       "description": "Insurance inquiry text prompt"
     },
     "insurance_prompt_button": {
       "role": "button",
-      "base_size": 16,
+      "family": "m6x11plus",
+      "base_size": 18,
       "description": "Take / Decline Insurance action buttons"
     },
     "dealer_nameplate": {
       "role": "header",
-      "base_size": 16,
+      "family": "m6x11plus",
+      "base_size": 18,
       "description": "Dealer character nameplate on narrative dialogue stage"
     },
     "dealer_speech": {
-      "role": "body",
-      "family": "m5x7",
-      "base_size": 20,
+      "role": "header",
+      "family": "m6x11plus",
+      "base_size": 18,
       "description": "Dialogue box typewriter speech and narrative subtitles"
     },
     "table_announcement": {
@@ -279,28 +288,31 @@
     "hilo_trainer_title": {
       "family": "m6x11plus",
       "base_size": 18,
+      "weight": "normal",
       "description": "Hi-Lo Card Counting Trainer header tab"
     },
     "hilo_trainer_label": {
-      "family": "m5x7",
-      "base_size": 18,
+      "family": "m6x11",
+      "base_size": 16,
+      "weight": "normal",
       "description": "Trainer HUD metric title badges (RC, TC, DECKS, EDGE, BET)"
     },
     "hilo_trainer_value": {
       "family": "m6x11plus",
-      "base_size": 20,
-      "weight": "bold",
+      "base_size": 18,
+      "weight": "normal",
       "description": "Trainer HUD numeric readouts"
     },
     "hilo_trainer_button": {
-      "family": "m6x11plus",
+      "family": "m6x11",
       "base_size": 16,
+      "weight": "normal",
       "description": "Trainer HUD control buttons (Quiz, Assisted, Close)"
     },
     "hilo_trainer_advice": {
       "family": "m6x11plus",
       "base_size": 18,
-      "weight": "bold",
+      "weight": "normal",
       "description": "Trainer drill hint and betting recommendation text"
     },
     "hilo_floating_badge": {
@@ -352,62 +364,70 @@
       "description": "Modal dialog action and dismissal buttons"
     },
     "story_dialog_speaker": {
-      "role": "header",
-      "base_size": 20,
+      "role": "title",
+      "family": "BoldPixels",
+      "base_size": 32,
       "description": "Speaker name in narrative story dialogue modal"
     },
     "story_dialog_body": {
-      "role": "body",
+      "role": "header",
+      "family": "m6x11plus",
       "base_size": 18,
       "description": "Story narrative text in story dialogue modal"
     },
     "story_dialog_button": {
       "role": "button",
-      "base_size": 16,
+      "family": "m6x11plus",
+      "base_size": 18,
       "description": "Dismiss / proceed button in story dialogue modal"
     },
     "angelic_draft_subtitle": {
       "role": "header",
-      "base_size": 16,
+      "family": "m6x11plus",
+      "base_size": 18,
       "description": "Angelic draft dialog subtitle instruction"
     },
     "angelic_draft_title": {
       "role": "header",
+      "family": "m6x11plus",
       "base_size": 18,
       "description": "Relic card title in angelic blessing draft dialog"
     },
     "angelic_draft_tagline": {
       "role": "badge",
+      "family": "m6x11",
       "base_size": 16,
       "description": "Relic card tagline in angelic blessing draft dialog"
     },
     "angelic_draft_description": {
-      "role": "body",
+      "role": "header",
+      "family": "m6x11plus",
       "base_size": 18,
       "description": "Relic card power description in angelic blessing draft dialog"
     },
     "angelic_draft_button": {
       "role": "button",
-      "base_size": 16,
+      "family": "m6x11plus",
+      "base_size": 18,
       "description": "Equip relic button in angelic blessing draft dialog"
     },
     "dialog_action_label": {
       "family": "m6x11plus",
-      "base_size": 16,
+      "base_size": 18,
       "weight": "normal",
       "fallback": "m5x7",
       "description": "Shortcuts and controls action verb label"
     },
     "dialog_hint_label": {
       "family": "m6x11plus",
-      "base_size": 15,
+      "base_size": 18,
       "weight": "normal",
       "fallback": "m5x7",
       "description": "Shortcuts and controls secondary description and hint label"
     },
     "dialog_tip_label": {
       "family": "m6x11plus",
-      "base_size": 16,
+      "base_size": 18,
       "weight": "normal",
       "fallback": "m5x7",
       "description": "Dialog bottom footer navigation tip banner"

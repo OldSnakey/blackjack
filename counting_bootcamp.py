@@ -31,7 +31,7 @@ from bootcamp_domain import (
     BootcampNodeSpec,
     BootcampPrompt,
 )
-from config import TABLE_BACKGROUND_COLOR
+from config import ASSETS_DIR, CARD_HEIGHT, CARD_WIDTH, TABLE_BACKGROUND_COLOR
 from pixel_ui import (
     CanvasPixelButton,
     CanvasPixelPanel,
@@ -58,14 +58,51 @@ def get_pixel_font(size_px: int = 14, bold: bool = False) -> Tuple[str, int, str
 
 class BootcampControlDock(MahoganyRailCanvas):
     """
-    Dedicated `row=4` mahogany armrest control dock for the Counting Bootcamp.
+    Dedicated `row=3` full-width mahogany armrest control dock for the Counting Bootcamp.
     Subclasses `MahoganyRailCanvas` (`tkinter.Canvas`) so `CanvasPixelButton` widgets
     render directly onto the wood rail with full hover/press state-healing.
     """
 
-    def __init__(self, master: tkinter.Widget, height: int = 70, **kwargs: Any) -> None:
-        super().__init__(master, width=880, height=height, background="#140a05", **kwargs)
+    def __init__(
+        self,
+        master: tkinter.Widget,
+        height: int = 72,
+        art_scale: int = 1,
+        font_scale: float = 1.0,
+        display_profile: Optional[Any] = None,
+        **kwargs: Any,
+    ) -> None:
+        eff_art = max(1, int(getattr(display_profile, "art_scale", art_scale))) if display_profile is not None else max(1, int(art_scale))
+        self.font_scale = float(getattr(display_profile, "font_scale", font_scale)) if display_profile is not None else float(font_scale)
+        self._last_specs: List[Dict[str, Any]] = []
+        self._last_status_left: str = ""
+        self._last_status_right: str = ""
+        super().__init__(
+            master,
+            width=1280 * eff_art,
+            height=height,
+            display_profile=display_profile,
+            art_scale=eff_art,
+            background="#140a05",
+            **kwargs,
+        )
         self.buttons: List[CanvasPixelButton] = []
+
+    def _on_configure(self, event: Any) -> None:
+        prev_w = self._current_width
+        super()._on_configure(event)
+        if self._current_width != prev_w and self._last_specs:
+            self._render_specs(self._last_specs, self._last_status_left, self._last_status_right)
+
+    def set_display_profile(self, profile: Any) -> None:
+        self.art_scale = max(1, int(getattr(profile, "art_scale", 1)))
+        self.font_scale = float(getattr(profile, "font_scale", 1.0))
+        self.rail_height = 72 * self.art_scale
+        self._current_width = 0
+        self.configure(height=self.rail_height)
+        self._draw_rail()
+        if self._last_specs:
+            self._render_specs(self._last_specs, self._last_status_left, self._last_status_right)
 
     def clear_controls(self) -> None:
         for btn in self.buttons:
@@ -83,65 +120,78 @@ class BootcampControlDock(MahoganyRailCanvas):
         status_right: str = "",
     ) -> None:
         """
-        Renders a horizontal row of `CanvasPixelButton` items centered on the 880x70 mahogany rail.
-        Automatically suppresses side status labels when button span leaves < 115px margin per side,
-        guaranteeing zero button-over-text collisions and zero right-edge clipping.
+        Renders a horizontal row of `CanvasPixelButton` items centered across the full-width mahogany rail.
+        Automatically suppresses side status labels when button span leaves insufficient side margin.
         """
+        self._last_specs = list(specs)
+        self._last_status_left = status_left
+        self._last_status_right = status_right
+        self._render_specs(self._last_specs, status_left, status_right)
+
+    def _render_specs(
+        self,
+        specs: List[Dict[str, Any]],
+        status_left: str = "",
+        status_right: str = "",
+    ) -> None:
         self.clear_controls()
         self._draw_rail()
-        w = 880
+        s = self.art_scale
+        live_w = self.winfo_width()
+        w = live_w if live_w > 20 else max(880 * s, int(self._current_width) or 1280 * s)
         h = self.rail_height
 
         if not specs:
             return
 
-        spacing = 10 if len(specs) >= 5 else 12
-        btn_h = 44
-        widths = [int(sp.get("width", 160)) for sp in specs]
+        spacing = (10 if len(specs) >= 5 else 12) * s
+        btn_h = 44 * s
+        widths = [max(100, int(sp.get("width", 160)) * s) for sp in specs]
         total_w = sum(widths) + spacing * max(0, len(specs) - 1)
         cur_x = (w - total_w) // 2
         cy = h // 2
         side_margin = (w - total_w) // 2
+        font_px = 18 * s
 
-        if status_left and side_margin >= 115:
+        if status_left and side_margin >= 115 * s:
             self.create_text(
-                17, cy + 1,
+                16 * s + s, cy + s,
                 text=status_left,
                 anchor="w",
                 fill="#090503",
-                font=get_header_font(16),
+                font=get_header_font(font_px),
                 tags="dock_fg",
             )
             self.create_text(
-                16, cy,
+                16 * s, cy,
                 text=status_left,
                 anchor="w",
                 fill="#ffd700",
-                font=get_header_font(16),
+                font=get_header_font(font_px),
                 tags="dock_fg",
             )
-        if status_right and side_margin >= 165:
+        if status_right and side_margin >= 165 * s:
             self.create_text(
-                w - 15, cy + 1,
+                w - 16 * s + s, cy + s,
                 text=status_right,
                 anchor="e",
                 fill="#090503",
-                font=get_body_font(16),
+                font=get_body_font(font_px),
                 tags="dock_fg",
             )
             self.create_text(
-                w - 16, cy,
+                w - 16 * s, cy,
                 text=status_right,
                 anchor="e",
                 fill="#cfd8dc",
-                font=get_body_font(16),
+                font=get_body_font(font_px),
                 tags="dock_fg",
             )
 
         for sp, bw in zip(specs, widths):
             cx = cur_x + bw // 2
             theme = str(sp.get("theme", "green"))
-            txt_col = str(sp.get("text_color", "#ffffff" if theme != "gold" else "#fffdf5"))
+            txt_col = str(sp.get("text_color") or ("#141008" if theme == "gold" else "#ffffff"))
             btn = CanvasPixelButton(
                 self,
                 x=cx,
@@ -151,9 +201,9 @@ class BootcampControlDock(MahoganyRailCanvas):
                 text=str(sp.get("text", "Action")),
                 command=sp.get("command"),
                 theme=theme,
-                font=get_button_font(16),
+                font=get_button_font(font_px),
                 text_color=txt_col,
-                scale=2,
+                scale=2 * s,
                 enabled=bool(sp.get("enabled", True)),
                 group_tag="dock_fg",
             )
@@ -162,18 +212,18 @@ class BootcampControlDock(MahoganyRailCanvas):
 
 
 # ============================================================================
-# View Component 2: Stateless 2.5D Tabletop Canvas Renderer (row=3)
+# View Component 2: Stateless 2.5D Tabletop Canvas Renderer (row=2)
 # ============================================================================
 
 class BootcampCanvasRenderer:
     """
-    Stateless 2.5D Tabletop Canvas View Renderer for the Counting Bootcamp.
-    Owns the `tkinter.Canvas`, GC-safe `PhotoImage` references (`_card_photo_refs`),
-    and hit-box coordinate maps (`node_hit_boxes`, `action_hit_boxes`).
-    Never mutates `SaveManager` or Controller state.
+    Stateless 2.5D Tabletop Canvas View Renderer for the Counting Bootcamp (`1000x390` at `1x`,
+    `2000x780` at `2x`, aligned 1:1 with `DealerStageCanvas`). Owns the `tkinter.Canvas`,
+    GC-safe `PhotoImage` references (`_card_photo_refs`), and hit-box coordinate maps
+    (`node_hit_boxes`, `action_hit_boxes`). Never mutates `SaveManager` or Controller state.
     """
 
-    CANVAS_W = 880
+    CANVAS_W = 1000
     CANVAS_H = 390
 
     def __init__(
@@ -181,14 +231,19 @@ class BootcampCanvasRenderer:
         canvas: tkinter.Canvas,
         card_lookup_fn: Callable[[str, str], Optional[Any]],
         banner_sync_fn: Optional[Callable[[], None]] = None,
+        art_scale: int = 1,
     ) -> None:
         self.canvas = canvas
+        self.art_scale = max(1, int(art_scale))
         self._get_card_image = card_lookup_fn
         self._banner_sync_fn = banner_sync_fn
         self.node_hit_boxes: Dict[str, Tuple[int, int, int, int]] = {}
         self.action_hit_boxes: Dict[str, Tuple[int, int, int, int]] = {}
         self._card_photo_refs: List[Any] = []
         self.last_drawn_card_xs: List[int] = []
+
+    def _s(self, v: int | float) -> int:
+        return int(round(v * self.art_scale))
 
     def _make_panel(
         self,
@@ -205,19 +260,20 @@ class BootcampCanvasRenderer:
         recessed: bool = False,
         anchor: str = "nw",
     ) -> CanvasPixelPanel:
-        """Creates a 2.5D `CanvasPixelPanel` and retains a strong reference in `_card_photo_refs`."""
+        """Creates a 2.5D `CanvasPixelPanel` scaled by `art_scale` and retains a strong reference."""
+        s = self._s
         panel = CanvasPixelPanel(
             self.canvas,
-            x=x,
-            y=y,
-            width=width,
-            height=height,
+            x=s(x),
+            y=s(y),
+            width=s(width),
+            height=s(height),
             bg=bg,
             border=border,
             inner_hi=inner_hi,
             inner_sh=inner_sh,
             rivet_color=rivet_color,
-            scale=scale,
+            scale=scale * self.art_scale,
             recessed=recessed,
             anchor=anchor,
         )
@@ -236,12 +292,15 @@ class BootcampCanvasRenderer:
         justify: str = "left",
         width: int = 0,
     ) -> int:
-        """Draws crisp pixel text with a 1px drop shadow for contrast over baize and mahogany."""
-        kw: Dict[str, Any] = {"text": text, "font": font, "anchor": anchor, "justify": justify}
+        """Draws crisp pixel text scaled by `art_scale` with a drop shadow over baize and mahogany."""
+        s = self._s
+        k = self.art_scale
+        scaled_font = (font[0], int(font[1]) * k, *font[2:]) if k > 1 else font
+        kw: Dict[str, Any] = {"text": text, "font": scaled_font, "anchor": anchor, "justify": justify}
         if width > 0:
-            kw["width"] = width
-        self.canvas.create_text(x + 1, y + 1, fill=shadow, **kw)
-        return self.canvas.create_text(x, y, fill=fill, **kw)
+            kw["width"] = s(width)
+        self.canvas.create_text(s(x) + k, s(y) + k, fill=shadow, **kw)
+        return self.canvas.create_text(s(x), s(y), fill=fill, **kw)
 
     def _draw_grade_medallion(
         self,
@@ -251,31 +310,35 @@ class BootcampCanvasRenderer:
         scale: float = 1.0,
         compact: bool = False,
     ) -> List[int]:
-        """
-        Renders a high-fidelity 2.5D Casino Chip Medallion via the shared `ui_chip_renderer` module.
-        """
+        """Renders a high-fidelity 2.5D Casino Chip Medallion scaled by `art_scale`."""
+        s = self._s
         return draw_25d_grade_medallion(
             self.canvas,
-            x=x,
-            y=y,
+            x=s(x),
+            y=s(y),
             grade=grade,
-            scale=scale,
+            scale=scale * self.art_scale,
             compact=compact,
         )
 
     def _draw_card_sprite(self, cx: int, cy: int, rank: str, suit: str) -> None:
-        """Draws a card face sprite (or high-contrast fallback plaque) centered at `(cx, cy)`."""
-        self.last_drawn_card_xs.append(cx)
+        """Draws a card face sprite centered at logical `(cx, cy)` scaled by `art_scale`."""
+        s = self._s
+        k = self.art_scale
+        self.last_drawn_card_xs.append(s(cx))
         img = self._get_card_image(rank, suit)
         if img is not None:
             self._card_photo_refs.append(img)
-            self.canvas.create_image(cx, cy, image=img)
+            self.canvas.create_image(s(cx), s(cy), image=img)
         else:
-            self.canvas.create_rectangle(cx - 37, cy - 53, cx + 37, cy + 53, fill="#ffffff", outline="#d4af37", width=2)
-            self.canvas.create_text(cx, cy, text=rank.upper(), fill="#111111", font=get_header_font(18))
+            self.canvas.create_rectangle(
+                s(cx - 37), s(cy - 53), s(cx + 37), s(cy + 53),
+                fill="#ffffff", outline="#d4af37", width=2 * k,
+            )
+            self.canvas.create_text(s(cx), s(cy), text=rank.upper(), fill="#111111", font=get_header_font(18 * k))
 
     def _draw_felt_backdrop(self, title: str, subtitle: str = "", right_reserved_px: int = 0) -> None:
-        """Draws the 880x390 emerald baize tabletop border, stitched gold inner trim, and 2.5D top header plaque."""
+        """Draws the emerald baize tabletop border, stitched gold inner trim, and 2.5D top header plaque."""
         self.canvas.delete("all")
         self.node_hit_boxes.clear()
         self.action_hit_boxes.clear()
@@ -284,10 +347,15 @@ class BootcampCanvasRenderer:
         if self._banner_sync_fn is not None:
             self._banner_sync_fn()
 
+        s = self._s
+        k = self.art_scale
         w = self.CANVAS_W
         h = self.CANVAS_H
-        self.canvas.create_rectangle(3, 3, w - 3, h - 3, fill="#0b3820", outline="#d4af37", width=2)
-        self.canvas.create_rectangle(9, 9, w - 9, h - 9, fill="#0f4728", outline="#1e6b40", width=1, dash=(4, 4))
+        self.canvas.create_rectangle(s(3), s(3), s(w - 3), s(h - 3), fill="#0b3820", outline="#d4af37", width=2 * k)
+        self.canvas.create_rectangle(
+            s(9), s(9), s(w - 9), s(h - 9),
+            fill="#0f4728", outline="#1e6b40", width=k, dash=(4 * k, 4 * k),
+        )
 
         self._make_panel(
             x=14, y=14, width=w - 28, height=40,
@@ -318,50 +386,57 @@ class BootcampCanvasRenderer:
             "Interactive Show & Tell Coaching + Graded Tabletop Drills",
         )
         self._make_panel(
-            x=60, y=64, width=760, height=312,
+            x=60, y=64, width=880, height=312,
             bg="#1b120c", border="#d4af37", inner_hi="#422a1d", inner_sh="#0c0704",
             rivet_color="#ffd700", scale=2,
         )
         self._draw_shadow_text(
-            440, 94,
+            500, 94,
             text="MASTER THE MIT HI-LO SYSTEM IN 5 TIERS",
             fill="#ffd700",
             shadow="#090503",
-            font=get_header_font(20),
+            font=get_header_font(18),
         )
         self._draw_shadow_text(
-            440, 130,
+            500, 130,
             text="Your Dealer is your live MIT Coach. Every tier pairs an interactive Show & Tell Lecture\n"
                  "with a rapid-fire Challenge Drill graded with 2.5D Casino Chip Medallions (S / A / B / C / F).",
             fill="#f0f4f8",
             shadow="#090503",
             justify="center",
-            font=get_body_font(18),
+            font=get_body_font(16),
         )
 
+        s = self._s
+        k = self.art_scale
         sample_cards = [
             ("5", "hearts", "+1 LOW (2–6)", "#00e676", "#0d2b1a"),
             ("8", "spades", "0 NEUTRAL (7–9)", "#e0f2f1", "#1a2830"),
             ("ace", "spades", "-1 HIGH (10–A)", "#ff6b6b", "#331414"),
         ]
         for idx, (rk, st, lbl, col, pill_bg) in enumerate(sample_cards):
-            cx = 250 + idx * 190
+            cx = 280 + idx * 220
             cy = 216
             self._draw_card_sprite(cx, cy, rk, st)
-            self.canvas.create_rectangle(cx - 68, cy + 58, cx + 68, cy + 84, fill=pill_bg, outline=col, width=2)
-            self._draw_shadow_text(cx, cy + 71, text=lbl, fill=col, font=get_header_font(16))
+            self.canvas.create_rectangle(
+                s(cx - 72), s(cy + 58), s(cx + 72), s(cy + 84),
+                fill=pill_bg, outline=col, width=2 * k,
+            )
+            self._draw_shadow_text(cx, cy + 71, text=lbl, fill=col, font=get_header_font(18))
 
         self._draw_shadow_text(
-            440, 350,
+            500, 350,
             text="Press [1] or [Enter] to start the Counting Bootcamp   |   Press [2] or [Esc] for 3-Seat Free Play",
             fill="#80cbc4",
             shadow="#090503",
-            font=get_body_font(18),
+            font=get_body_font(16),
         )
 
     def draw_dag_map(self, dag: BootcampCurriculumDAG, bp: BootcampProgress, focused_node_id: str) -> None:
-        """Renders the 14-node 2.5D Tabletop Curriculum Map across 5 tier columns (`w = 880`)."""
-        passed_count = sum(1 for s in bp.stages.values() if s.passed)
+        """Renders the 14-node 2.5D Tabletop Curriculum Map across 5 tier columns (`w = 1000 * art_scale`)."""
+        s = self._s
+        k = self.art_scale
+        passed_count = sum(1 for stg in bp.stages.values() if stg.passed)
         lect_count = sum(1 for l in bp.lectures.values() if l.completed)
         grad_badge = (
             "🏆 MIT GRADUATE"
@@ -369,14 +444,14 @@ class BootcampCanvasRenderer:
             else f"Passed: {passed_count}/7  |  Lectures: {lect_count}/7  |  Best Acc: {bp.overall_best_accuracy_pct:.0f}%"
         )
 
-        self._draw_felt_backdrop("🗺 MIT HI-LO CURRICULUM MAP", grad_badge, right_reserved_px=150)
+        self._draw_felt_backdrop("🗺 MIT HI-LO CURRICULUM MAP", grad_badge, right_reserved_px=154)
 
-        fp_box = (722, 18, 858, 50)
+        fp_box = (s(840), s(18), s(978), s(50))
         self.action_hit_boxes["free_play"] = fp_box
-        self.canvas.create_rectangle(*fp_box, fill="#1b432c", outline="#ffd700", width=2)
-        self._draw_shadow_text(790, 34, text="🃏 Free Play [Esc]", fill="#ffd700", font=get_header_font(16))
+        self.canvas.create_rectangle(*fp_box, fill="#1b432c", outline="#ffd700", width=2 * k)
+        self._draw_shadow_text(909, 34, text="🃏 Free Play [Esc]", fill="#ffd700", font=get_badge_font(16))
 
-        col_xs = [96, 268, 440, 612, 784]
+        col_xs = [108, 304, 500, 696, 892]
         tier_headers = [
             "TIER 1: BASICS",
             "TIER 2: FORK A/B",
@@ -385,8 +460,8 @@ class BootcampCanvasRenderer:
             "TIER 5: MIT SPREAD",
         ]
         for cx, h_txt in zip(col_xs, tier_headers):
-            self.canvas.create_rectangle(cx - 78, 60, cx + 78, 82, fill="#0c2617", outline="#2e6b47", width=1)
-            self._draw_shadow_text(cx, 71, text=h_txt, fill="#80cbc4", font=get_header_font(15))
+            self.canvas.create_rectangle(s(cx - 88), s(60), s(cx + 88), s(82), fill="#0c2617", outline="#2e6b47", width=k)
+            self._draw_shadow_text(cx, 71, text=h_txt, fill="#80cbc4", font=get_badge_font(16))
 
         node_centers: Dict[str, Tuple[int, int]] = {}
         row_ys = {
@@ -400,7 +475,7 @@ class BootcampCanvasRenderer:
         for spec in dag.get_all_nodes():
             node_centers[spec.node_id] = (col_xs[spec.col_idx], row_ys[spec.row_slot])
 
-        or_cx, or_cy = 564, 225
+        or_cx, or_cy = 638, 225
         or_lit = bp.lectures["L4"].unlocked
 
         edges = [
@@ -422,27 +497,30 @@ class BootcampCanvasRenderer:
         ]
         for (x1, y1), (x2, y2), is_lit in edges:
             line_col = "#ffd700" if is_lit else "#2e5e41"
-            dash_pat = () if is_lit else (4, 4)
-            self.canvas.create_line(x1, y1, x2, y2, fill=line_col, width=3 if is_lit else 2, dash=dash_pat)
+            dash_pat = () if is_lit else (4 * k, 4 * k)
+            self.canvas.create_line(
+                s(x1), s(y1), s(x2), s(y2),
+                fill=line_col, width=(3 if is_lit else 2) * k, dash=dash_pat,
+            )
 
         self.canvas.create_oval(
-            or_cx - 19, or_cy - 13, or_cx + 19, or_cy + 13,
+            s(or_cx - 20), s(or_cy - 13), s(or_cx + 20), s(or_cy + 13),
             fill="#2b170e" if or_lit else "#12241a",
             outline="#ffd700" if or_lit else "#607d8b",
-            width=2,
+            width=2 * k,
         )
         self._draw_shadow_text(
             or_cx, or_cy,
             text="OR",
             fill="#ffd700" if or_lit else "#b0bec5",
-            font=get_header_font(15),
+            font=get_badge_font(16),
         )
 
-        nw, nh = 158, 60
+        nw, nh = 176, 60
         for spec in dag.get_all_nodes():
             cx, cy = node_centers[spec.node_id]
             x1, y1, x2, y2 = cx - nw // 2, cy - nh // 2, cx + nw // 2, cy + nh // 2
-            self.node_hit_boxes[spec.node_id] = (x1, y1, x2, y2)
+            self.node_hit_boxes[spec.node_id] = (s(x1), s(y1), s(x2), s(y2))
 
             is_focused = (spec.node_id == focused_node_id)
             if spec.node_type == "lecture":
@@ -454,26 +532,29 @@ class BootcampCanvasRenderer:
                 badge_txt = "✔" if completed else ("OPEN" if unlocked else "LOCK")
                 badge_col = "#00e676" if completed else ("#ffd700" if unlocked else "#78909c")
 
-                self.canvas.create_rectangle(x1, y1, x2, y2, fill=bg_col, outline=border_col, width=3 if is_focused else 2)
-                self._draw_shadow_text(
-                    x1 + 7, y1 + 17,
-                    text=spec.title,
-                    anchor="w",
-                    fill="#ffffff" if unlocked else "#90a4ae",
-                    font=get_header_font(15),
+                self.canvas.create_rectangle(
+                    s(x1), s(y1), s(x2), s(y2),
+                    fill=bg_col, outline=border_col, width=(3 if is_focused else 2) * k,
                 )
                 self._draw_shadow_text(
-                    x2 - 6, y1 + 17,
+                    x1 + 8, y1 + 17,
+                    text=spec.title,
+                    anchor="w",
+                    fill="#ffffff" if unlocked else "#b0bec5",
+                    font=get_badge_font(16),
+                )
+                self._draw_shadow_text(
+                    x2 - 7, y1 + 17,
                     text=badge_txt,
                     anchor="e",
                     fill=badge_col,
-                    font=get_badge_font(15),
+                    font=get_badge_font(16),
                 )
                 self._draw_shadow_text(
-                    x1 + 7, y1 + 42,
+                    x1 + 8, y1 + 42,
                     text=spec.subtitle,
                     anchor="w",
-                    fill="#cfd8dc" if unlocked else "#607d8b",
+                    fill="#cfd8dc" if unlocked else "#90a4ae",
                     font=get_body_font(16),
                 )
             else:
@@ -481,21 +562,24 @@ class BootcampCanvasRenderer:
                 unlocked = rec_s.unlocked
                 bg_col = "#2b170e" if unlocked else "#182024"
                 border_col = "#00e5ff" if is_focused else ("#ffd700" if rec_s.passed else ("#d4af37" if unlocked else "#455a64"))
-                self.canvas.create_rectangle(x1, y1, x2, y2, fill=bg_col, outline=border_col, width=3 if is_focused else 2)
+                self.canvas.create_rectangle(
+                    s(x1), s(y1), s(x2), s(y2),
+                    fill=bg_col, outline=border_col, width=(3 if is_focused else 2) * k,
+                )
 
                 self._draw_shadow_text(
-                    x1 + 7, y1 + 15,
+                    x1 + 8, y1 + 15,
                     text=spec.title,
                     anchor="w",
-                    fill="#ffd700" if unlocked else "#90a4ae",
-                    font=get_header_font(15),
+                    fill="#ffd700" if unlocked else "#b0bec5",
+                    font=get_badge_font(16),
                 )
                 sub_str = f"Best: {rec_s.best_accuracy_pct:.0f}% ({rec_s.best_grade})" if rec_s.best_grade else spec.subtitle
                 self._draw_shadow_text(
-                    x1 + 7, y1 + 43,
+                    x1 + 8, y1 + 43,
                     text=sub_str,
                     anchor="w",
-                    fill="#f0f4f8" if unlocked else "#607d8b",
+                    fill="#f0f4f8" if unlocked else "#90a4ae",
                     font=get_body_font(16),
                 )
 
@@ -510,11 +594,11 @@ class BootcampCanvasRenderer:
                 else:
                     lock_txt = "DRILL" if unlocked else "LOCK"
                     self._draw_shadow_text(
-                        x2 - 6, y1 + 17,
+                        x2 - 7, y1 + 17,
                         text=lock_txt,
                         anchor="e",
                         fill="#ffb300" if unlocked else "#78909c",
-                        font=get_badge_font(15),
+                        font=get_badge_font(16),
                     )
 
     def draw_lecture_slide(
@@ -527,24 +611,26 @@ class BootcampCanvasRenderer:
         practice_feedback_text: str,
     ) -> None:
         """Renders an interactive Show & Tell lecture slide on the green baize felt without mutating state."""
+        s = self._s
+        k = self.art_scale
         self._draw_felt_backdrop(
             f"📖 {slide.title}",
             f"Slide {slide_idx + 1} of {total_slides}  |  Paired: {spec.paired_id}",
-            right_reserved_px=152,
+            right_reserved_px=154,
         )
-        ab_box = (722, 18, 858, 50)
+        ab_box = (s(840), s(18), s(978), s(50))
         self.action_hit_boxes["abandon_stage"] = ab_box
-        self.canvas.create_rectangle(*ab_box, fill="#1b432c", outline="#ffd700", width=2)
-        self._draw_shadow_text(790, 34, text="🗺 Map [Esc]", fill="#ffd700", font=get_header_font(16))
+        self.canvas.create_rectangle(*ab_box, fill="#1b432c", outline="#ffd700", width=2 * k)
+        self._draw_shadow_text(909, 34, text="🗺 Map [Esc]", fill="#ffd700", font=get_badge_font(16))
 
         if slide.formula_banner:
             self._make_panel(
-                x=44, y=62, width=792, height=42,
+                x=44, y=62, width=912, height=42,
                 bg="#1b120c", border="#d4af37", inner_hi="#3d271d", inner_sh="#0c0704",
                 rivet_color="#ffd700", scale=2,
             )
             self._draw_shadow_text(
-                440, 83,
+                500, 83,
                 text=slide.formula_banner,
                 fill="#ffd700",
                 shadow="#090503",
@@ -557,41 +643,44 @@ class BootcampCanvasRenderer:
             if card_groups:
                 self._draw_lecture_card_groups(cards, card_groups)
             else:
-                spacing = min(160, 680 // max(1, len(cards)))
-                start_x = 440 - ((len(cards) - 1) * spacing) // 2
+                spacing = min(175, 760 // max(1, len(cards)))
+                start_x = 500 - ((len(cards) - 1) * spacing) // 2
                 cy = 180
                 for idx, (rk, st, badge_txt) in enumerate(cards):
                     cx = start_x + idx * spacing
                     self._draw_card_sprite(cx, cy, rk, st)
                     badge_col = "#00e676" if "+" in badge_txt else ("#ff6b6b" if "-" in badge_txt else "#ffd700")
                     pill_bg = "#0d2b1a" if "+" in badge_txt else ("#331414" if "-" in badge_txt else "#1c2826")
-                    self.canvas.create_rectangle(cx - 56, cy + 58, cx + 56, cy + 84, fill=pill_bg, outline=badge_col, width=2)
-                    self._draw_shadow_text(cx, cy + 71, text=badge_txt, fill=badge_col, font=get_header_font(16))
+                    self.canvas.create_rectangle(
+                        s(cx - 58), s(cy + 58), s(cx + 58), s(cy + 84),
+                        fill=pill_bg, outline=badge_col, width=2 * k,
+                    )
+                    self._draw_shadow_text(cx, cy + 71, text=badge_txt, fill=badge_col, font=get_badge_font(16))
 
         self._make_panel(
-            x=36, y=276, width=808, height=98,
+            x=36, y=276, width=928, height=98,
             bg="#0c2617", border="#d4af37", inner_hi="#1f4d30", inner_sh="#06140b",
             rivet_color="#d4af37", scale=2,
         )
         caption_y = 308 if slide.practice_question else 325
         self._draw_shadow_text(
-            440, caption_y,
+            500, caption_y,
             text=slide.caption,
             fill="#f0f4f8",
             justify="center",
-            width=760,
-            font=get_body_font(20),
+            width=880,
+            font=get_header_font(18),
         )
 
         if slide.practice_question:
             q_txt = practice_feedback_text or f"PRACTICE CHECK: {slide.practice_question}  (Keys [1]–[{len(slide.practice_choices)}])"
             q_col = "#00e676" if practice_answered is True else ("#ff8a80" if practice_answered is False else "#ffd700")
             self._draw_shadow_text(
-                440, 350,
+                500, 350,
                 text=q_txt,
                 fill=q_col,
-                width=760,
-                font=get_header_font(16),
+                width=880,
+                font=get_badge_font(16),
             )
 
     def _draw_lecture_card_groups(
@@ -599,26 +688,23 @@ class BootcampCanvasRenderer:
         cards: Tuple[Tuple[str, str, str], ...],
         card_groups: Tuple[Tuple[str, Tuple[int, ...]], ...],
     ) -> None:
-        """
-        Renders lecture cards grouped by seat/hand inside recessed baize seat wells (`seat_group_box`),
-        keeping cards from the same hand tightly paired (`c_spacing = 78px`) and distinct seats
-        widely separated across the felt (`group_gap = 68px..76px`).
-        """
+        s = self._s
+        k = self.art_scale
         c_spacing = 78
-        box_ws = [max(124, len(g_indices) * c_spacing + 24) for _, g_indices in card_groups]
-        group_gap = 68 if len(card_groups) >= 3 else 76
+        box_ws = [max(132, len(g_indices) * c_spacing + 28) for _, g_indices in card_groups]
+        group_gap = 86 if len(card_groups) >= 3 else 96
         total_w = sum(box_ws) + group_gap * max(0, len(card_groups) - 1)
-        cur_x = 440 - total_w // 2
+        cur_x = 500 - total_w // 2
         cy = 185
 
         for (g_label, g_indices), box_w in zip(card_groups, box_ws):
             gx = cur_x + box_w // 2
             self.canvas.create_rectangle(
-                gx - box_w // 2, 108, gx + box_w // 2, 270,
-                fill="#0c3b20", outline="#2e7d32", width=1, dash=(3, 3),
+                s(gx - box_w // 2), s(108), s(gx + box_w // 2), s(270),
+                fill="#0c3b20", outline="#2e7d32", width=k, dash=(3 * k, 3 * k),
                 tags="seat_group_box",
             )
-            self._draw_shadow_text(gx, 121, text=g_label, fill="#80cbc4", font=get_header_font(15))
+            self._draw_shadow_text(gx, 121, text=g_label, fill="#80cbc4", font=get_badge_font(16))
             c_start = gx - ((len(g_indices) - 1) * c_spacing) // 2
             for pos_idx, card_idx in enumerate(g_indices):
                 rk, st, badge_txt = cards[card_idx]
@@ -627,10 +713,10 @@ class BootcampCanvasRenderer:
                 badge_col = "#00e676" if "+" in badge_txt else ("#ff6b6b" if "-" in badge_txt else "#ffd700")
                 pill_bg = "#0d2b1a" if "+" in badge_txt else ("#331414" if "-" in badge_txt else "#1c2826")
                 self.canvas.create_rectangle(
-                    cx - 36, 242, cx + 36, 265,
-                    fill=pill_bg, outline=badge_col, width=2,
+                    s(cx - 36), s(242), s(cx + 36), s(265),
+                    fill=pill_bg, outline=badge_col, width=2 * k,
                 )
-                self._draw_shadow_text(cx, 253, text=badge_txt, fill=badge_col, font=get_header_font(15))
+                self._draw_shadow_text(cx, 253, text=badge_txt, fill=badge_col, font=get_badge_font(16))
             cur_x += box_w + group_gap
 
     def draw_challenge_prompt(
@@ -642,23 +728,25 @@ class BootcampCanvasRenderer:
         total_prompts: int,
     ) -> None:
         """Renders the active Challenge prompt, stage-specific felt visualization, and bottom quick-key plaque."""
+        s = self._s
+        k = self.art_scale
         self._draw_felt_backdrop(
             f"⚡ {spec.title} ({prompt.prompt_index + 1}/{total_prompts})",
             f"Streak: {streak} 🔥 | Acc: {accuracy_pct:.0f}% | Par: {spec.par_ms / 1000.0:.1f}s",
-            right_reserved_px=164,
+            right_reserved_px=168,
         )
-        ab_box = (712, 18, 858, 50)
+        ab_box = (s(830), s(18), s(978), s(50))
         self.action_hit_boxes["abandon_stage"] = ab_box
-        self.canvas.create_rectangle(*ab_box, fill="#3e1616", outline="#ff5252", width=2)
-        self._draw_shadow_text(785, 34, text="✖ Abandon [Esc]", fill="#ffd700", font=get_header_font(16))
+        self.canvas.create_rectangle(*ab_box, fill="#3e1616", outline="#ff5252", width=2 * k)
+        self._draw_shadow_text(904, 34, text="✖ Abandon [Esc]", fill="#ffd700", font=get_badge_font(16))
 
         self._make_panel(
-            x=36, y=60, width=808, height=58,
+            x=36, y=60, width=928, height=58,
             bg="#1b120c", border="#d4af37", inner_hi="#3d271d", inner_sh="#0c0704",
             rivet_color="#ffd700", scale=2,
         )
-        self._draw_shadow_text(440, 78, text=prompt.headline, fill="#ffd700", shadow="#090503", font=get_header_font(18))
-        self._draw_shadow_text(440, 102, text=prompt.subheadline, fill="#e0f2f1", shadow="#090503", font=get_body_font(18))
+        self._draw_shadow_text(500, 78, text=prompt.headline, fill="#ffd700", shadow="#090503", font=get_header_font(18))
+        self._draw_shadow_text(500, 102, text=prompt.subheadline, fill="#e0f2f1", shadow="#090503", font=get_body_font(16))
 
         cards = prompt.cards
         if spec.node_id == "C3A" and len(cards) == 5:
@@ -675,117 +763,131 @@ class BootcampCanvasRenderer:
             self._draw_standard_card_fan(cards)
 
         self._make_panel(
-            x=36, y=286, width=808, height=86,
+            x=36, y=286, width=928, height=86,
             bg="#0c2617", border="#2e7d32", inner_hi="#1f4d30", inner_sh="#06140b",
             rivet_color="#d4af37", scale=2,
         )
         choices_preview = "   •   ".join(f"[{i + 1}] {ch}" for i, ch in enumerate(prompt.choices))
         self._draw_shadow_text(
-            440, 314,
+            500, 314,
             text=f"QUICK KEYS:   {choices_preview}",
             fill="#ffd700",
-            font=get_header_font(16),
+            font=get_badge_font(16),
         )
         self._draw_shadow_text(
-            440, 346,
+            500, 346,
             text=f"Press key [1]–[{len(prompt.choices)}] for instant response or click a button on the mahogany rail below  ([Esc] Map)",
             fill="#b2dfdb",
-            font=get_body_font(18),
+            font=get_body_font(16),
         )
 
     def _draw_c2a_hand_group(self, cards: Tuple[Tuple[str, str], ...]) -> None:
-        gx = 440
-        box_w = 180
+        s = self._s
+        k = self.art_scale
+        gx = 500
+        box_w = 186
         self.canvas.create_rectangle(
-            gx - box_w // 2, 124, gx + box_w // 2, 274,
-            fill="#0c3b20", outline="#2e7d32", width=1, dash=(3, 3),
+            s(gx - box_w // 2), s(124), s(gx + box_w // 2), s(274),
+            fill="#0c3b20", outline="#2e7d32", width=k, dash=(3 * k, 3 * k),
             tags="seat_group_box",
         )
-        self._draw_shadow_text(gx, 138, text="PLAYER HAND", fill="#80cbc4", font=get_header_font(15))
+        self._draw_shadow_text(gx, 138, text="PLAYER HAND", fill="#80cbc4", font=get_badge_font(16))
         c_spacing = 78
         c_start = gx - ((len(cards) - 1) * c_spacing) // 2
         for c_idx, (rk, st) in enumerate(cards):
             self._draw_card_sprite(c_start + c_idx * c_spacing, 210, rk, st)
 
     def _draw_c3a_table_sweep_groups(self, cards: Tuple[Tuple[str, str], ...]) -> None:
+        s = self._s
+        k = self.art_scale
         group_specs = [
-            ("SEAT 1 HAND", [cards[0], cards[1]], 190),
-            ("SEAT 2 HAND", [cards[2], cards[3]], 455),
-            ("DEALER UPCARD", [cards[4]], 700),
+            ("SEAT 1 HAND", [cards[0], cards[1]], 220),
+            ("SEAT 2 HAND", [cards[2], cards[3]], 515),
+            ("DEALER UPCARD", [cards[4]], 790),
         ]
         for g_label, g_cards, gx in group_specs:
-            box_w = 180 if len(g_cards) == 2 else 118
+            box_w = 186 if len(g_cards) == 2 else 128
             self.canvas.create_rectangle(
-                gx - box_w // 2, 124, gx + box_w // 2, 274,
-                fill="#0c3b20", outline="#2e7d32", width=1, dash=(3, 3),
+                s(gx - box_w // 2), s(124), s(gx + box_w // 2), s(274),
+                fill="#0c3b20", outline="#2e7d32", width=k, dash=(3 * k, 3 * k),
                 tags="seat_group_box",
             )
-            self._draw_shadow_text(gx, 138, text=g_label, fill="#80cbc4", font=get_header_font(15))
+            self._draw_shadow_text(gx, 138, text=g_label, fill="#80cbc4", font=get_badge_font(16))
             c_spacing = 78
             c_start = gx - ((len(g_cards) - 1) * c_spacing) // 2
             for c_idx, (rk, st) in enumerate(g_cards):
                 self._draw_card_sprite(c_start + c_idx * c_spacing, 210, rk, st)
 
     def _draw_c3b_dealer_runout_group(self, cards: Tuple[Tuple[str, str], ...]) -> None:
-        gx = 440
-        box_w = 264
+        s = self._s
+        k = self.art_scale
+        gx = 500
+        box_w = 276
         self.canvas.create_rectangle(
-            gx - box_w // 2, 124, gx + box_w // 2, 274,
-            fill="#0c3b20", outline="#2e7d32", width=1, dash=(3, 3),
+            s(gx - box_w // 2), s(124), s(gx + box_w // 2), s(274),
+            fill="#0c3b20", outline="#2e7d32", width=k, dash=(3 * k, 3 * k),
             tags="seat_group_box",
         )
-        self._draw_shadow_text(gx, 138, text="DEALER RUNOUT (UPCARD + HOLE + HIT)", fill="#80cbc4", font=get_header_font(15))
+        self._draw_shadow_text(gx, 138, text="DEALER RUNOUT (UPCARD + HOLE + HIT)", fill="#80cbc4", font=get_badge_font(16))
         c_spacing = 78
         c_start = gx - ((len(cards) - 1) * c_spacing) // 2
         for c_idx, (rk, st) in enumerate(cards):
             self._draw_card_sprite(c_start + c_idx * c_spacing, 210, rk, st)
 
     def _draw_c4_shoe_calibration_dashboard(self, prompt: BootcampPrompt) -> None:
+        s = self._s
+        k = self.art_scale
         self._make_panel(
-            x=110, y=126, width=660, height=150,
+            x=130, y=126, width=740, height=150,
             bg="#102419", border="#d4af37", inner_hi="#214732", inner_sh="#07120c",
             rivet_color="#ffd700", scale=2,
         )
         dealt_decks = max(0.0, 6.0 - prompt.decks_remaining)
         rem_ratio = max(0.0, min(1.0, prompt.decks_remaining / 6.0))
-        bar_x1, bar_y1, bar_x2, bar_y2 = 165, 162, 255, 252
-        self.canvas.create_rectangle(bar_x1, bar_y1, bar_x2, bar_y2, fill="#08140d", outline="#d4af37", width=2)
+        bar_x1, bar_y1, bar_x2, bar_y2 = 190, 162, 280, 252
+        self.canvas.create_rectangle(
+            s(bar_x1), s(bar_y1), s(bar_x2), s(bar_y2),
+            fill="#08140d", outline="#d4af37", width=2 * k,
+        )
         fill_h = int((bar_y2 - bar_y1 - 4) * rem_ratio)
         if fill_h > 0:
             self.canvas.create_rectangle(
-                bar_x1 + 2, bar_y2 - 2 - fill_h, bar_x2 - 2, bar_y2 - 2,
-                fill="#1e824c", outline="#00e676", width=1,
+                s(bar_x1 + 2), s(bar_y2 - 2 - fill_h), s(bar_x2 - 2), s(bar_y2 - 2),
+                fill="#1e824c", outline="#00e676", width=k,
             )
         for d_tick in range(1, 6):
             ty = bar_y2 - int((bar_y2 - bar_y1) * (d_tick / 6.0))
-            self.canvas.create_line(bar_x1, ty, bar_x2, ty, fill="#d4af37", width=1, dash=(2, 2))
-        self._draw_shadow_text(210, 146, text="6-DECK SHOE", fill="#ffd700", font=get_header_font(15))
-        self._draw_shadow_text(210, 264, text=f"{prompt.decks_remaining:.1f} Decks Left", fill="#80cbc4", font=get_body_font(16))
+            self.canvas.create_line(
+                s(bar_x1), s(ty), s(bar_x2), s(ty),
+                fill="#d4af37", width=k, dash=(2 * k, 2 * k),
+            )
+        self._draw_shadow_text(235, 146, text="6-DECK SHOE", fill="#ffd700", font=get_badge_font(16))
+        self._draw_shadow_text(235, 264, text=f"{prompt.decks_remaining:.1f} Decks Left", fill="#80cbc4", font=get_body_font(16))
 
         rc_col = "#00e676" if prompt.running_count_before >= 0 else "#ff6b6b"
         self._draw_shadow_text(
-            320, 160,
+            350, 160,
             text=f"RUNNING COUNT:  {prompt.running_count_before:+d}",
             anchor="w",
             fill=rc_col,
-            font=get_title_font(24),
+            font=get_display_font(32),
         )
         self._draw_shadow_text(
-            320, 196,
+            350, 198,
             text=f"SHOE REMAINING:  {prompt.decks_remaining:.1f} / 6.0 Decks   (Discard: {dealt_decks:.1f} Decks)",
             anchor="w",
             fill="#ffffff",
-            font=get_header_font(16),
+            font=get_badge_font(16),
         )
         self._draw_shadow_text(
-            320, 230,
+            350, 230,
             text=f"FORMULA:  True Count = {prompt.running_count_before:+d} ÷ {prompt.decks_remaining:.1f} Decks",
             anchor="w",
             fill="#ffd700",
-            font=get_header_font(16),
+            font=get_badge_font(16),
         )
         self._draw_shadow_text(
-            320, 256,
+            350, 256,
             text="Divide Running Count by Decks Remaining to calibrate your True Count.",
             anchor="w",
             fill="#b2dfdb",
@@ -793,40 +895,40 @@ class BootcampCanvasRenderer:
         )
 
     def _draw_c5_pit_boss_telemetry(self, cards: Tuple[Tuple[str, str], ...], prompt: BootcampPrompt) -> None:
-        c_spacing = 115
-        c_start = 150
+        c_spacing = 125
+        c_start = 175
         for idx, (rk, st) in enumerate(cards):
             self._draw_card_sprite(c_start + idx * c_spacing, 200, rk, st)
 
         self._make_panel(
-            x=490, y=130, width=354, height=142,
+            x=540, y=130, width=414, height=142,
             bg="#102419", border="#d4af37", inner_hi="#214732", inner_sh="#07120c",
             rivet_color="#ffd700", scale=2,
         )
-        self._draw_shadow_text(667, 152, text="SHOE TELEMETRY & UNIT RAMP", fill="#ffd700", font=get_header_font(16))
+        self._draw_shadow_text(747, 152, text="SHOE TELEMETRY & UNIT RAMP", fill="#ffd700", font=get_badge_font(16))
         rc_col = "#00e676" if prompt.running_count_before >= 0 else "#ff6b6b"
         self._draw_shadow_text(
-            667, 182,
+            747, 182,
             text=f"Running Count: {prompt.running_count_before:+d}   |   Decks Left: {prompt.decks_remaining:.1f}",
             fill=rc_col,
             font=get_header_font(18),
         )
         self._draw_shadow_text(
-            667, 214,
+            747, 214,
             text="MIT Spread:  TC<=+1: 1u ($25)  |  +2: 2u ($50)",
             fill="#e0f2f1",
             font=get_body_font(16),
         )
         self._draw_shadow_text(
-            667, 240,
+            747, 240,
             text="TC +3: 4u ($100)  |  +4: 8u ($200)  |  >=+5: 12u ($300)",
             fill="#ffd700",
             font=get_body_font(16),
         )
 
     def _draw_standard_card_fan(self, cards: Tuple[Tuple[str, str], ...]) -> None:
-        spacing = min(145, 620 // max(1, len(cards)))
-        start_x = 440 - ((len(cards) - 1) * spacing) // 2
+        spacing = min(155, 700 // max(1, len(cards)))
+        start_x = 500 - ((len(cards) - 1) * spacing) // 2
         for idx, (rk, st) in enumerate(cards):
             self._draw_card_sprite(start_x + idx * spacing, 200, rk, st)
 
@@ -834,7 +936,7 @@ class BootcampCanvasRenderer:
         """Draws the 2.5D instant feedback plaque over the bottom strip of the Challenge view."""
         is_ok = outcome["is_correct"]
         self._make_panel(
-            x=36, y=286, width=808, height=86,
+            x=36, y=286, width=928, height=86,
             bg="#123822" if is_ok else "#3e1616",
             border="#00e676" if is_ok else "#ff5252",
             inner_hi="#256640" if is_ok else "#6e2828",
@@ -848,16 +950,16 @@ class BootcampCanvasRenderer:
             else f"✖ INCORRECT  (You chose: {selected_answer}   |   Correct: {outcome['correct_answer']})"
         )
         self._draw_shadow_text(
-            440, 314,
+            500, 314,
             text=f"{verdict}   [{outcome['response_ms'] / 1000.0:.2f}s]",
             fill="#00e676" if is_ok else "#ff8a80",
             font=get_header_font(18),
         )
         self._draw_shadow_text(
-            440, 346,
+            500, 346,
             text=outcome["explanation"],
             fill="#ffffff",
-            font=get_body_font(18),
+            font=get_body_font(16),
         )
 
     def draw_report_card(self, summary: Dict[str, Any], newly_unlocked: List[str]) -> None:
@@ -870,40 +972,42 @@ class BootcampCanvasRenderer:
             "Pass: Grade B (80%+)  |  S-Rank: 100% within Par",
         )
         self._make_panel(
-            x=70, y=66, width=740, height=304,
+            x=70, y=66, width=860, height=304,
             bg="#1b120c", border="#d4af37", inner_hi="#422a1d", inner_sh="#0c0704",
             rivet_color="#ffd700", scale=2,
         )
 
         self._draw_shadow_text(
-            210, 118,
+            235, 118,
             text=f"GRADE {grade}",
             fill="#ffd700" if passed else "#ff8a80",
             shadow="#090503",
-            font=get_title_font(24),
+            font=get_title_font(32),
         )
         self._draw_grade_medallion(
-            x=210,
+            x=235,
             y=194,
             grade=grade,
             scale=2.2,
         )
         self._draw_shadow_text(
-            210, 272,
+            235, 272,
             text="✔ STAGE PASSED" if passed else "✖ NEEDS 80%+",
             fill="#00e676" if passed else "#ff5252",
             shadow="#090503",
             font=get_header_font(18),
         )
         self._draw_shadow_text(
-            210, 304,
+            235, 304,
             text="Mastery Unlocked!" if passed else "Retry or Read Lecture",
             fill="#b2dfdb",
             shadow="#090503",
-            font=get_body_font(18),
+            font=get_body_font(16),
         )
 
-        self.canvas.create_line(335, 92, 335, 344, fill="#d4af37", width=2)
+        s = self._s
+        k = self.art_scale
+        self.canvas.create_line(s(375), s(92), s(375), s(344), fill="#d4af37", width=2 * k)
 
         formatted_unlocks = [
             "🎓 Professor Edward (Dealer)" if u == "professor" else u
@@ -919,17 +1023,17 @@ class BootcampCanvasRenderer:
         for idx, (lbl_txt, val_txt, val_col) in enumerate(metric_rows):
             ry = 116 + idx * 46
             if idx > 0:
-                self.canvas.create_line(365, ry - 23, 765, ry - 23, fill="#2e1d14", width=1)
+                self.canvas.create_line(s(405), s(ry - 23), s(885), s(ry - 23), fill="#2e1d14", width=k)
             self._draw_shadow_text(
-                365, ry,
+                405, ry,
                 text=lbl_txt,
                 anchor="w",
                 fill="#cfd8dc",
                 shadow="#090503",
-                font=get_header_font(16),
+                font=get_badge_font(16),
             )
             self._draw_shadow_text(
-                765, ry,
+                885, ry,
                 text=val_txt,
                 anchor="e",
                 fill=val_col,
@@ -939,15 +1043,15 @@ class BootcampCanvasRenderer:
 
 
 # ============================================================================
-# Controller Layer: CountingBootcampFrame (row=3 Host Frame & State Controller)
+# Controller Layer: CountingBootcampFrame (row=2 Host Frame & State Controller)
 # ============================================================================
 
 class CountingBootcampFrame(tkinter.Frame):
     """
-    MVC Controller for the MIT Hi-Lo Counting Bootcamp mounted at `row=3` of `BlackjackApp`
-    while `DealerStageCanvas` (`row=1`) remains visible above the horizon rail (`row=2`).
-    Delegates all 2.5D baize drawing to `self.renderer` (`BootcampCanvasRenderer`) and
-    button rendering to `self.dock` (`BootcampControlDock`).
+    MVC Controller for the MIT Hi-Lo Counting Bootcamp mounted at `row=2` of `BlackjackApp`
+    while `DealerStageCanvas` (`row=0`) remains visible above the horizon rail (`row=1`).
+    Centers an integer-scaled `880x390` (`1x`) or `1760x780` (`2x`) 2.5D baize board
+    inside a `#061c0e` salon frame and delegates button rendering to `BootcampControlDock`.
     """
 
     CANVAS_W = BootcampCanvasRenderer.CANVAS_W
@@ -958,9 +1062,10 @@ class CountingBootcampFrame(tkinter.Frame):
         master: tkinter.Widget,
         app: Any,
         dock: BootcampControlDock,
+        display_profile: Optional[Any] = None,
         **kwargs: Any,
     ) -> None:
-        super().__init__(master, background=TABLE_BACKGROUND_COLOR, **kwargs)
+        super().__init__(master, background="#061c0e", borderwidth=0, highlightthickness=0, **kwargs)
         self.app = app
         self.dock = dock
         self.dag = BootcampCurriculumDAG()
@@ -978,6 +1083,7 @@ class CountingBootcampFrame(tkinter.Frame):
         self.last_outcome: Optional[Dict[str, Any]] = None
         self.last_report_summary: Optional[Dict[str, Any]] = None
         self.last_unlock_result: Optional[Dict[str, Any]] = None
+        self._bootcamp_card_cache: Dict[Tuple[str, str, int], Any] = {}
 
         # Tracked Tkinter .after() timers
         self._stream_timer_id: Optional[str] = None
@@ -985,25 +1091,67 @@ class CountingBootcampFrame(tkinter.Frame):
         self._lecture_anim_timer_id: Optional[str] = None
         self._deal_audio_timer_ids: List[str] = []
         self._hovered_target: Optional[str] = None
+        prof = display_profile if display_profile is not None else getattr(app, "display_profile", None)
+        art_scale = max(1, int(getattr(prof, "art_scale", 1)))
 
         self.canvas = tkinter.Canvas(
             self,
-            width=self.CANVAS_W,
-            height=self.CANVAS_H,
+            width=self.CANVAS_W * art_scale,
+            height=self.CANVAS_H * art_scale,
             background=TABLE_BACKGROUND_COLOR,
             highlightthickness=0,
             borderwidth=0,
         )
-        self.canvas.pack(fill="both", expand=True)
+        self.canvas.pack(expand=True)
 
         self.renderer = BootcampCanvasRenderer(
             canvas=self.canvas,
             card_lookup_fn=self._get_card_image,
             banner_sync_fn=self._sync_top_academy_banner,
+            art_scale=art_scale,
         )
 
         self.canvas.bind("<Button-1>", self._on_canvas_click)
         self.canvas.bind("<Motion>", self._on_canvas_motion)
+
+    def set_display_profile(self, profile: Any) -> None:
+        """Re-scales the Bootcamp board (`880x390` at `1x`, `1760x780` at `2x`) and dock live without resetting drill state."""
+        art_scale = max(1, int(getattr(profile, "art_scale", 1)))
+        self.renderer.art_scale = art_scale
+        self.canvas.configure(
+            width=self.CANVAS_W * art_scale,
+            height=self.CANVAS_H * art_scale,
+        )
+        self.dock.set_display_profile(profile)
+        if self.current_view == "teacher_intro":
+            self.renderer.draw_teacher_intro()
+        elif self.current_view == "map":
+            self.renderer.draw_dag_map(self.dag, self.app.save_manager.data.bootcamp, self.focused_node_id)
+        elif self.current_view == "lecture":
+            self._redraw_current_lecture_slide()
+        elif self.current_view == "challenge" and self.active_session is not None:
+            prompt = self.active_session.get_current_prompt()
+            if prompt is not None:
+                acc_now = (
+                    100.0 * self.active_session.correct_count / max(1, prompt.prompt_index)
+                    if prompt.prompt_index > 0
+                    else 100.0
+                )
+                self.renderer.draw_challenge_prompt(
+                    prompt=prompt,
+                    spec=self.active_session.node_spec,
+                    streak=self.active_session.streak,
+                    accuracy_pct=acc_now,
+                    total_prompts=len(self.active_session.prompts),
+                )
+                if self.awaiting_feedback_advance and self.last_outcome is not None:
+                    self.renderer.draw_challenge_feedback(
+                        self.last_outcome,
+                        str(self.last_outcome.get("selected_answer", "")),
+                    )
+        elif self.current_view == "report_card" and self.last_report_summary is not None:
+            newly = (self.last_unlock_result or {}).get("newly_unlocked", [])
+            self.renderer.draw_report_card(self.last_report_summary, newly)
 
     @property
     def _node_hit_boxes(self) -> Dict[str, Tuple[int, int, int, int]]:
@@ -1071,7 +1219,7 @@ class CountingBootcampFrame(tkinter.Frame):
                 pass
 
     def _dealer_coach_say(self, text: str, gesture: str = "nod", queue_if_busy: bool = False) -> None:
-        """Commands the live `DealerActor` on `row=1` to speak in the stage dialogue bubble with typewriter voice and emote."""
+        """Commands the live `DealerActor` on `row=0` to speak in the stage dialogue bubble with typewriter voice and emote."""
         try:
             if hasattr(self.app, "set_dealer_speech"):
                 self.app.set_dealer_speech(text, stream=True, queue_if_busy=queue_if_busy)
@@ -1101,26 +1249,65 @@ class CountingBootcampFrame(tkinter.Frame):
         return False
 
     def _sync_top_academy_banner(self) -> None:
-        """Updates the top scoreboard banner (`bankroll_label`) with live Academy telemetry while Bootcamp is active."""
+        """Updates the left stage wing (`bankroll_label`) with compact Academy telemetry while Bootcamp is active."""
         try:
             if hasattr(self.app, "bankroll_label") and hasattr(self.app, "save_manager"):
                 bp = self.app.save_manager.data.bootcamp
-                passed_c = sum(1 for s in bp.stages.values() if s.passed)
+                passed_c = sum(1 for stg in bp.stages.values() if stg.passed)
                 lect_c = sum(1 for l in bp.lectures.values() if l.completed)
-                badge = "🏆 MIT GRADUATE" if bp.graduated else f"STAGES MASTERED: {passed_c}/7  |  LECTURES: {lect_c}/7"
+                if hasattr(self.app, "ledger_header_label"):
+                    self.app.ledger_header_label.configure(text="MIT ACADEMY")
+                badge = "🏆 GRADUATE" if bp.graduated else f"DRILLS: {passed_c}/7\nLECT: {lect_c}/7"
                 self.app.bankroll_label.configure(
-                    text=f"🎓 MIT HI-LO ACADEMY   |   {badge}",
+                    text=badge,
                     fg="#ffd700",
                 )
         except Exception:
             pass
 
     def _get_card_image(self, rank: str, suit: str) -> Optional[Any]:
-        """Looks up a loaded card face `PhotoImage` from `self.app.all_cards`."""
-        rank_norm = str(rank).lower()
-        suit_norm = str(suit).lower()
+        """
+        Resolves a card face `PhotoImage` scaled strictly by integer `art_scale` (`74x107` at `1x`,
+        `148x214` at `2x`), preventing `1.5x` (`111x160`) 1080p table cards from overflowing
+        the `150px` Bootcamp hand wells.
+        """
+        rank_norm = str(rank).lower().strip()
+        suit_norm = str(suit).lower().strip()
+        suit_stem = suit_norm.rstrip("s") if suit_norm in ("hearts", "spades", "clubs", "diamonds") else suit_norm
+        if suit_stem not in ("heart", "spade", "club", "diamond"):
+            suit_stem = "spade"
+        rank_stem = "1" if rank_norm in ("ace", "a", "1") else rank_norm
+
+        prof = getattr(self.app, "display_profile", None)
+        art_scale = max(1, int(getattr(prof, "art_scale", 1)))
+        card_scale = float(getattr(prof, "card_scale", 1.0))
+
+        # Fast path when app.all_cards already matches integer art_scale
+        if abs(card_scale - float(art_scale)) < 0.01:
+            for c in getattr(self.app, "all_cards", []):
+                if str(getattr(c, "rank", "")).lower() == rank_norm and str(getattr(c, "suit", "")).lower() == suit_stem:
+                    return getattr(c, "image", None)
+
+        cache_key = (rank_stem, suit_stem, art_scale)
+        cached = self._bootcamp_card_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        card_path = ASSETS_DIR / f"{rank_stem}_{suit_stem}.png"
+        scaler = getattr(self.app, "_asset_scaler", None)
+        if scaler is not None and card_path.exists():
+            img = scaler.get_scaled_image(
+                card_path,
+                CARD_WIDTH * art_scale,
+                CARD_HEIGHT * art_scale,
+                element_type="cards",
+            )
+            if img is not None:
+                self._bootcamp_card_cache[cache_key] = img
+                return img
+
         for c in getattr(self.app, "all_cards", []):
-            if str(getattr(c, "rank", "")).lower() == rank_norm and str(getattr(c, "suit", "")).lower() == suit_norm:
+            if str(getattr(c, "rank", "")).lower() == rank_norm and str(getattr(c, "suit", "")).lower() == suit_stem:
                 return getattr(c, "image", None)
         for c in getattr(self.app, "all_cards", []):
             if str(getattr(c, "rank", "")).lower() == rank_norm:

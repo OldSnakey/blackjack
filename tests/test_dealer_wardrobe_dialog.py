@@ -63,13 +63,15 @@ class TestDealerWardrobeDialog(unittest.TestCase):
         self.assertTrue(self.app._wardrobe_dialog.winfo_exists())
         self.assertEqual(self.app._wardrobe_dialog.title(), "🎩 Dealer Wardrobe & Dressing Room")
 
-    def test_wardrobe_cards_render_all_four_characters(self):
-        """Wardrobe dialog renders character cards for Julian, Malphas, Uriel, Mortimer, and Dummy."""
+    def test_wardrobe_cards_render_all_eight_production_characters_and_hide_dummy_by_default(self):
+        """Default player Wardrobe hides debug dummy and renders 2 symmetrical 2x2 pages of 8 real dealers."""
         self.app._on_click_stage_hanger()
         dialog = self.app._wardrobe_dialog
         self.assertIsNotNone(dialog)
         self.assertTrue(hasattr(dialog, "cards"))
-        for char_id in ("julian", "tiffany", "malphas", "uriel", "mortimer", "dummy"):
+        self.assertNotIn("dummy", dialog.cards, "Debug dummy must be hidden from player Wardrobe by default")
+        self.assertEqual(len(dialog.page_config), 2)
+        for char_id in ("julian", "tiffany", "professor", "selene", "vladimir", "mortimer", "malphas", "uriel"):
             self.assertIn(char_id, dialog.cards, f"Character card missing: {char_id}")
 
     def test_julian_and_tiffany_are_unlocked_by_default(self):
@@ -79,13 +81,12 @@ class TestDealerWardrobeDialog(unittest.TestCase):
         self.assertTrue(dialog.cards["julian"]["unlocked"])
         self.assertTrue(dialog.cards["julian"]["is_equipped"])
         self.assertTrue(dialog.cards["tiffany"]["unlocked"])
-        self.assertTrue(dialog.cards["dummy"]["unlocked"])
 
     def test_wardrobe_pagination(self):
         """Next and Prev page navigation switches pages and updates navigation controls."""
         self.app._on_click_stage_hanger()
         dialog = self.app._wardrobe_dialog
-        total_pages = len(dialog.PAGE_CONFIG)
+        total_pages = len(dialog.page_config)
         self.assertEqual(dialog.current_page, 0)
         self.assertIn(f"Page 1 of {total_pages}", dialog.page_lbl.cget("text"))
 
@@ -108,9 +109,15 @@ class TestDealerWardrobeDialog(unittest.TestCase):
         self.assertEqual(self.app.save_manager.data.equipped_costume, "tiffany")
 
     def test_equipping_dummy_updates_actor_and_save(self):
-        """Equipping Dummy switches dealer persona to dummy, table avatar, and save data."""
-        self.app._on_click_stage_hanger()
-        dialog = self.app._wardrobe_dialog
+        """Debug rig mode (`include_debug_dummy=True`) still exposes and equips Dummy cleanly."""
+        from dealer_wardrobe_dialog import WardrobeDialog
+        dialog = WardrobeDialog(
+            self.root,
+            self.app,
+            include_debug_dummy=True,
+        )
+        self.app._wardrobe_dialog = dialog
+        self.assertIn("dummy", dialog.cards)
         self.assertTrue(dialog.cards["dummy"]["unlocked"])
         dialog._equip_costume("dummy")
         self.assertEqual(self.app.dealer_actor.current_character, "dummy")
@@ -312,8 +319,8 @@ class TestDealerWardrobeDialog(unittest.TestCase):
         self.assertTrue(tiffany_btn.enabled)
         self.assertEqual(tiffany_btn.text, "Equip Costume")
 
-        # Selene on Page 3 is locked -> disabled with default muted brown text
-        dialog._switch_page(2)
+        # Selene on Page 1 (index 0, slot 3) is locked -> disabled with default muted brown text
+        dialog._switch_page(0)
         selene_btn = dialog.cards["selene"]["panel"].equip_btn
         self.assertFalse(selene_btn.enabled)
         self.assertEqual(selene_btn.text, "Locked")
@@ -413,6 +420,119 @@ class TestDealerWardrobeDialog(unittest.TestCase):
         self.assertEqual(pos_pl_fill, "#5ce6b5")
 
         dialog._on_close()
+
+    def test_wardrobe_clamps_within_720p_parent_window(self):
+        """WardrobeDialog fills 100% of 1280x720 and 1280x800 in-window viewports with expanded widescreen cards."""
+        from display_profile import make_profile_preset
+
+        self.app.apply_display_profile(make_profile_preset("hd_720p"))
+        self.root.geometry("1280x720")
+        self.root.update_idletasks()
+        self.app._on_click_stage_hanger()
+        dialog = self.app._wardrobe_dialog
+        self.assertIsNotNone(dialog)
+        self.assertIsInstance(dialog, tkinter.Frame)
+        self.assertNotIsInstance(dialog, tkinter.Toplevel)
+        dialog.update_idletasks()
+        dialog.update()
+        size_part = dialog.geometry().split("+")[0]
+        w, h = map(int, size_part.split("x"))
+        self.assertEqual((w, h), (1280, 720))
+        julian_panel = dialog.cards["julian"]["panel"]
+        self.assertGreaterEqual(int(julian_panel.cget("width")), 560)
+        self.assertGreaterEqual(int(dialog._records_canvas.cget("width")), 1160)
+        dialog._on_close()
+
+    def test_hall_of_fame_paged_zero_scroll_and_arrow_navigation(self):
+        """Tab 2 (Hall of Fame) uses a 3-page 3x2 zero-scroll layout with Left/Right arrow navigation."""
+        from display_profile import make_profile_preset
+
+        for preset in ("deck_800p", "hd_720p"):
+            self.app.apply_display_profile(make_profile_preset(preset))
+            w_t, h_t = self.app.display_profile.window_wh
+            self.root.geometry(f"{w_t}x{h_t}")
+            self.root.update_idletasks()
+
+            self.app._on_click_stage_hanger()
+            dialog = self.app._wardrobe_dialog
+            self.assertIsNotNone(dialog)
+            dialog._switch_tab(1)
+            dialog.update_idletasks()
+            dialog.update()
+
+            # Zero scrollbar in Hall of Fame
+            if hasattr(dialog, "hof_scrollbar"):
+                self.assertFalse(bool(dialog.hof_scrollbar.winfo_manager()))
+
+            self.assertTrue(hasattr(dialog, "_hof_page_frames"))
+            self.assertEqual(len(dialog._hof_page_frames), 3)
+            self.assertEqual(dialog.current_hof_page, 0)
+            self.assertIn("Page 1 of 3", dialog.hof_page_lbl.cget("text"))
+            self.assertEqual(len(dialog._hof_page_frames[0].winfo_children()), 6)
+            self.assertEqual(len(dialog._hof_page_frames[1].winfo_children()), 6)
+            self.assertEqual(len(dialog._hof_page_frames[2].winfo_children()), 2)
+
+            # Navigate pages with Right / Left arrow events on Tab 1
+            dialog.event_generate("<Right>")
+            dialog.update_idletasks()
+            self.assertEqual(dialog.current_hof_page, 1)
+            self.assertIn("Page 2 of 3", dialog.hof_page_lbl.cget("text"))
+
+            dialog.event_generate("<Right>")
+            dialog.update_idletasks()
+            self.assertEqual(dialog.current_hof_page, 2)
+            self.assertIn("Page 3 of 3", dialog.hof_page_lbl.cget("text"))
+
+            dialog.event_generate("<Left>")
+            dialog.update_idletasks()
+            self.assertEqual(dialog.current_hof_page, 1)
+
+            dialog._on_close()
+
+    def test_wardrobe_fhd_1080p_uses_2x_crunchy_portraits_and_2x_fonts_and_page3_tour_shelf(self):
+        """Full-HD 1920x1080 WardrobeDialog scales portraits (224x224) and fonts to crunchy 2x, shows live costume quotes, and fills HoF Page 3 with the 8-Salon Tour Shelf."""
+        from display_profile import make_profile_preset
+
+        self.app.apply_display_profile(make_profile_preset("fhd_1080p"))
+        self.root.geometry("1920x1080")
+        self.root.update_idletasks()
+
+        self.app._on_click_stage_hanger()
+        dialog = self.app._wardrobe_dialog
+        self.assertIsNotNone(dialog)
+        try:
+            dialog.update_idletasks()
+            dialog.update()
+            self.assertEqual(dialog.menu_scale, 2)
+
+            julian_panel = dialog.cards["julian"]["panel"]
+            self.assertIsNotNone(julian_panel.portrait_photo)
+            self.assertEqual(julian_panel.portrait_photo.width(), 224)
+            self.assertEqual(julian_panel.portrait_photo.height(), 224)
+
+            bio_font_parts = dialog.tk.splitlist(julian_panel.itemcget(julian_panel.bio_text_id, "font"))
+            self.assertGreaterEqual(abs(int(bio_font_parts[1])), 32)
+
+            # Live costume quote inside character card updates when cycling costumes
+            self.assertTrue(hasattr(julian_panel, "costume_quote_id"))
+            quote_before = julian_panel.itemcget(julian_panel.costume_quote_id, "text")
+            self.assertGreater(len(quote_before.strip()), 0)
+            julian_panel._next_costume()
+            quote_after = julian_panel.itemcget(julian_panel.costume_quote_id, "text")
+            self.assertNotEqual(quote_before, quote_after)
+
+            # Switch to Hall of Fame Page 3 -> 8-Salon Venue Tour Medallion Shelf is mapped with zero scrollbar
+            dialog._switch_tab(1)
+            dialog._show_hof_page(2)
+            dialog.update_idletasks()
+            dialog.update()
+            if hasattr(dialog, "hof_scrollbar"):
+                self.assertFalse(bool(dialog.hof_scrollbar.winfo_manager()))
+            self.assertTrue(hasattr(dialog, "hof_tour_shelf_frame"))
+            self.assertTrue(bool(dialog.hof_tour_shelf_frame.winfo_manager()))
+        finally:
+            if dialog.winfo_exists():
+                dialog._on_close()
 
 
 if __name__ == "__main__":

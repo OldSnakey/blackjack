@@ -94,10 +94,10 @@ Designed as an educational project for Python learners and junior developers, th
 - **Persistent Strategy Tripometer & 50-Hand Audit Log (`tripometer.py`, `ui_dialogs.py`)**:
   - Continuous background skill grading accessible any time via the top-bar `📊 Trip` button or `T` shortcut—independent from lifetime career records so players can reset trip stats (`🗑 Reset Trip`) when switching rules or practicing new spreads.
   - Real-time evaluation of Basic Strategy accuracy, Illustrious 18 + Fab 4 True Count index play accuracy, and bankroll-aware Kelly bet sizing (`±1` unit tier tolerance) against each hand's snapshotted `HouseRules`.
-  - Bounded 50-hand scrollable audit log with rule badges (`6D · H17 · 3:2 · DAS · LS`), `All Hands` vs `Mistakes Only` filtering, and automatic quarantine of supernatural Haunted/Card 13 rounds so arcade effects never skew mastery percentages.
-- **Fixed 1.0x Scale & Borderless Fullscreen**:
-  - Crisp, fixed 1.0x interface geometry (`1000x700` default) ensuring authentic pixel art rendering without blurring or distortion.
-  - Borderless Fullscreen mode (`F11` / `⛶ Full`).
+  - Paged zero-scroll 50-hand audit log (`3` hands/page on `720p`, `4` hands/page on `800p`/`1080p`/`1440p`/`4K`) with computed `(total)` hand scores, rule badges (`6D · H17 · 3:2 · DAS · LS`), `All Hands` vs `Mistakes Only` filtering, and automatic quarantine of supernatural Haunted/Card 13 rounds so arcade effects never skew mastery percentages.
+- **Widescreen Pit-Wings Layout, Discrete `DisplayProfile`, Crunchy `2x` Full-Screen Menus & Steam Deck Support (`display_profile.py`, `ui_dialogs.py`)**:
+  - Unified 4-row widescreen Pit-Wings layout (`1280x800` `16:10` desktop default & native Steam Deck handheld viewport, with automatic `1280x720` `16:9` fallback when desktop work-area height `< 840px`), locking stage backdrops (`1000x220` `1x`, `2000x440` `2x`), `1000x390` Bootcamp/Venue Tour boards, and 19-layer puppets to `0%` non-integer stretch.
+  - Fullscreen (`F11` / `⛶ Full` / `🗗 Window`) supports `1080p` (`1x` stage + `1.5x` re-stroked cards or `1.0x` strict-integer toggle in Settings, plus **true `2x` integer `224x224` dealer portraits, `2x` keycap sprites, and `2x` crunchy pixel fonts across all full-screen menus**), `1440p` (`2x` stage + `2.0x` cards), and `4K` / `21:9` (`2x` stage + `2.0x` cards, `2560px` pit clamp), with zero-scroll paged menus (`<Left>`/`<Right>`) and centered floating Secondary Gameplay Overlays on SteamOS/Linux Gamescope and desktop.
 - **Multi-Deck Shoe & Cut Card Penetration**: 4-deck shoe (208 cards) with persistent card depletion across rounds, live shoe count, and an authentic ~25% cut card penetration reshuffle trigger.
 - **Double Down Option**: Double down on initial 2-card hands (and split hands), doubling the wager, drawing exactly one card, and standing automatically.
 - **Late Surrender**: Forfeit initial 2-card hands after dealer peeks for Natural Blackjack to recover 50% of the initial wager.
@@ -233,7 +233,6 @@ The game supports complete hands-free keyboard navigation with context-sensitive
 | `Y` / `N` (or `Esc`)| Dealer Shows Ace | **Take** or **Decline** Insurance (2:1 side bet) |
 | `M` | Any Time | Toggle Sound Mute (`ON` / `OFF`) |
 | `Shift + M` | Any Time (Betting/Over) | Cycle Table Play Mode (`Casual` $\to$ `Betting` $\to$ `Training`) |
-| `V` | Any Time | Toggle **Dealer Horizon Stage View** (Show / Hide) |
 | `T` | Any Time | Open **Strategy Tripometer & 50-Hand Audit Log** (`📊 Trip`) |
 | `Shift + T` | Exorcist Unlocked | Enter / Toggle **2.5D Casino Venue Tour Overworld Map** (`🗺 Tour`) |
 | `O` / `F2` | Any Time | Open **Casino Settings & House Rules** |
@@ -345,6 +344,7 @@ Career statistics, costume unlocks, and game mode preferences are encapsulated w
 ### 8. Educational Modular Architecture & Separation of Concerns
 To foster code discoverability and provide junior developers with clean patterns, the core codebase is decoupled into modular layers:
 - **`config.py`**: Centralized configuration, game constants, screen dimension limits, theme color math (`hex_to_rgb`), and frozen `@dataclass` `ThemePalette` definitions with `get_phase_palette()`.
+- **`display_profile.py`**: Discrete `DisplayProfile` resolution engine (`hd_720p`, `deck_800p`, `fhd_1080p`, `qhd_1440p`, `uhd_4k`), Windows Per-Monitor v2 DPI awareness, Linux/SteamOS `libfontconfig` `.ttf` registration with user-font fallback, and X11/Gamescope modal & fullscreen helpers.
 - **`rules.py`**: Pure, stateless domain logic with zero GUI or Tkinter dependencies. Implements `Card(tuple)` (supporting indexing `card[0]`, `val, img = card`, dot access, and `len(card) == 2`), `Hand` (first-class hand domain model with `list[Card]` sequence compatibility), `HouseRules` & `VENUE_PRESETS` (configurable table rules and house-edge math), `RoundPhase`, `score_hand()`, `dealer_should_hit()`, `determine_outcome()`, `calculate_payout()`, and `breakdown_chips()`. Juniors can import and experiment with rules in a CLI REPL or headless test without spinning up a GUI.
 - **`state_machine.py`**: Pure Finite State Machine (`GameStateMachine`) governing legal `RoundPhase` transitions and raising `InvalidStateTransitionError` on illegal jumps.
 - **`event_bus.py`**: Synchronous publish-subscribe event bus (`EventHub`, `GameEvent`, `GameEventType`) decoupling domain state transitions from audio, HUDs, puppet kinematics, and persistence.
@@ -354,13 +354,13 @@ To foster code discoverability and provide junior developers with clean patterns
 - **`card_counting_hud.py`**: Custom 2.5D felt HUD pill (with Running Count, True Count, Decks Remaining, Edge %, and Assisted vs. Drill Challenge Mode toggle), transient floating count badges (`+1`, `-1`, `0`), and interactive mid-shoe counting quiz drill modal.
 - **`haunted_manager.py`**: Haunted Halloween narrative state engine managing supernatural creep phases, altar candle tracking, cursed Card 13 manifestation, and The Pit Fiend boss logic with Celestial Blessings.
 - **`dealer_actor.py`**: Living Dealer 7-layer puppet engine handling autonomous breathing/blinking kinematics, phonetic visemes, costume profiles, and high-resolution composite rendering.
-- **`dealer_wardrobe_dialog.py`**: Modal dialog providing interactive dealer costume selection, voice previews, and the 12-plaque Hall of Fame trophy shelf.
-- **`dialogue_voice_engine.py`**: Procedural Animalese dialogue voice synthesis generating in-memory 16-bit PCM WAV buffers with 1:1 deterministic viseme-to-sound mappings and punctuation inflection (`?`, `.`, `!`).
+- **`dealer_wardrobe_dialog.py`**: Full-screen zero-scroll `WardrobeDialog` (`InWindowScreenHost`) providing paged `2x2` dealer costume cards, voice previews, and a 3-page `3x2` zero-scroll Hall of Fame trophy shelf (`14` achievements).
+- **`dialogue_voice_engine.py`**: Procedural Animalese dialogue voice synthesis generating in-memory 16-bit PCM WAV buffers with 1:1 deterministic viseme-to-frequency mappings and punctuation inflection (`?`, `.`, `!`).
 - **`audio_assets.py`**: Low-latency 16-channel polyphonic sound playback (`SoundManager`) with randomized acoustic sample pools and silent fallback, in-memory HiDPI image scaling (`AssetScaler`), and Kenney prompt icon caching (`KeyboardIconLoader`).
 - **`pixel_ui.py`**: Retro pixel art UI controls (`CanvasPixelButton`, `CanvasPixelPanel`, `PixelPlaqueFrame`, `PixelDialogueFrame`), GDI pixel font loader, and negative pixel font scale clamping.
 - **`ui_layout.py`**: Declarative JSON UI geometry (`ui_layout.json`), responsive coordinate resolution, widget styling, and PIL filter configuration.
 - **`ui_canvases.py`**: Custom 2.5D `tkinter.Canvas` presentation components: `ChipVisualizer`, `SoulMeterCanvas`, `TableAnnouncementHUD`, `HauntedAltarCanvas` (with color synchronization), `DealerStageCanvas`, `TableFeltCanvas`, and `MahoganyRailCanvas`.
-- **`ui_dialogs.py`**: Modal `tkinter.Toplevel` dialogs: `ShortcutsDialog`, `SettingsDialog` (two-tab Table & Audio + House Rules), `TripometerDialog` (50-hand strategy audit log), `StoryDialogueDialog`, `AngelicDraftDialog`, and `WelcomeSplashDialog`.
+- **`ui_dialogs.py`**: Two-tier in-window `InWindowScreenHost` system (zero external OS `Toplevel` popups on Steam Deck / Gamescope): full-screen zero-scroll paged menus (`WelcomeSplashDialog`, `SettingsDialog`, `TripometerDialog` paged 50-hand audit log, `ShortcutsDialog`) and centered floating gameplay overlays over the live table (`AngelicDraftDialog`, `StoryDialogueDialog`, `MultiSeatInsuranceDialog`, and `InWindowConfirmModal`).
 - **`save_manager.py`**: Career statistics, persistent JSON storage, and round achievement evaluation (`evaluate_round_achievements`).
 - **`blackjack.py`**: Main application coordinator (`BlackjackApp`) wiring event loops, user keyboard/mouse bindings, and game phase transitions, while re-exporting key domain symbols for 100% backward compatibility.
 - **[CRC Architecture & System Design (`docs/ARCHITECTURE_CRC.md`)](docs/ARCHITECTURE_CRC.md)**: Exhaustive Class-Responsibility-Collaboration (CRC) reference covering all project classes, sequence flows, and architectural improvement analyses.
@@ -425,6 +425,7 @@ python -m unittest discover tests -v
 | [`tests/test_dealer_wardrobe_dialog.py`](tests/test_dealer_wardrobe_dialog.py) | Tests Dealer Wardrobe dialog lifecycle, costume selection, preview rendering, unlock requirement enforcement, and scrollable Hall of Fame achievement trophy shelf. |
 | [`tests/test_deck.py`](tests/test_deck.py) | Verifies all 52 card PNGs and `back.png` exist, validates deck distribution, and tests `Card` tuple subclass properties. |
 | [`tests/test_dialogue_voice_engine.py`](tests/test_dialogue_voice_engine.py) | Validates procedural 16-bit mono 44.1 kHz PCM WAV byte buffer generation, 1:1 deterministic viseme-to-sound phonetic consistency, voice profile registration, volume/mute handling, and question/period/exclamation pitch inflection. |
+| [`tests/test_display_profile.py`](tests/test_display_profile.py) | Unit and GUI tests for `DisplayProfile` resolution (`min(width_tier, height_tier)`), Steam Deck `1280x800` vs `<840px` `1280x720` work-area fallback, `1080p` `1.5x` vs `1.0x` `strict_integer_cards`, Linux fontconfig verification, and non-overlapping Pit-Wings layout bounds across profiles. |
 | [`tests/test_double_down.py`](tests/test_double_down.py) | Tests Double Down eligibility (2 cards only, bankroll checks), wager doubling, single card draw, auto-stand, and bust resolution. |
 | [`tests/test_event_bus.py`](tests/test_event_bus.py) | Validates synchronous pub-sub event dispatch, subscriber registration, unsubscription, and payload propagation across `EventHub`. |
 | [`tests/test_game_engine.py`](tests/test_game_engine.py) | Modular headless unit tests for `BlackjackEngine`: round initialization, dealing, player actions, dealer drawing, outcome evaluation, insurance side bets, and cut-card penetration triggers. |
@@ -461,6 +462,9 @@ python -m unittest discover tests -v
 | [`tests/test_ui_geometry_and_rendering.py`](tests/test_ui_geometry_and_rendering.py) | Validates zero card clipping, beveled plaque geometry, TableAnnouncementHUD auto-dismiss, and OMEN altar color synchronization. |
 | [`tests/test_ui_layout.py`](tests/test_ui_layout.py) | Validates JSON-driven UI layout configuration (`ui_layout.py`), origin/offset resolution, grid/pack option scaling, and PIL resampling filters. |
 | [`tests/test_universal_puppet_faceplates.py`](tests/test_universal_puppet_faceplates.py) | Verifies universal 7-layer mannequin faceplate de-occlusion (blank eye sockets and mouth apertures), isolated eye socket layers, distinct articulated arm poses (`arm_idle`, `arm_deal`, `arm_peek`), and multi-layer puppet kinematics across all 8 dealers. |
+| [`tests/test_venue_tour_domain.py`](tests/test_venue_tour_domain.py) | Pure domain unit tests for the 8-Salon Casino Venue Tour (`SalonSpec`, Standard vs. Ironman progression, anti-domino frontier capping, and `<= 80%` Checkpoint Top-Ups). |
+| [`tests/test_venue_tour_gui.py`](tests/test_venue_tour_gui.py) | Headless GUI tests for `VenueTourFrame`, 2.5D Overworld landmark rendering, mystery salon shroud copy, `TourControlDock`, and centered widescreen Pit-Wings geometry. |
+| [`tests/test_venue_tour_integration.py`](tests/test_venue_tour_integration.py) | End-to-end integration tests for Exorcist `+\$666` bounty unlock, isolated Free-Play vs. Tour bankrolls/telemetry, Standard Gold Star & Ironman Obsidian medallions, and in-salon settlement. |
 | [`tests/test_version.py`](tests/test_version.py) | Enforces single source of truth for versioning across `blackjack.py`, specifications, and documentation. |
 | [`tests/test_welcome_splash_dialog.py`](tests/test_welcome_splash_dialog.py) | Verifies WelcomeSplashDialog lifecycle, retro pixel art logo, dealer greeting banner, interactive selection across 3 modes (Casual, Betting, Training), dynamic display bounds, persistent save settings, and live basic strategy hint reflection. |
 
@@ -478,6 +482,7 @@ Blackjack/
 ├── tour_domain.py                  # Pure domain Model for 8-Salon Casino Venue Tour (SalonSpecs, Standard/Ironman gates)
 ├── venue_tour.py                   # 2.5D Super Mario World Overworld Map View & Controller (VenueTourFrame, TourControlDock)
 ├── config.py                       # Game constants, ThemePalette dataclasses, and path resolution
+├── display_profile.py              # Discrete DisplayProfile scaling engine, DPI/font bootstrap & Gamescope windowing
 ├── dealer_actor.py                 # Living Dealer 7-layer puppet engine: kinematics, breathing, blinking, visemes
 ├── dealer_wardrobe_dialog.py       # Modal dialog for previewing and equipping dealer costumes
 ├── dialogue_voice_engine.py        # Procedural Animalese voice synthesis engine (16-bit PCM WAV in memory)
@@ -543,7 +548,8 @@ Blackjack/
 │   ├── ITCH_IO_GUIDE.md            # itch.io deployment, store copy, and release guide
 │   └── designs/
 │       ├── counting_bootcamp.md    # Architectural design specification for the MIT Hi-Lo Counting Bootcamp
-│       └── house_rules_and_tripometer.md # Design spec for Configurable House Rules & Persistent Strategy Tripometer
+│       ├── house_rules_and_tripometer.md # Design spec for Configurable House Rules & Persistent Strategy Tripometer
+│       └── widescreen_display_profile_and_steam_deck.md # Design spec for Widescreen Pit-Wings Layout, DisplayProfile & Steam Deck
 └── tests/                          # Automated test suite (400+ unit tests)
     ├── __init__.py
     ├── test_architectural_integration.py
@@ -559,6 +565,7 @@ Blackjack/
     ├── test_dealer_wardrobe_dialog.py
     ├── test_deck.py
     ├── test_dialogue_voice_engine.py
+    ├── test_display_profile.py
     ├── test_double_down.py
     ├── test_event_bus.py
     ├── test_game_engine.py

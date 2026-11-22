@@ -200,8 +200,15 @@ class SaveData:
     house_rules: Dict[str, Any] = field(default_factory=lambda: HouseRules().to_dict())
     tripometer: Dict[str, Any] = field(default_factory=lambda: TripometerData().to_dict())
     venue_tour: VenueTourProgress = field(default_factory=VenueTourProgress)
+    strict_integer_cards: bool = False
+    window_profile_override: str = "auto"
 
     def to_dict(self) -> Dict[str, Any]:
+        win_override = (
+            self.window_profile_override
+            if self.window_profile_override in ("auto", "hd_720p", "deck_800p", "qhd_1440p")
+            else "auto"
+        )
         return {
             "version": self.version,
             "current_bankroll": self.current_bankroll,
@@ -216,6 +223,8 @@ class SaveData:
             "house_rules": HouseRules.from_dict(self.house_rules).to_dict(),
             "tripometer": TripometerData.from_dict(self.tripometer).to_dict(),
             "venue_tour": asdict(self.venue_tour.normalized()),
+            "strict_integer_cards": bool(self.strict_integer_cards),
+            "window_profile_override": win_override,
         }
 
     @classmethod
@@ -309,6 +318,13 @@ class SaveData:
             ).to_dict(),
             venue_tour=VenueTourProgress.from_dict(
                 data.get("venue_tour") if isinstance(data.get("venue_tour"), dict) else None
+            ),
+            strict_integer_cards=bool(data.get("strict_integer_cards", False)),
+            window_profile_override=(
+                str(data.get("window_profile_override", "auto"))
+                if str(data.get("window_profile_override", "auto"))
+                in ("auto", "hd_720p", "deck_800p", "qhd_1440p")
+                else "auto"
             ),
         )
 
@@ -787,6 +803,24 @@ class SaveManager:
     def save_venue_tour(self, save_now: bool = True) -> bool:
         """Normalizes and persists VenueTourProgress without touching Free-Play bankroll."""
         self.data.venue_tour = self.data.venue_tour.normalized()
+        if save_now:
+            return self.save()
+        return True
+
+    def set_display_preferences(
+        self,
+        strict_integer_cards: Optional[bool] = None,
+        window_profile_override: Optional[str] = None,
+        save_now: bool = True,
+    ) -> bool:
+        """Persists user display scaling and windowed profile overrides in SaveData."""
+        if strict_integer_cards is not None:
+            self.data.strict_integer_cards = bool(strict_integer_cards)
+        if window_profile_override is not None:
+            val = str(window_profile_override)
+            self.data.window_profile_override = (
+                val if val in ("auto", "hd_720p", "deck_800p", "qhd_1440p") else "auto"
+            )
         if save_now:
             return self.save()
         return True

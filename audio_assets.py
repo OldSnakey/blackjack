@@ -64,13 +64,105 @@ except (ImportError, Exception):
 class AssetScaler:
     """
     Manages in-memory dynamic image scaling using Pillow (PIL) for cards,
-    table accessories, character avatars, and relics across 1x and 2x display modes.
+    table accessories, character avatars, and relics across 1x, 1.5x (cards), and 2x display modes.
     Zero disk duplication.
     """
     def __init__(self, master=None):
         self.master = master
         self._source_pil_cache: dict[Path, Image.Image] = {}
         self._tk_cache: dict[tuple[Path, int, int, str], ImageTk.PhotoImage] = {}
+
+    @staticmethod
+    def _threshold_alpha_and_stroke_card_border(
+        img: Image.Image,
+        border_rgb: tuple[int, int, int] = (30, 30, 30),
+    ) -> Image.Image:
+        """
+        Thresholds card alpha (a >= 128 -> 255, else 0) so Tkinter PhotoImage never
+        displays grey semi-transparent corner halos, then strokes a crisp 1px outer
+        perimeter border along every opaque pixel adjacent to transparency or image bounds.
+        """
+        rgba = img.convert("RGBA")
+        w, h = rgba.size
+        r, g, b, a = rgba.split()
+        bin_a = a.point(lambda p: 255 if p >= 128 else 0)
+        # Zero RGB under transparent pixels to prevent pre-multiplied edge bleed
+        zero = Image.new("L", (w, h), 0)
+        clean_r = Image.composite(r, zero, bin_a)
+        clean_g = Image.composite(g, zero, bin_a)
+        clean_b = Image.composite(b, zero, bin_a)
+        out = Image.merge("RGBA", (clean_r, clean_g, clean_b, bin_a))
+
+        a_bytes = bin_a.tobytes()
+        px = out.load()
+        br, bg_c, bb = border_rgb
+        border_px = (br, bg_c, bb, 255)
+        for y in range(h):
+            row_off = y * w
+            for x in range(w):
+                if a_bytes[row_off + x] == 0:
+                    continue
+                is_edge = (
+                    x == 0
+                    or x == w - 1
+                    or y == 0
+                    or y == h - 1
+                    or a_bytes[row_off + x - 1] == 0
+                    or a_bytes[row_off + x + 1] == 0
+                    or a_bytes[row_off - w + x] == 0
+                    or a_bytes[row_off + w + x] == 0
+                )
+                if is_edge:
+                    px[x, y] = border_px
+        return out
+
+    @classmethod
+    def scale_pil_image(
+        cls,
+        src: Image.Image,
+        width: int,
+        height: int,
+        element_type: str = "cards",
+        is_haunted_card: bool = False,
+    ) -> Image.Image:
+        """Scales a PIL RGBA image according to orthogonal art_scale / card_scale rules."""
+        if element_type == "cards":
+            border_rgb = (68, 14, 20) if is_haunted_card else (30, 30, 30)
+            if src.size == (width, height):
+                return cls._threshold_alpha_and_stroke_card_border(src, border_rgb=border_rgb)
+
+            resampling = getattr(Image, "Resampling", Image)
+            # Integer 2x cards: stroke crisp 1px border on 1x master first, then NEAREST 2x for exact 2px border
+            if (width, height) == (src.width * 2, src.height * 2):
+                if is_haunted_card:
+                    return src.resize((width, height), resampling.NEAREST)
+                stroked_1x = cls._threshold_alpha_and_stroke_card_border(src, border_rgb=border_rgb)
+                return stroked_1x.resize((width, height), resampling.NEAREST)
+
+            try:
+                from ui_layout import resolve_pil_resample
+                is_pass, resample_filter = resolve_pil_resample(element_type, src.size, (width, height))
+            except Exception:
+                is_pass = False
+                resample_filter = resampling.LANCZOS
+
+            resized = src if is_pass else src.resize((width, height), resample_filter)
+            return cls._threshold_alpha_and_stroke_card_border(resized, border_rgb=border_rgb)
+
+        if src.size == (width, height):
+            return src
+
+        resampling = getattr(Image, "Resampling", Image)
+        if element_type in ("ui", "icons", "chips", "stage", "dealer"):
+            return src.resize((width, height), resampling.NEAREST)
+
+        try:
+            from ui_layout import resolve_pil_resample
+            is_pass, resample_filter = resolve_pil_resample(element_type, src.size, (width, height))
+        except Exception:
+            is_pass = False
+            resample_filter = resampling.LANCZOS
+        return src if is_pass else src.resize((width, height), resample_filter)
 
     def get_scaled_image(self, file_path: Path, width: int, height: int, element_type: str = "cards"):
         """Returns a scaled PhotoImage (or ImageTk.PhotoImage) resized in memory."""
@@ -95,17 +187,15 @@ class AssetScaler:
                 return None
 
         src = self._source_pil_cache[file_path]
-        try:
-            from ui_layout import resolve_pil_resample
-            is_pass, resample_filter = resolve_pil_resample(element_type, src.size, (width, height))
-        except Exception:
-            is_pass = (src.size == (width, height))
-            resample_filter = getattr(Image, "Resampling", Image).LANCZOS
-
-        if is_pass:
-            final_img = src
-        else:
-            final_img = src.resize((width, height), resample_filter)
+        lower_path = file_path.as_posix().lower()
+        is_haunted = ("haunted" in lower_path) or ("card_13" in file_path.name.lower())
+        final_img = self.scale_pil_image(
+            src,
+            width,
+            height,
+            element_type=element_type,
+            is_haunted_card=is_haunted,
+        )
 
         tk_img = ImageTk.PhotoImage(final_img, master=self.master)
         self._tk_cache[key] = tk_img
@@ -122,8 +212,8 @@ def load_images(card_images, master=None, scale: float = 1.0, asset_scaler: Asse
     face_cards = ["jack", "queen", "king"]
     use_scaler = (asset_scaler is not None) or (scale != 1.0)
     scaler = (asset_scaler or AssetScaler(master=master)) if use_scaler else None
-    w = int(CARD_WIDTH * scale)
-    h = int(CARD_HEIGHT * scale)
+    w = 111 if abs(scale - 1.5) < 0.05 else int(round(CARD_WIDTH * scale))
+    h = 160 if abs(scale - 1.5) < 0.05 else int(round(CARD_HEIGHT * scale))
 
     for suit in suits:
         # Number cards 1 to 10 (1 = Ace)

@@ -48,24 +48,35 @@ class TestDealerActorAndHorizonStage(unittest.TestCase):
             pass
 
     def test_horizon_layout_structure(self):
-        """Verifies the four-tier vertical hierarchy of the Horizon Layout."""
-        # 1. Dealer stage frame exists
+        """Verifies the four-tier vertical hierarchy and sibling StageBand pillars."""
+        self.assertTrue(hasattr(self.app, "stage_band_frame"))
+        self.assertTrue(hasattr(self.app, "left_stage_wing"))
         self.assertTrue(hasattr(self.app, "dealer_stage_frame"))
-        self.assertIsInstance(self.app.dealer_stage_frame, tkinter.Frame)
+        self.assertTrue(hasattr(self.app, "right_stage_wing"))
+        self.assertEqual(self.app.left_stage_wing.master, self.app.stage_band_frame)
+        self.assertEqual(self.app.dealer_stage_frame.master, self.app.stage_band_frame)
+        self.assertEqual(self.app.right_stage_wing.master, self.app.stage_band_frame)
 
-        # 2. Horizon rail divider exists
+        # Horizon rail divider and Card table felt exist below StageBand
         self.assertTrue(hasattr(self.app, "horizon_rail"))
         self.assertIsInstance(self.app.horizon_rail, tkinter.Frame)
-
-        # 3. Card table felt exists below the horizon
         self.assertTrue(hasattr(self.app, "card_table_frame"))
 
-        # 4. Dealer actor components exist within the dealer stage
+        # Dealer actor components exist within the dealer stage
         self.assertTrue(hasattr(self.app, "dealer_actor_frame"))
         self.assertTrue(hasattr(self.app, "dealer_nameplate_label"))
         self.assertTrue(hasattr(self.app, "dealer_speech_label"))
         self.assertTrue(hasattr(self.app, "pumpkin_label"))
         self.assertTrue(hasattr(self.app, "haunted_altar"))
+
+    def test_dealer_composite_integer_clamp(self):
+        """DealerActor.get_composite_image produces strictly integer 112x112 (1x) or 224x224 (2x) composites."""
+        img_1x = self.app.dealer_actor.get_composite_image(scale_override=1.0)
+        img_15x = self.app.dealer_actor.get_composite_image(scale_override=1.5)
+        img_2x = self.app.dealer_actor.get_composite_image(scale_override=2.0)
+        self.assertEqual(img_1x.size, (112, 112))
+        self.assertEqual(img_15x.size, (112, 112))
+        self.assertEqual(img_2x.size, (224, 224))
 
     def test_dealer_actor_speech_callouts(self):
         """Setting dealer dialogue updates speech label text and visibility."""
