@@ -182,16 +182,18 @@ class TestWelcomeSplashDialog(unittest.TestCase):
         settings_dlg.update_idletasks()
 
         self.assertTrue(hasattr(settings_dlg, "mode_btn"))
-        self.assertIn("Casual", settings_dlg.mode_btn.cget("text"))
+        self.assertEqual(settings_dlg.mode_btn.cget("text"), "🎮 Play Mode...")
+        self.assertTrue(hasattr(settings_dlg, "mode_current_lbl"))
+        self.assertIn("Casual", settings_dlg.mode_current_lbl.cget("text"))
 
         # Cycle mode
         settings_dlg._on_cycle_play_mode()
         self.assertEqual(self.app.play_mode, "betting")
-        self.assertIn("Betting", settings_dlg.mode_btn.cget("text"))
+        self.assertIn("Betting", settings_dlg.mode_current_lbl.cget("text"))
 
         settings_dlg._on_cycle_play_mode()
         self.assertEqual(self.app.play_mode, "training")
-        self.assertIn("Training", settings_dlg.mode_btn.cget("text"))
+        self.assertIn("Training", settings_dlg.mode_current_lbl.cget("text"))
 
         settings_dlg.destroy()
 

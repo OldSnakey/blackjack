@@ -381,6 +381,73 @@ class TestSettingsDialog(unittest.TestCase):
 
         self.app._close_settings_dialog()
 
+    def test_play_mode_and_table_seats_pickers_and_current_subtitles(self):
+        """Play Mode and Table Seats buttons open descriptive in-window pickers and show current value in smaller text underneath."""
+        self.app._open_settings_dialog()
+        dialog = self.app._settings_dialog
+        self.assertIsNotNone(dialog)
+        try:
+            # Play Mode button does not embed current setting; smaller subtitle underneath shows it
+            self.assertEqual(dialog.mode_btn.cget("text"), "🎮 Play Mode...")
+            self.assertTrue(hasattr(dialog, "mode_current_lbl"))
+            self.assertIn("Betting", dialog.mode_current_lbl.cget("text"))
+            mode_btn_sz = abs(int(dialog.tk.splitlist(dialog.mode_btn.cget("font"))[1]))
+            mode_sub_sz = abs(int(dialog.tk.splitlist(dialog.mode_current_lbl.cget("font"))[1]))
+            self.assertLess(mode_sub_sz, mode_btn_sz)
+
+            # Clicking Play Mode opens in-window PlayModePickerModal with all 3 modes & descriptions
+            dialog.mode_btn.invoke()
+            pm_picker = getattr(dialog, "_play_mode_picker", None)
+            self.assertIsNotNone(pm_picker)
+            self.assertIsInstance(pm_picker, tkinter.Frame)
+            self.assertNotIsInstance(pm_picker, tkinter.Toplevel)
+            self.assertEqual([o["key"] for o in pm_picker.options], ["casual", "betting", "training"])
+            for opt in pm_picker.options:
+                self.assertTrue(len(opt["subtitle"].strip()) >= 15)
+
+            # Selecting 'casual' switches play mode and updates subtitle
+            pm_picker.select_option("casual")
+            self.assertEqual(self.app.play_mode, "casual")
+            self.assertIn("Casual", dialog.mode_current_lbl.cget("text"))
+
+            # Table Seats button does not embed current setting; smaller subtitle underneath shows it
+            self.assertEqual(dialog.seats_btn.cget("text"), "🪑 Table Seats...")
+            self.assertTrue(hasattr(dialog, "seats_current_lbl"))
+            self.assertIn("1 Seat", dialog.seats_current_lbl.cget("text"))
+            seats_btn_sz = abs(int(dialog.tk.splitlist(dialog.seats_btn.cget("font"))[1]))
+            seats_sub_sz = abs(int(dialog.tk.splitlist(dialog.seats_current_lbl.cget("font"))[1]))
+            self.assertLess(seats_sub_sz, seats_btn_sz)
+
+            # Clicking Table Seats opens in-window TableSeatsPickerModal with 1 Seat & 3 Seats
+            dialog.seats_btn.invoke()
+            ts_picker = getattr(dialog, "_table_seats_picker", None)
+            self.assertIsNotNone(ts_picker)
+            self.assertIsInstance(ts_picker, tkinter.Frame)
+            self.assertNotIsInstance(ts_picker, tkinter.Toplevel)
+            self.assertEqual([o["key"] for o in ts_picker.options], ["1", "3"])
+
+            # Selecting '3' enables 3-seat wagering and updates subtitle
+            ts_picker.select_option("3")
+            self.assertEqual(self.app.table_seats, 3)
+            self.assertIn("3 Seats", dialog.seats_current_lbl.cget("text"))
+
+            # During Venue Tour, 3 Seats is disabled in the picker
+            self.app.tour_active = True
+            dialog.seats_btn.invoke()
+            ts_picker_tour = getattr(dialog, "_table_seats_picker", None)
+            self.assertIsNotNone(ts_picker_tour)
+            self.assertFalse(ts_picker_tour.is_option_enabled("3"))
+            self.assertTrue(ts_picker_tour.is_option_enabled("1"))
+            ts_picker_tour._on_cancel()
+            self.app.tour_active = False
+
+            # Zero vertical scrollbar on Tab 0 at 1280x800
+            dialog.update_idletasks()
+            dialog.update()
+            self.assertFalse(bool(dialog.v_scrollbar.winfo_manager()))
+        finally:
+            self.app._close_settings_dialog()
+
 
 if __name__ == "__main__":
     unittest.main()

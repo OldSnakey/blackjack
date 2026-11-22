@@ -719,53 +719,56 @@ def configure_modal_window(
 
 
 # ============================================================================
-# 0B. WindowModePickerModal (In-Window Tier-2 Floating Resolution Picker)
+# 0B. SettingsOptionPickerModal & Specialized Settings Pickers (Tier-2 Overlay)
 # ============================================================================
 
-class WindowModePickerModal(InWindowScreenHost):
+class SettingsOptionPickerModal(InWindowScreenHost):
     """
-    In-window floating overlay modal for selecting Window Mode & Resolution
-    (Auto, 1280x720, 1280x800, 1920x1080, 2560x1440, or Native Fullscreen).
-    Displays active monitor / usable work-area telemetry, marks the active mode
-    in gold, and disables resolutions that exceed the monitor's usable work area
-    with an explicit reason rather than silently clamping.
+    Reusable in-window floating overlay modal for explicit multi-option Settings
+    pickers (Window Mode, Play Mode, Table Seats). Displays radio-style rows with
+    descriptions, gold '✓ ACTIVE' badge, disabled reasons, and full mouse +
+    keyboard/controller navigation ([↑/↓], [Enter], [1-N], [Esc]).
     """
 
     def __init__(
         self,
         parent: tkinter.Misc,
         app: Any,
+        *,
+        window_title: str,
+        heading: str,
+        subtitle: str,
+        options: list[dict[str, Any]],
+        active_key: str,
         on_select: Callable[[str], None],
         on_cancel: Optional[Callable[[], None]] = None,
+        overlay_wh: tuple[int, int] = (680, 420),
+        disabled_badge_text: str = "LOCKED",
     ) -> None:
         self.app = app
+        self._heading = heading
+        self._subtitle = subtitle
+        self._disabled_badge_text = disabled_badge_text
         self._on_select_cb = on_select
         self._on_cancel_cb = on_cancel
         self._row_frames: dict[str, tkinter.Frame] = {}
-        self._option_by_key: dict[str, dict[str, Any]] = {}
+        self.options: list[dict[str, Any]] = list(options)
+        self._option_by_key: dict[str, dict[str, Any]] = {opt["key"]: opt for opt in self.options}
 
         super().__init__(
             parent,
             app=app,
             background="#0b1f14",
-            overlay_wh=(680, 500),
+            overlay_wh=overlay_wh,
             overlay_rely=0.50,
             highlightbackground="#ffd700",
             highlightthickness=2,
         )
-        self.title("Window Mode & Resolution")
+        self.title(window_title)
 
-        probe = probe_display_environment(self._host_root)
-        self._probe = probe
-        self.options: list[dict[str, Any]] = get_window_mode_options(probe)
-        self._option_by_key = {opt["key"]: opt for opt in self.options}
-
-        is_fs = bool(getattr(app, "_is_fullscreen", False))
-        save_data = getattr(getattr(app, "save_manager", None), "data", None)
-        override = str(getattr(save_data, "window_profile_override", "auto") or "auto")
-        self.active_key = "fullscreen" if is_fs else override
-        if self.active_key not in self._option_by_key:
-            self.active_key = "auto"
+        self.active_key = str(active_key)
+        if self.active_key not in self._option_by_key and self.options:
+            self.active_key = str(self.options[0]["key"])
 
         self._focused_idx = next(
             (i for i, opt in enumerate(self.options) if opt["key"] == self.active_key),
@@ -792,17 +795,15 @@ class WindowModePickerModal(InWindowScreenHost):
 
         tkinter.Label(
             body,
-            text="🖥 WINDOW MODE & RESOLUTION",
+            text=self._heading,
             font=title_font,
             fg="#ffd700",
             background=bg,
         ).pack(anchor="w", pady=(0, 2 * s))
 
-        mon_w, mon_h = self._probe.monitor_wh
-        work_w, work_h = self._probe.usable_workarea_wh
         tkinter.Label(
             body,
-            text=f"Detected Monitor: {mon_w}x{mon_h}  •  Usable Work Area: {work_w}x{work_h}",
+            text=self._subtitle,
             font=sub_font,
             fg="#80cbc4",
             background=bg,
@@ -811,10 +812,11 @@ class WindowModePickerModal(InWindowScreenHost):
         list_frame = tkinter.Frame(body, background=bg)
         list_frame.pack(fill="both", expand=True)
 
+        wrap_px = 460 * s if not compact else 640
         self._row_frames.clear()
         for idx, opt in enumerate(self.options):
             key = opt["key"]
-            enabled = bool(opt["enabled"])
+            enabled = bool(opt.get("enabled", True))
             is_active = key == self.active_key
 
             row_bg = "#143d29" if is_active else ("#0f2d1e" if enabled else "#111c17")
@@ -826,7 +828,7 @@ class WindowModePickerModal(InWindowScreenHost):
                 highlightbackground=border_col,
                 highlightthickness=2 if is_active else 1,
                 padx=10 * s,
-                pady=5 if compact else (6 * s),
+                pady=6 if compact else (6 * s),
                 cursor="hand2" if enabled else "arrow",
             )
             row.pack(fill="x", pady=3 if compact else (4 * s))
@@ -856,7 +858,7 @@ class WindowModePickerModal(InWindowScreenHost):
             )
             title_lbl.grid(row=0, column=1, sticky="w")
 
-            sub_text = opt["subtitle"] if enabled else opt["disabled_reason"]
+            sub_text = opt["subtitle"] if enabled else (opt.get("disabled_reason") or "Unavailable")
             sub_fg = "#b2dfdb" if enabled else "#ef9a9a"
             sub_lbl = tkinter.Label(
                 row,
@@ -865,6 +867,8 @@ class WindowModePickerModal(InWindowScreenHost):
                 fg=sub_fg,
                 background=row_bg,
                 anchor="w",
+                justify="left",
+                wraplength=wrap_px,
             )
             sub_lbl.grid(row=1, column=1, sticky="w")
 
@@ -873,7 +877,7 @@ class WindowModePickerModal(InWindowScreenHost):
             elif enabled:
                 badge_text, badge_fg, badge_bg = "SELECT", "#e0f2f1", "#1b5e20"
             else:
-                badge_text, badge_fg, badge_bg = "TOO LARGE", "#ffcdd2", "#372125"
+                badge_text, badge_fg, badge_bg = self._disabled_badge_text, "#ffcdd2", "#372125"
 
             badge_lbl = tkinter.Label(
                 row,
@@ -884,7 +888,7 @@ class WindowModePickerModal(InWindowScreenHost):
                 padx=8 * s,
                 pady=2 * s,
             )
-            badge_lbl.grid(row=0, column=2, rowspan=2, sticky="e", padx=(8 * s, 0))
+            badge_lbl.grid(row=0, column=2, rowspan=2, sticky="e", padx=(10 * s, 0))
 
             if enabled:
                 for w in (row, num_lbl, title_lbl, sub_lbl, badge_lbl):
@@ -893,9 +897,10 @@ class WindowModePickerModal(InWindowScreenHost):
         footer = tkinter.Frame(body, background=bg)
         footer.pack(fill="x", pady=(8 if compact else (10 * s), 0))
 
+        n_opts = len(self.options)
         self._hint_lbl = tkinter.Label(
             footer,
-            text="[↑/↓] Navigate  •  [Enter] Apply  •  [1-6] Quick Pick  •  [Esc] Cancel",
+            text=f"[↑/↓] Navigate  •  [Enter] Apply  •  [1-{n_opts}] Quick Pick  •  [Esc] Cancel",
             font=row_sub_font,
             fg="#80cbc4",
             background=bg,
@@ -926,7 +931,7 @@ class WindowModePickerModal(InWindowScreenHost):
             row = self._row_frames.get(key)
             if row is None or not row.winfo_exists():
                 continue
-            enabled = bool(opt["enabled"])
+            enabled = bool(opt.get("enabled", True))
             is_active = key == self.active_key
             is_focused = idx == self._focused_idx
             if is_focused and enabled:
@@ -965,7 +970,7 @@ class WindowModePickerModal(InWindowScreenHost):
         if ks in ("Up", "Left"):
             for step in range(1, len(self.options) + 1):
                 cand = (self._focused_idx - step) % len(self.options)
-                if self.options[cand]["enabled"]:
+                if self.options[cand].get("enabled", True):
                     self._focused_idx = cand
                     break
             self._refresh_focus_highlight()
@@ -973,22 +978,154 @@ class WindowModePickerModal(InWindowScreenHost):
         if ks in ("Down", "Right", "Tab"):
             for step in range(1, len(self.options) + 1):
                 cand = (self._focused_idx + step) % len(self.options)
-                if self.options[cand]["enabled"]:
+                if self.options[cand].get("enabled", True):
                     self._focused_idx = cand
                     break
             self._refresh_focus_highlight()
             return "break"
         if ks in ("Return", "KP_Enter", "space"):
             opt = self.options[self._focused_idx]
-            if opt["enabled"]:
+            if opt.get("enabled", True):
                 self.select_option(opt["key"])
             return "break"
-        if ch in ("1", "2", "3", "4", "5", "6"):
+        if ch.isdigit() and ch != "0":
             idx = int(ch) - 1
-            if 0 <= idx < len(self.options) and self.options[idx]["enabled"]:
+            if 0 <= idx < len(self.options) and self.options[idx].get("enabled", True):
                 self.select_option(self.options[idx]["key"])
             return "break"
         return "break"
+
+
+class WindowModePickerModal(SettingsOptionPickerModal):
+    """
+    In-window floating overlay modal for selecting Window Mode & Resolution
+    (Auto, 1280x720, 1280x800, 1920x1080, 2560x1440, or Native Fullscreen).
+    """
+
+    def __init__(
+        self,
+        parent: tkinter.Misc,
+        app: Any,
+        on_select: Callable[[str], None],
+        on_cancel: Optional[Callable[[], None]] = None,
+    ) -> None:
+        host_root = parent.winfo_toplevel() if parent is not None else tkinter._default_root
+        probe = probe_display_environment(host_root)
+        self._probe = probe
+        options = get_window_mode_options(probe)
+        is_fs = bool(getattr(app, "_is_fullscreen", False))
+        save_data = getattr(getattr(app, "save_manager", None), "data", None)
+        override = str(getattr(save_data, "window_profile_override", "auto") or "auto")
+        active_key = "fullscreen" if is_fs else override
+        mon_w, mon_h = probe.monitor_wh
+        work_w, work_h = probe.usable_workarea_wh
+        super().__init__(
+            parent,
+            app,
+            window_title="Window Mode & Resolution",
+            heading="🖥 WINDOW MODE & RESOLUTION",
+            subtitle=f"Detected Monitor: {mon_w}x{mon_h}  •  Usable Work Area: {work_w}x{work_h}",
+            options=options,
+            active_key=active_key,
+            on_select=on_select,
+            on_cancel=on_cancel,
+            overlay_wh=(680, 500),
+            disabled_badge_text="TOO LARGE",
+        )
+
+
+class PlayModePickerModal(SettingsOptionPickerModal):
+    """In-window floating overlay modal for selecting the active Blackjack Play Mode."""
+
+    def __init__(
+        self,
+        parent: tkinter.Misc,
+        app: Any,
+        on_select: Callable[[str], None],
+        on_cancel: Optional[Callable[[], None]] = None,
+    ) -> None:
+        current_mode = str(getattr(app, "play_mode", "betting") or "betting").lower()
+        tour_locked = bool(getattr(app, "tour_active", False))
+        lock_msg = "Exit Casino Venue Tour before switching play mode."
+        options = [
+            {
+                "key": "casual",
+                "label": "Casual Play",
+                "subtitle": "Pure Blackjack hands with no chips, wagering, or bankroll pressure.",
+                "enabled": (not tour_locked) or (current_mode == "casual"),
+                "disabled_reason": lock_msg,
+            },
+            {
+                "key": "betting",
+                "label": "Casino Betting",
+                "subtitle": "Classic casino wagering with chips, bankroll tracking, side bets, and Haunted/Hell's Table.",
+                "enabled": (not tour_locked) or (current_mode == "betting"),
+                "disabled_reason": lock_msg,
+            },
+            {
+                "key": "training",
+                "label": "Card Counting Training",
+                "subtitle": "3-seat advantage-play practice with the Hi-Lo Counting Slate, live quizzes, and Bootcamp.",
+                "enabled": (not tour_locked) or (current_mode == "training"),
+                "disabled_reason": lock_msg,
+            },
+        ]
+        super().__init__(
+            parent,
+            app,
+            window_title="Select Play Mode",
+            heading="🎮 SELECT PLAY MODE",
+            subtitle="Choose how you want to play at the Blackjack table.",
+            options=options,
+            active_key=current_mode,
+            on_select=on_select,
+            on_cancel=on_cancel,
+            overlay_wh=(680, 360),
+            disabled_badge_text="TOUR LOCKED",
+        )
+
+
+class TableSeatsPickerModal(SettingsOptionPickerModal):
+    """In-window floating overlay modal for selecting 1-Seat vs 3-Seat wagering."""
+
+    def __init__(
+        self,
+        parent: tkinter.Misc,
+        app: Any,
+        on_select: Callable[[str], None],
+        on_cancel: Optional[Callable[[], None]] = None,
+    ) -> None:
+        current_seats = str(int(getattr(app, "table_seats", 1) or 1))
+        tour_locked = bool(getattr(app, "tour_active", False))
+        options = [
+            {
+                "key": "1",
+                "label": "1 Seat  (Classic Solo)",
+                "subtitle": "Standard single-hand table. Supports Haunted Mode, Hell's Table, and Venue Tour.",
+                "enabled": True,
+                "disabled_reason": "",
+            },
+            {
+                "key": "3",
+                "label": "3 Seats  (Multi-Seat Wagering)",
+                "subtitle": "Play up to 3 independent betting spots per round. Haunted Mode is disabled in multi-seat play.",
+                "enabled": not tour_locked,
+                "disabled_reason": "Venue Tour uses 1-Seat high-stakes tables.",
+            },
+        ]
+        super().__init__(
+            parent,
+            app,
+            window_title="Select Table Seats",
+            heading="🪑 SELECT TABLE SEATS",
+            subtitle="Choose single-seat solo play or multi-seat table wagering.",
+            options=options,
+            active_key=current_seats,
+            on_select=on_select,
+            on_cancel=on_cancel,
+            overlay_wh=(680, 300),
+            disabled_badge_text="TOUR LOCKED",
+        )
 
 
 # ============================================================================
@@ -2013,9 +2150,10 @@ class SettingsDialog(InWindowScreenHost):
             self._refresh_display_controls()
 
     def handle_modal_key(self, event: Any) -> Optional[str]:
-        picker = getattr(self, "_window_mode_picker", None)
-        if picker is not None and picker.winfo_exists():
-            return picker.handle_modal_key(event)
+        for attr in ("_window_mode_picker", "_play_mode_picker", "_table_seats_picker"):
+            picker = getattr(self, attr, None)
+            if picker is not None and picker.winfo_exists():
+                return picker.handle_modal_key(event)
         confirm_key = getattr(self, "_active_confirm_key", None)
         if callable(confirm_key):
             return confirm_key(event)
@@ -2291,15 +2429,16 @@ class SettingsDialog(InWindowScreenHost):
             background=PANEL_BACKGROUND_COLOR,
         ).pack(anchor="w", pady=(2, 3))
 
+        sub_readout_font = ("Tiny5", -24 if compact else (-16 * s), "normal")
+
         mode_row = tkinter.Frame(ctrl_frame, background=PANEL_BACKGROUND_COLOR)
         mode_row.pack(fill="x", pady=(0, row_pady))
         mode_row.columnconfigure(0, weight=1, uniform="st_mode")
         mode_row.columnconfigure(1, weight=1, uniform="st_mode")
 
-        mode_name = getattr(self.app, "play_mode", "betting").capitalize()
         self.mode_btn = tkinter.Button(
             mode_row,
-            text=f"🎮 Mode: {mode_name}",
+            text="🎮 Play Mode...",
             font=btn_font,
             background="#004d40",
             fg="white",
@@ -2308,7 +2447,7 @@ class SettingsDialog(InWindowScreenHost):
             relief="ridge",
             borderwidth=1,
             cursor="hand2",
-            command=self._on_cycle_play_mode,
+            command=self._on_open_play_mode_picker,
             padx=8 * s,
             pady=btn_pady,
         )
@@ -2331,6 +2470,17 @@ class SettingsDialog(InWindowScreenHost):
         )
         self.welcome_btn.grid(row=0, column=1, sticky="ew", padx=(4 * s, 0))
 
+        self.mode_current_lbl = tkinter.Label(
+            mode_row,
+            text="",
+            font=sub_readout_font,
+            fg="#80cbc4",
+            background=PANEL_BACKGROUND_COLOR,
+            anchor="w",
+            padx=4 * s,
+        )
+        self.mode_current_lbl.grid(row=1, column=0, sticky="ew", padx=(0, 4 * s), pady=(2, 0))
+
         tkinter.Label(
             ctrl_frame,
             text="Table Seats & Advantage Training:",
@@ -2344,10 +2494,9 @@ class SettingsDialog(InWindowScreenHost):
         seats_row.columnconfigure(0, weight=1, uniform="st_seats")
         seats_row.columnconfigure(1, weight=1, uniform="st_seats")
 
-        seats_count = getattr(self.app, "table_seats", 1)
         self.seats_btn = tkinter.Button(
             seats_row,
-            text=f"🪑 Table Seats: {seats_count} Seat{'s' if seats_count > 1 else ''}",
+            text="🪑 Table Seats...",
             font=btn_font,
             background="#004d40",
             fg="white",
@@ -2356,7 +2505,7 @@ class SettingsDialog(InWindowScreenHost):
             relief="ridge",
             borderwidth=1,
             cursor="hand2",
-            command=self._on_toggle_table_seats,
+            command=self._on_open_table_seats_picker,
             padx=8 * s,
             pady=btn_pady,
         )
@@ -2378,6 +2527,18 @@ class SettingsDialog(InWindowScreenHost):
             pady=btn_pady,
         )
         self.bootcamp_btn.grid(row=0, column=1, sticky="ew", padx=(4 * s, 0))
+
+        self.seats_current_lbl = tkinter.Label(
+            seats_row,
+            text="",
+            font=sub_readout_font,
+            fg="#80cbc4",
+            background=PANEL_BACKGROUND_COLOR,
+            anchor="w",
+            padx=4 * s,
+        )
+        self.seats_current_lbl.grid(row=1, column=0, sticky="ew", padx=(0, 4 * s), pady=(2, 0))
+        self._refresh_mode_and_seats_labels()
 
         # Right Column (Tab 0): Career Save Data & Quick Salon Launchers
         save_frame = tkinter.LabelFrame(
@@ -2966,6 +3127,49 @@ class SettingsDialog(InWindowScreenHost):
         self._refresh_house_rules_controls()
         self.status_msg_var.set("✓ Save file reset to initial blank slate.")
 
+    def _refresh_mode_and_seats_labels(self) -> None:
+        mode_name = str(getattr(self.app, "play_mode", "betting") or "betting").capitalize()
+        if hasattr(self, "mode_current_lbl") and self.mode_current_lbl.winfo_exists():
+            self.mode_current_lbl.configure(text=f"Current: {mode_name}")
+        seats_count = int(getattr(self.app, "table_seats", 1) or 1)
+        if hasattr(self, "seats_current_lbl") and self.seats_current_lbl.winfo_exists():
+            self.seats_current_lbl.configure(
+                text=f"Current: {seats_count} Seat{'s' if seats_count > 1 else ''}"
+            )
+
+    def _on_open_play_mode_picker(self) -> None:
+        existing = getattr(self, "_play_mode_picker", None)
+        if existing is not None and existing.winfo_exists():
+            existing.lift()
+            return
+        self._play_mode_picker = PlayModePickerModal(
+            self,
+            self.app,
+            on_select=self._on_play_mode_selected,
+            on_cancel=lambda: setattr(self, "_play_mode_picker", None),
+        )
+
+    def _on_play_mode_selected(self, mode: str) -> None:
+        self._play_mode_picker = None
+        self._apply_play_mode_choice(mode)
+
+    def _apply_play_mode_choice(self, next_mode: str) -> None:
+        if getattr(self.app, "tour_active", False):
+            self.status_msg_var.set("🔒 Exit the Casino Venue Tour before switching play mode.")
+            return
+        if next_mode == "training" and hasattr(self.app, "activate_training_mode_entry"):
+            if hasattr(self, "mode_current_lbl") and self.mode_current_lbl.winfo_exists():
+                self.mode_current_lbl.configure(text="Current: Training")
+            self._on_close()
+            self.app.activate_training_mode_entry(sync_save=True)
+            return
+        if hasattr(self.app, "set_table_seats"):
+            self.app.set_table_seats(3 if next_mode == "training" else 1)
+        if hasattr(self.app, "apply_play_mode"):
+            self.app.apply_play_mode(next_mode)
+        self._refresh_mode_and_seats_labels()
+        self.status_msg_var.set(f"Play mode switched to {next_mode.capitalize()}.")
+
     def _on_cycle_play_mode(self) -> None:
         if getattr(self.app, "tour_active", False):
             self.status_msg_var.set("🔒 Exit the Casino Venue Tour before switching play mode.")
@@ -2976,38 +3180,45 @@ class SettingsDialog(InWindowScreenHost):
             next_idx = (modes.index(current) + 1) % len(modes)
         except ValueError:
             next_idx = 0
-        next_mode = modes[next_idx]
-        if hasattr(self, "mode_btn") and self.mode_btn.winfo_exists():
-            self.mode_btn.configure(text=f"🎮 Mode: {next_mode.capitalize()}")
-        if next_mode == "training" and hasattr(self.app, "activate_training_mode_entry"):
-            self._on_close()
-            self.app.activate_training_mode_entry(sync_save=True)
-            return
-        if hasattr(self.app, "set_table_seats"):
-            self.app.set_table_seats(3 if next_mode == "training" else 1)
-        if hasattr(self.app, "apply_play_mode"):
-            self.app.apply_play_mode(next_mode)
-        if hasattr(self, "seats_btn"):
-            seats_count = getattr(self.app, "table_seats", 1)
-            self.seats_btn.config(text=f"🪑 Table Seats: {seats_count} Seat{'s' if seats_count > 1 else ''}")
-        self.mode_btn.configure(text=f"🎮 Mode: {next_mode.capitalize()}")
-        self.status_msg_var.set(f"Play mode switched to {next_mode.capitalize()}.")
+        self._apply_play_mode_choice(modes[next_idx])
 
-    def _on_toggle_table_seats(self) -> None:
+    def _on_open_table_seats_picker(self) -> None:
+        existing = getattr(self, "_table_seats_picker", None)
+        if existing is not None and existing.winfo_exists():
+            existing.lift()
+            return
+        self._table_seats_picker = TableSeatsPickerModal(
+            self,
+            self.app,
+            on_select=self._on_table_seats_selected,
+            on_cancel=lambda: setattr(self, "_table_seats_picker", None),
+        )
+
+    def _on_table_seats_selected(self, seats_key: str) -> None:
+        self._table_seats_picker = None
+        try:
+            new_count = int(seats_key)
+        except ValueError:
+            new_count = 1
+        self._apply_table_seats_choice(new_count)
+
+    def _apply_table_seats_choice(self, new_count: int) -> None:
         if getattr(self.app, "tour_active", False):
             self.status_msg_var.set("🔒 Casino Venue Tour salons are 1-Seat high-stakes tables.")
             return
-        current = getattr(self.app, "table_seats", 1)
-        new_count = 3 if current == 1 else 1
         if hasattr(self.app, "set_table_seats"):
             self.app.set_table_seats(new_count)
         else:
             self.app.table_seats = new_count
-        self.seats_btn.config(text=f"🪑 Table Seats: {new_count} Seat{'s' if new_count > 1 else ''}")
+        self._refresh_mode_and_seats_labels()
         if new_count == 3:
             self.status_msg_var.set("3-Seat Wagering enabled. Haunted Mode disabled for multi-seat play.")
         else:
             self.status_msg_var.set("Standard 1-Seat Wagering enabled.")
+
+    def _on_toggle_table_seats(self) -> None:
+        current = int(getattr(self.app, "table_seats", 1) or 1)
+        self._apply_table_seats_choice(3 if current == 1 else 1)
 
     def _on_open_welcome_screen(self) -> None:
         if getattr(self.app, "tour_active", False):
@@ -3116,14 +3327,15 @@ class SettingsDialog(InWindowScreenHost):
         self._refresh_display_controls()
 
     def _on_close(self) -> str:
-        picker = getattr(self, "_window_mode_picker", None)
-        if picker is not None:
-            self._window_mode_picker = None
-            try:
-                if picker.winfo_exists():
-                    picker.destroy()
-            except Exception:
-                pass
+        for attr in ("_window_mode_picker", "_play_mode_picker", "_table_seats_picker"):
+            picker = getattr(self, attr, None)
+            if picker is not None:
+                setattr(self, attr, None)
+                try:
+                    if picker.winfo_exists():
+                        picker.destroy()
+                except Exception:
+                    pass
         if hasattr(self.app, "_close_settings_dialog"):
             self.app._close_settings_dialog()
         else:
