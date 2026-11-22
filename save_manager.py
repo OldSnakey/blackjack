@@ -17,7 +17,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from config import VALID_WINDOW_PROFILE_OVERRIDES
+from config import VALID_INPUT_PROMPT_MODES, VALID_WINDOW_PROFILE_OVERRIDES
 from rules import HouseRules
 from tripometer import TripometerData
 
@@ -203,11 +203,17 @@ class SaveData:
     venue_tour: VenueTourProgress = field(default_factory=VenueTourProgress)
     strict_integer_cards: bool = False
     window_profile_override: str = "auto"
+    input_prompt_mode: str = "auto"
 
     def to_dict(self) -> Dict[str, Any]:
         win_override = (
             self.window_profile_override
             if self.window_profile_override in VALID_WINDOW_PROFILE_OVERRIDES
+            else "auto"
+        )
+        prompt_mode = (
+            self.input_prompt_mode
+            if self.input_prompt_mode in VALID_INPUT_PROMPT_MODES
             else "auto"
         )
         return {
@@ -226,6 +232,7 @@ class SaveData:
             "venue_tour": asdict(self.venue_tour.normalized()),
             "strict_integer_cards": bool(self.strict_integer_cards),
             "window_profile_override": win_override,
+            "input_prompt_mode": prompt_mode,
         }
 
     @classmethod
@@ -325,6 +332,12 @@ class SaveData:
                 str(data.get("window_profile_override", "auto"))
                 if str(data.get("window_profile_override", "auto"))
                 in VALID_WINDOW_PROFILE_OVERRIDES
+                else "auto"
+            ),
+            input_prompt_mode=(
+                str(data.get("input_prompt_mode", "auto"))
+                if str(data.get("input_prompt_mode", "auto"))
+                in VALID_INPUT_PROMPT_MODES
                 else "auto"
             ),
         )
@@ -812,15 +825,21 @@ class SaveManager:
         self,
         strict_integer_cards: Optional[bool] = None,
         window_profile_override: Optional[str] = None,
+        input_prompt_mode: Optional[str] = None,
         save_now: bool = True,
     ) -> bool:
-        """Persists user display scaling and windowed profile overrides in SaveData."""
+        """Persists user display scaling, windowed profile, and input prompt overrides in SaveData."""
         if strict_integer_cards is not None:
             self.data.strict_integer_cards = bool(strict_integer_cards)
         if window_profile_override is not None:
             val = str(window_profile_override)
             self.data.window_profile_override = (
                 val if val in VALID_WINDOW_PROFILE_OVERRIDES else "auto"
+            )
+        if input_prompt_mode is not None:
+            pval = str(input_prompt_mode)
+            self.data.input_prompt_mode = (
+                pval if pval in VALID_INPUT_PROMPT_MODES else "auto"
             )
         if save_now:
             return self.save()

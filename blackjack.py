@@ -145,6 +145,7 @@ from display_profile import (
     probe_display_environment,
     resolve_display_profile,
 )
+from input_manager import InputManager
 from pixel_ui import (
     load_all_pixel_fonts,
     load_pixel_font,
@@ -670,6 +671,14 @@ class BlackjackApp:
 
         # In-Memory Event Hub & Headless Game Engine Architecture
         self.event_bus = EventHub()
+        self.input_manager = InputManager(
+            event_bus=self.event_bus,
+            env_probe=self._env_probe,
+            user_override=str(getattr(self.save_manager.data, "input_prompt_mode", "auto") or "auto"),
+        )
+        self._gamepad_timer_id = None
+        self._last_mouse_xy = None
+        self.event_bus.subscribe(GameEventType.INPUT_MODE_CHANGED, self._on_input_mode_changed)
         self.engine = BlackjackEngine(
             bankroll=STARTING_BANKROLL,
             deck_count=self.deck_count,
@@ -1659,6 +1668,9 @@ class BlackjackApp:
 
         # Keyboard shortcuts initialization
         self._setup_keyboard_shortcuts()
+        self._setup_input_mode_hooks()
+        self._refresh_mahogany_rail_prompt_badges()
+        self._start_gamepad_polling()
 
     def _setup_keyboard_shortcuts(self):
         """Binds full keyboard shortcut support across the window for gameplay accessibility."""
@@ -8727,6 +8739,211 @@ class BlackjackApp:
                 if isinstance(entry, dict) and isinstance(entry.get("deck"), list):
                     entry["deck"][:] = [find_updated_card(c) for c in entry["deck"]]
 
+    def set_input_prompt_mode(self, choice: str) -> str:
+        """Persists user Input Prompts override ('auto' | 'kb_mouse' | 'gamepad') and applies it immediately."""
+        val = str(choice or "auto")
+        if hasattr(self, "save_manager") and self.save_manager is not None:
+            self.save_manager.set_display_preferences(input_prompt_mode=val)
+        if hasattr(self, "input_manager") and self.input_manager is not None:
+            mode = self.input_manager.set_user_override(val)
+            self._refresh_mahogany_rail_prompt_badges()
+            return mode
+        return "kb_mouse"
+
+    def _setup_input_mode_hooks(self) -> None:
+        """Attaches non-intrusive root listeners for last-input-wins Keyboard/Mouse <-> Gamepad switching."""
+        def _on_any_key(_event=None):
+            if getattr(self, "input_manager", None) is not None:
+                self.input_manager.notify_keyboard_input()
+
+        def _on_any_click(_event=None):
+            if getattr(self, "input_manager", None) is not None:
+                self.input_manager.notify_mouse_input(is_click=True)
+
+        def _on_any_motion(event=None):
+            im = getattr(self, "input_manager", None)
+            if im is None or event is None:
+                return
+            x, y = getattr(event, "x_root", None), getattr(event, "y_root", None)
+            if x is None or y is None:
+                return
+            prev = getattr(self, "_last_mouse_xy", None)
+            self._last_mouse_xy = (x, y)
+            if prev is not None:
+                dx = x - prev[0]
+                dy = y - prev[1]
+                im.notify_mouse_input(is_click=False, delta_px=(dx * dx + dy * dy) ** 0.5)
+
+        try:
+            self.root.bind("<KeyPress>", _on_any_key, add="+")
+            self.root.bind("<ButtonPress>", _on_any_click, add="+")
+            self.root.bind("<Motion>", _on_any_motion, add="+")
+        except Exception:
+            pass
+
+    def _refresh_mahogany_rail_prompt_badges(self) -> None:
+        """Displays compact inline gamepad badges (e.g. '[A] Hit') on MahoganyRail buttons in gamepad mode."""
+        im = getattr(self, "input_manager", None)
+        if im is None:
+            return
+        mapping = (
+            ("clear_bet_button", "clear_bet", "Clear Bet"),
+            ("all_in_button", "all_in", "All In"),
+            ("deal_bet_button", "deal", "Deal Hand"),
+            ("hit_button", "hit", "Hit"),
+            ("stand_button", "stand", "Stand"),
+            ("double_button", "double", "Double"),
+            ("split_button", "split", "Split"),
+            ("surrender_button", "surrender", "Surrender"),
+            ("new_game_button", "new_game", "New Game"),
+            ("miracle_button", "miracle", "✨ Miracle"),
+        )
+        for attr, act_key, base_label in mapping:
+            btn = getattr(self, attr, None)
+            if btn is None or not hasattr(btn, "set_text"):
+                continue
+            badge = im.get_button_badge_text(act_key)
+            target_text = f"{badge} {base_label}" if badge else base_label
+            if getattr(btn, "text", None) != target_text:
+                try:
+                    btn.set_text(target_text)
+                except Exception:
+                    pass
+
+    def _on_input_mode_changed(self, event: Any) -> None:
+        """Reacts to EventHub INPUT_MODE_CHANGED by updating rail badges and any open in-window screens."""
+        self._refresh_mahogany_rail_prompt_badges()
+        payload = getattr(event, "payload", {}) or {}
+        mode = str(payload.get("mode", "kb_mouse"))
+        glyph_style = str(payload.get("glyph_style", "xbox"))
+        for scr in list(getattr(self.root, "_active_inwindow_screens", None) or []):
+            try:
+                if scr.winfo_exists() and hasattr(scr, "on_input_mode_changed"):
+                    scr.on_input_mode_changed(mode, glyph_style)
+            except Exception:
+                pass
+
+    def _start_gamepad_polling(self) -> None:
+        """Starts the non-blocking 25ms Tkinter gamepad poller."""
+        if getattr(self, "_gamepad_timer_id", None) is not None:
+            return
+        try:
+            self._gamepad_timer_id = self.root.after(25, self._poll_gamepad)
+        except Exception:
+            self._gamepad_timer_id = None
+
+    def _poll_gamepad(self) -> None:
+        self._gamepad_timer_id = None
+        try:
+            if not self.root.winfo_exists():
+                return
+        except Exception:
+            return
+        im = getattr(self, "input_manager", None)
+        if im is not None:
+            for act in im.poll_actions():
+                self._dispatch_gamepad_action(act)
+        try:
+            self._gamepad_timer_id = self.root.after(25, self._poll_gamepad)
+        except Exception:
+            self._gamepad_timer_id = None
+
+    def _dispatch_gamepad_action(self, action: str) -> None:
+        """Routes a semantic gamepad action to the active modal screen or live table phase."""
+        top_scr = self._get_top_inwindow_screen()
+        if top_scr is not None:
+            key_map = {
+                "confirm": ("Return", "\r"),
+                "cancel": ("Escape", ""),
+                "nav_left": ("Left", ""),
+                "nav_right": ("Right", ""),
+                "nav_up": ("Up", ""),
+                "nav_down": ("Down", ""),
+                "tab_prev": ("Left", ""),
+                "tab_next": ("Right", ""),
+                "help": ("Escape", ""),
+                "menu": ("Escape", ""),
+            }
+            mapped = key_map.get(action)
+            if mapped and hasattr(top_scr, "handle_modal_key"):
+                class _GamepadKeyEvent:
+                    def __init__(self, widget: Any, keysym: str, char: str) -> None:
+                        self.widget = widget
+                        self.keysym = keysym
+                        self.char = char
+                top_scr.handle_modal_key(_GamepadKeyEvent(top_scr, mapped[0], mapped[1]))
+            return
+
+        # Global table shortcuts
+        if action == "menu":
+            self._open_settings_dialog()
+            return
+        if action == "help":
+            self._toggle_shortcuts_overlay()
+            return
+
+        if getattr(self, "_dealing", False):
+            return
+
+        # Insurance prompt
+        if getattr(self, "is_insurance_phase", False):
+            if action == "confirm":
+                self._on_take_insurance()
+            elif action == "cancel":
+                self._on_decline_insurance()
+            return
+
+        phase = getattr(self.fsm, "phase", None)
+        if phase == RoundPhase.BETTING:
+            if action == "confirm":
+                denom = int(getattr(self, "selected_denomination", 5) or 5)
+                self._on_key_chip(denom)
+            elif action == "deal":
+                self._deal_hand_with_bet()
+            elif action == "action_x":
+                self._clear_bet()
+            elif action == "action_y":
+                self._all_in()
+            elif action in ("tab_prev", "tab_next"):
+                denoms = [amt for amt, _, _ in CHIP_DENOMINATIONS]
+                cur = int(getattr(self, "selected_denomination", denoms[0]) or denoms[0])
+                idx = denoms.index(cur) if cur in denoms else 0
+                nxt = denoms[(idx + (1 if action == "tab_next" else -1)) % len(denoms)]
+                self._select_rail_denomination(nxt)
+            elif action in ("nav_left", "nav_right"):
+                if getattr(self, "table_seats", 1) > 1:
+                    cur_seat = int(getattr(self, "focused_betting_seat", 2) or 2)
+                    nxt_seat = ((cur_seat - 1 + (1 if action == "nav_right" else -1)) % 3) + 1
+                    self.focused_betting_seat = nxt_seat
+                    if hasattr(self, "_sync_betting_spots_from_engine"):
+                        self._sync_betting_spots_from_engine()
+                else:
+                    denoms = [amt for amt, _, _ in CHIP_DENOMINATIONS]
+                    cur = int(getattr(self, "selected_denomination", denoms[0]) or denoms[0])
+                    idx = denoms.index(cur) if cur in denoms else 0
+                    nxt = denoms[(idx + (1 if action == "nav_right" else -1)) % len(denoms)]
+                    self._select_rail_denomination(nxt)
+            elif action == "nav_up":
+                self._add_side_bet("perfect_pairs", 5)
+            elif action == "nav_down":
+                self._add_side_bet("21_plus_3", 5)
+        elif phase == RoundPhase.PLAYER_TURN:
+            if action == "confirm":
+                self._on_key_action(self.on_hit, self.hit_button)
+            elif action == "cancel":
+                self._on_key_action(self.on_stand, self.stand_button)
+            elif action == "action_x":
+                self._on_key_action(self.on_double_down, self.double_button)
+            elif action == "action_y":
+                self._on_key_action(self.on_split, self.split_button)
+            elif action == "tab_prev":
+                self._on_key_action(self.on_surrender, self.surrender_button)
+            elif action == "tab_next":
+                self._on_key_action(self._on_miracle_draw, getattr(self, "miracle_button", None))
+        elif phase == RoundPhase.ROUND_OVER:
+            if action in ("confirm", "deal"):
+                self.new_game()
+
     def set_window_mode_choice(self, choice: str) -> DisplayProfile:
         """
         Applies an explicit Window Mode selection from Settings -> Window Mode Picker:
@@ -9112,6 +9329,7 @@ class BlackjackApp:
             "_ambient_timer_id",
             "_dealer_timer_id",
             "_blessing_tooltip_hide_id",
+            "_gamepad_timer_id",
         ):
             timer_id = getattr(self, attr, None)
             if timer_id:

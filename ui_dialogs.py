@@ -898,9 +898,15 @@ class SettingsOptionPickerModal(InWindowScreenHost):
         footer.pack(fill="x", pady=(8 if compact else (10 * s), 0))
 
         n_opts = len(self.options)
+        im = getattr(self.app, "input_manager", None)
+        hint_text = (
+            im.get_footer_hint("picker", n_opts=n_opts)
+            if im is not None
+            else f"[↑/↓] Navigate  •  [Enter] Apply  •  [1-{n_opts}] Quick Pick  •  [Esc] Cancel"
+        )
         self._hint_lbl = tkinter.Label(
             footer,
-            text=f"[↑/↓] Navigate  •  [Enter] Apply  •  [1-{n_opts}] Quick Pick  •  [Esc] Cancel",
+            text=hint_text,
             font=row_sub_font,
             fg="#80cbc4",
             background=bg,
@@ -954,6 +960,11 @@ class SettingsOptionPickerModal(InWindowScreenHost):
         if callable(cb):
             cb(str(key))
         return True
+
+    def on_input_mode_changed(self, _mode: str, _glyph_style: str) -> None:
+        im = getattr(self.app, "input_manager", None)
+        if im is not None and hasattr(self, "_hint_lbl") and self._hint_lbl.winfo_exists():
+            self._hint_lbl.configure(text=im.get_footer_hint("picker", n_opts=len(self.options)))
 
     def _on_cancel(self) -> None:
         cb = self._on_cancel_cb
@@ -1125,6 +1136,58 @@ class TableSeatsPickerModal(SettingsOptionPickerModal):
             on_cancel=on_cancel,
             overlay_wh=(680, 300),
             disabled_badge_text="TOUR LOCKED",
+        )
+
+
+class InputPromptsPickerModal(SettingsOptionPickerModal):
+    """In-window floating overlay modal for selecting Keyboard/Mouse vs Gamepad/Steam Deck input prompts."""
+
+    def __init__(
+        self,
+        parent: tkinter.Misc,
+        app: Any,
+        on_select: Callable[[str], None],
+        on_cancel: Optional[Callable[[], None]] = None,
+    ) -> None:
+        save_data = getattr(getattr(app, "save_manager", None), "data", None)
+        current_override = str(getattr(save_data, "input_prompt_mode", "auto") or "auto")
+        im = getattr(app, "input_manager", None)
+        detected_lbl = "Gamepad / Steam Deck" if (im is not None and im.active_mode == "gamepad") else "Keyboard & Mouse"
+        options = [
+            {
+                "key": "auto",
+                "label": "Auto (Recommended)",
+                "subtitle": f"Automatically switches on last input or Steam Deck (Currently: {detected_lbl}).",
+                "enabled": True,
+                "disabled_reason": "",
+            },
+            {
+                "key": "kb_mouse",
+                "label": "Keyboard & Mouse",
+                "subtitle": "Always display keyboard keycaps and mouse click icons.",
+                "enabled": True,
+                "disabled_reason": "",
+            },
+            {
+                "key": "gamepad",
+                "label": "Gamepad / Steam Deck",
+                "subtitle": "Always display controller button icons and inline table action badges.",
+                "enabled": True,
+                "disabled_reason": "",
+            },
+        ]
+        super().__init__(
+            parent,
+            app,
+            window_title="Select Input Prompts",
+            heading="🎮 INPUT PROMPT ICONS",
+            subtitle="Choose whether prompts auto-detect or stay locked to Keyboard/Mouse or Gamepad.",
+            options=options,
+            active_key=current_override,
+            on_select=on_select,
+            on_cancel=on_cancel,
+            overlay_wh=(680, 360),
+            disabled_badge_text="LOCKED",
         )
 
 
@@ -2150,7 +2213,7 @@ class SettingsDialog(InWindowScreenHost):
             self._refresh_display_controls()
 
     def handle_modal_key(self, event: Any) -> Optional[str]:
-        for attr in ("_window_mode_picker", "_play_mode_picker", "_table_seats_picker"):
+        for attr in ("_window_mode_picker", "_play_mode_picker", "_table_seats_picker", "_input_prompts_picker"):
             picker = getattr(self, attr, None)
             if picker is not None and picker.winfo_exists():
                 return picker.handle_modal_key(event)
@@ -2538,7 +2601,6 @@ class SettingsDialog(InWindowScreenHost):
             padx=4 * s,
         )
         self.seats_current_lbl.grid(row=1, column=0, sticky="ew", padx=(0, 4 * s), pady=(2, 0))
-        self._refresh_mode_and_seats_labels()
 
         # Right Column (Tab 0): Career Save Data & Quick Salon Launchers
         save_frame = tkinter.LabelFrame(
@@ -2638,6 +2700,41 @@ class SettingsDialog(InWindowScreenHost):
                 command=q_cmd,
             )
             qb.grid(row=qr, column=qc, sticky="ew", padx=3 * s, pady=3)
+
+        input_row = tkinter.Frame(quick_hub, background="#092114")
+        input_row.pack(fill="x", pady=(6 if compact else (8 * s), 0))
+        input_row.columnconfigure(0, weight=1, uniform="q_inp")
+        input_row.columnconfigure(1, weight=1, uniform="q_inp")
+
+        self.input_prompts_btn = tkinter.Button(
+            input_row,
+            text="🎮 Input Prompts...",
+            font=btn_font,
+            background="#004d40",
+            fg="white",
+            activebackground="#00695c",
+            activeforeground="white",
+            relief="ridge",
+            borderwidth=1,
+            cursor="hand2",
+            command=self._on_open_input_prompts_picker,
+            padx=8 * s,
+            pady=btn_pady,
+        )
+        self.input_prompts_btn.grid(row=0, column=0, sticky="ew", padx=(3 * s, 4 * s))
+
+        self.input_prompts_current_lbl = tkinter.Label(
+            input_row,
+            text="",
+            font=sub_readout_font,
+            fg="#80cbc4",
+            background="#072214",
+            anchor="w",
+            padx=8 * s,
+            pady=3 if compact else 4 * s,
+        )
+        self.input_prompts_current_lbl.grid(row=0, column=1, sticky="ew", padx=(4 * s, 3 * s))
+        self._refresh_mode_and_seats_labels()
 
         lbl_status = tkinter.Label(
             save_frame,
@@ -3136,6 +3233,33 @@ class SettingsDialog(InWindowScreenHost):
             self.seats_current_lbl.configure(
                 text=f"Current: {seats_count} Seat{'s' if seats_count > 1 else ''}"
             )
+        im = getattr(self.app, "input_manager", None)
+        if hasattr(self, "input_prompts_current_lbl") and self.input_prompts_current_lbl.winfo_exists():
+            summary = im.format_current_summary() if im is not None else "Current: Auto (KB & Mouse)"
+            self.input_prompts_current_lbl.configure(text=summary)
+
+    def on_input_mode_changed(self, _mode: str, _glyph_style: str) -> None:
+        self._refresh_mode_and_seats_labels()
+
+    def _on_open_input_prompts_picker(self) -> None:
+        existing = getattr(self, "_input_prompts_picker", None)
+        if existing is not None and existing.winfo_exists():
+            existing.lift()
+            return
+        self._input_prompts_picker = InputPromptsPickerModal(
+            self,
+            self.app,
+            on_select=self._on_input_prompts_selected,
+            on_cancel=lambda: setattr(self, "_input_prompts_picker", None),
+        )
+
+    def _on_input_prompts_selected(self, choice: str) -> None:
+        self._input_prompts_picker = None
+        if hasattr(self.app, "set_input_prompt_mode"):
+            self.app.set_input_prompt_mode(choice)
+        self._refresh_mode_and_seats_labels()
+        labels = {"auto": "Auto", "kb_mouse": "Keyboard & Mouse", "gamepad": "Gamepad / Steam Deck"}
+        self.status_msg_var.set(f"Input prompts set to {labels.get(choice, choice)}.")
 
     def _on_open_play_mode_picker(self) -> None:
         existing = getattr(self, "_play_mode_picker", None)
@@ -3327,7 +3451,7 @@ class SettingsDialog(InWindowScreenHost):
         self._refresh_display_controls()
 
     def _on_close(self) -> str:
-        for attr in ("_window_mode_picker", "_play_mode_picker", "_table_seats_picker"):
+        for attr in ("_window_mode_picker", "_play_mode_picker", "_table_seats_picker", "_input_prompts_picker"):
             picker = getattr(self, attr, None)
             if picker is not None:
                 setattr(self, attr, None)
@@ -3462,12 +3586,28 @@ class ShortcutsDialog(InWindowScreenHost):
             q_lbl.image = q_icon
             q_lbl.pack(side="left", padx=(0, 10 * s))
 
+        im = getattr(self._host_app, "input_manager", None)
+        self.active_input_mode = str(getattr(im, "active_mode", "kb_mouse") or "kb_mouse")
+        self.active_glyph_style = str(getattr(im, "glyph_style", "xbox") or "xbox")
+        is_gp = self.active_input_mode == "gamepad"
+        is_ps = is_gp and self.active_glyph_style == "playstation"
+
         title_box = tkinter.Frame(self._header_frame, background=PANEL_BACKGROUND_COLOR)
         title_box.pack(side="left")
 
+        hdr_title = (
+            "PLAYSTATION CONTROLLER CONTROLS"
+            if is_ps
+            else ("GAMEPAD & STEAM DECK CONTROLS" if is_gp else "KEYBOARD SHORTCUTS & CONTROLS")
+        )
+        hdr_sub = (
+            "Native controller mapping with automatic Keyboard/Mouse ↔ Gamepad prompt switching"
+            if is_gp
+            else "Full hands-free keyboard & tactile mouse controls for authentic casino gameplay"
+        )
         tkinter.Label(
             title_box,
-            text="KEYBOARD SHORTCUTS & CONTROLS",
+            text=hdr_title,
             font=title_font,
             fg="#ffd700",
             background=PANEL_BACKGROUND_COLOR,
@@ -3475,7 +3615,7 @@ class ShortcutsDialog(InWindowScreenHost):
 
         tkinter.Label(
             title_box,
-            text="Full hands-free keyboard & tactile mouse controls for authentic casino gameplay",
+            text=hdr_sub,
             font=hdr_font,
             fg="#80cbc4",
             background=PANEL_BACKGROUND_COLOR,
@@ -3553,9 +3693,14 @@ class ShortcutsDialog(InWindowScreenHost):
         )
         self._footer_frame.pack(side="bottom", fill="x")
 
+        tip_txt = (
+            im.get_footer_hint("shortcuts")
+            if im is not None
+            else "💡 Tip: Switch tabs with [◄ / ►] or [1] / [2]. Press [Esc], [?], or [F1] to return to the table."
+        )
         tkinter.Label(
             self._footer_frame,
-            text="💡 Tip: Switch tabs with [◄ / ►] or [1] / [2]. Press [Esc], [?], or [F1] to return to the table.",
+            text=tip_txt,
             font=tip_font,
             fg="#ffe082",
             background=PANEL_BACKGROUND_COLOR,
@@ -3686,34 +3831,67 @@ class ShortcutsDialog(InWindowScreenHost):
         left_col_g = tkinter.Frame(grid_gameplay, background=PANEL_BACKGROUND_COLOR)
         left_col_g.grid(row=0, column=0, sticky="nsew", padx=(0, 8 * s))
 
-        panel_actions = make_panel(left_col_g, "🃏 TABLE ACTIONS")
-        add_row(panel_actions, ["keyboard_space", "keyboard_enter"], "Deal / Hit / Next", "(Context-sensitive)")
-        add_row(panel_actions, ["keyboard_h"], "Hit", "(Draw another card)")
-        add_row(panel_actions, ["keyboard_s"], "Stand", "(End turn, dealer plays)")
-        add_row(panel_actions, ["keyboard_d"], "Double Down", "(Double bet, draw 1 card)")
-        add_row(panel_actions, ["keyboard_p"], "Split Pair", "(Split equal rank cards)")
-        add_row(panel_actions, ["keyboard_r"], "Surrender", "(Forfeit half bet before hitting)")
+        if is_gp:
+            ic_a = "ps_cross" if is_ps else "gamepad_a"
+            ic_b = "ps_circle" if is_ps else "gamepad_b"
+            ic_x = "ps_square" if is_ps else "gamepad_x"
+            ic_y = "ps_triangle" if is_ps else "gamepad_y"
+            ic_lb = "ps_l1" if is_ps else "gamepad_lb"
+            ic_rb = "ps_r1" if is_ps else "gamepad_rb"
+            ic_rt = "ps_r2" if is_ps else "gamepad_rt"
 
-        panel_insurance = make_panel(left_col_g, "🛡 INSURANCE & MOUSE WAGERING")
-        add_row(panel_insurance, ["keyboard_y"], "Take Insurance", "(Pays 2:1 on Dealer Ace)")
-        add_row(panel_insurance, ["keyboard_n", "keyboard_escape"], "Decline Insurance", "(Skip side bet)")
-        add_row(panel_insurance, ["mouse_left"], "Click Chip / Spot", "(Add chip to active bet)")
-        add_row(panel_insurance, ["mouse_right"], "Right-Click Spot", "(Remove chip / Clear side bet)")
+            panel_actions = make_panel(left_col_g, "🃏 TABLE ACTIONS (GAMEPAD)")
+            add_row(panel_actions, [ic_a], "Hit / New Game", "(Draw card or start next round)")
+            add_row(panel_actions, [ic_b], "Stand", "(End turn, dealer plays)")
+            add_row(panel_actions, [ic_x], "Double Down", "(Double bet, draw 1 card)")
+            add_row(panel_actions, [ic_y], "Split Pair", "(Split equal rank cards)")
+            add_row(panel_actions, [ic_lb], "Surrender", "(Forfeit half bet before hitting)")
+            add_row(panel_actions, [ic_rb], "Miracle Draw", "(Hell's Table relic redraw)")
 
-        right_col_g = tkinter.Frame(grid_gameplay, background=PANEL_BACKGROUND_COLOR)
-        right_col_g.grid(row=0, column=1, sticky="nsew", padx=(8 * s, 0))
+            panel_insurance = make_panel(left_col_g, "🛡 INSURANCE & QUICK BET")
+            add_row(panel_insurance, [ic_a], "Take Insurance", "(Pays 2:1 on Dealer Ace)")
+            add_row(panel_insurance, [ic_b], "Decline Insurance", "(Skip side bet)")
+            add_row(panel_insurance, [ic_rt, "gamepad_menu"], "Deal Hand", "(Commit staged bets)")
 
-        panel_betting = make_panel(right_col_g, "💰 CHIPS & WAGERING")
-        add_row(panel_betting, ["keyboard_1"], "Bet $5", "(White chip)")
-        add_row(panel_betting, ["keyboard_2"], "Bet $25", "(Red chip)")
-        add_row(panel_betting, ["keyboard_3"], "Bet $100", "(Green chip)")
-        add_row(panel_betting, ["keyboard_4"], "Bet $500", "(Black & Gold chip)")
-        add_row(panel_betting, ["keyboard_5"], "Bet $1,000", "(Platinum chip)")
-        add_row(panel_betting, ["keyboard_q"], "Perfect Pairs +$5", "(Left spot / 6)")
-        add_row(panel_betting, ["keyboard_e"], "21+3 Poker +$5", "(Right spot / 7)")
-        add_row(panel_betting, ["keyboard_a"], "All In", "(Wager entire bankroll)")
-        add_row(panel_betting, ["keyboard_c"], "Clear Bet", "(Reset bet to $0)")
-        add_row(panel_betting, ["keyboard_arrow_left", "keyboard_arrow_right"], "Seat Focus", "(Cycle Seat 1-3 in 3-Seat)")
+            right_col_g = tkinter.Frame(grid_gameplay, background=PANEL_BACKGROUND_COLOR)
+            right_col_g.grid(row=0, column=1, sticky="nsew", padx=(8 * s, 0))
+
+            panel_betting = make_panel(right_col_g, "💰 CHIPS & WAGERING (GAMEPAD)")
+            add_row(panel_betting, [ic_a], "Stage Selected Chip", "(Add chip to active seat)")
+            add_row(panel_betting, [ic_lb, ic_rb], "Cycle Chip Value", "($5 / $25 / $100 / $500 / $1,000)")
+            add_row(panel_betting, ["gamepad_dpad_lr"], "Focus Seat / Chip", "(Cycle Seat 1-3 in 3-Seat)")
+            add_row(panel_betting, ["gamepad_dpad_ud"], "Side Bets +$5", "(Up: Perfect Pairs / Down: 21+3)")
+            add_row(panel_betting, [ic_x], "Clear Bet", "(Reset staged bet to $0)")
+            add_row(panel_betting, [ic_y], "All In", "(Wager entire bankroll)")
+        else:
+            panel_actions = make_panel(left_col_g, "🃏 TABLE ACTIONS")
+            add_row(panel_actions, ["keyboard_space", "keyboard_enter"], "Deal / Hit / Next", "(Context-sensitive)")
+            add_row(panel_actions, ["keyboard_h"], "Hit", "(Draw another card)")
+            add_row(panel_actions, ["keyboard_s"], "Stand", "(End turn, dealer plays)")
+            add_row(panel_actions, ["keyboard_d"], "Double Down", "(Double bet, draw 1 card)")
+            add_row(panel_actions, ["keyboard_p"], "Split Pair", "(Split equal rank cards)")
+            add_row(panel_actions, ["keyboard_r"], "Surrender", "(Forfeit half bet before hitting)")
+
+            panel_insurance = make_panel(left_col_g, "🛡 INSURANCE & MOUSE WAGERING")
+            add_row(panel_insurance, ["keyboard_y"], "Take Insurance", "(Pays 2:1 on Dealer Ace)")
+            add_row(panel_insurance, ["keyboard_n", "keyboard_escape"], "Decline Insurance", "(Skip side bet)")
+            add_row(panel_insurance, ["mouse_left"], "Click Chip / Spot", "(Add chip to active bet)")
+            add_row(panel_insurance, ["mouse_right"], "Right-Click Spot", "(Remove chip / Clear side bet)")
+
+            right_col_g = tkinter.Frame(grid_gameplay, background=PANEL_BACKGROUND_COLOR)
+            right_col_g.grid(row=0, column=1, sticky="nsew", padx=(8 * s, 0))
+
+            panel_betting = make_panel(right_col_g, "💰 CHIPS & WAGERING")
+            add_row(panel_betting, ["keyboard_1"], "Bet $5", "(White chip)")
+            add_row(panel_betting, ["keyboard_2"], "Bet $25", "(Red chip)")
+            add_row(panel_betting, ["keyboard_3"], "Bet $100", "(Green chip)")
+            add_row(panel_betting, ["keyboard_4"], "Bet $500", "(Black & Gold chip)")
+            add_row(panel_betting, ["keyboard_5"], "Bet $1,000", "(Platinum chip)")
+            add_row(panel_betting, ["keyboard_q"], "Perfect Pairs +$5", "(Left spot / 6)")
+            add_row(panel_betting, ["keyboard_e"], "21+3 Poker +$5", "(Right spot / 7)")
+            add_row(panel_betting, ["keyboard_a"], "All In", "(Wager entire bankroll)")
+            add_row(panel_betting, ["keyboard_c"], "Clear Bet", "(Reset bet to $0)")
+            add_row(panel_betting, ["keyboard_arrow_left", "keyboard_arrow_right"], "Seat Focus", "(Cycle Seat 1-3 in 3-Seat)")
 
         # Tab 1: System & Controls Content
         self.tab_system = tkinter.Frame(self.scroll_content, background=PANEL_BACKGROUND_COLOR)
@@ -3726,32 +3904,55 @@ class ShortcutsDialog(InWindowScreenHost):
         left_col_s = tkinter.Frame(grid_system, background=PANEL_BACKGROUND_COLOR)
         left_col_s.grid(row=0, column=0, sticky="nsew", padx=(0, 8 * s))
 
-        panel_display = make_panel(left_col_s, "🖥 AUDIO & DISPLAY")
-        add_row(panel_display, ["keyboard_o", "keyboard_f2"], "Casino Settings", "(Audio, Display & House Rules)")
-        add_row(panel_display, ["keyboard_m"], "Toggle Sound", "(Mute / Unmute audio)")
-        add_row(panel_display, ["keyboard_f11"], "Toggle Fullscreen", "(F11 or Escape to exit)")
+        if is_gp:
+            panel_display = make_panel(left_col_s, "🖥 MENUS & NAVIGATION (GAMEPAD)")
+            add_row(panel_display, ["gamepad_menu"], "Casino Settings", "(Audio, Display & House Rules)")
+            add_row(panel_display, ["gamepad_view"], "Controls Guide", "(Show / Hide this HUD)")
+            add_row(panel_display, ["gamepad_dpad"], "Navigate Menus", "(Move focus & quiz counters)")
+            add_row(panel_display, [ic_lb, ic_rb], "Switch Tabs / Pages", "(Wardrobe, Hall of Fame, Settings)")
 
-        panel_wardrobe = make_panel(left_col_s, "🎩 WARDROBE & RECORDS")
-        add_row(panel_wardrobe, ["keyboard_shift", "keyboard_w"], "Dealer Wardrobe", "(Costumes & customizer)")
-        add_row(panel_wardrobe, ["keyboard_shift", "keyboard_h"], "Hall of Fame", "(Trophy shelf & records)")
+            right_col_s = tkinter.Frame(grid_system, background=PANEL_BACKGROUND_COLOR)
+            right_col_s.grid(row=0, column=1, sticky="nsew", padx=(8 * s, 0))
 
-        right_col_s = tkinter.Frame(grid_system, background=PANEL_BACKGROUND_COLOR)
-        right_col_s.grid(row=0, column=1, sticky="nsew", padx=(8 * s, 0))
+            panel_help = make_panel(right_col_s, "🎮 CONFIRM & DISMISS")
+            add_row(panel_help, [ic_a], "Confirm / Select", "(Apply focused option)")
+            add_row(panel_help, [ic_b], "Back / Close Menu", "(Return to table)")
+            add_row(panel_help, ["gamepad_dpad_lr"], "Flip Pages", "(Paged zero-scroll menus)")
+        else:
+            panel_display = make_panel(left_col_s, "🖥 AUDIO & DISPLAY")
+            add_row(panel_display, ["keyboard_o", "keyboard_f2"], "Casino Settings", "(Audio, Display & House Rules)")
+            add_row(panel_display, ["keyboard_m"], "Toggle Sound", "(Mute / Unmute audio)")
+            add_row(panel_display, ["keyboard_f11"], "Toggle Fullscreen", "(F11 or Escape to exit)")
 
-        panel_trainer = make_panel(right_col_s, "🧮 TRAINER & SUPERNATURAL")
-        add_row(panel_trainer, ["keyboard_k", "keyboard_shift", "keyboard_c"], "Card Counter HUD", "(K or Shift+C)")
-        add_row(panel_trainer, ["keyboard_t"], "Strategy Tripometer", "(Hand review & grades)")
-        add_row(panel_trainer, ["keyboard_shift", "keyboard_t"], "Casino Venue Tour", "(Shift+T - Post-Exorcist)")
-        add_row(panel_trainer, ["keyboard_shift", "keyboard_m"], "Cycle Play Mode", "(Casual / Betting / Training)")
-        add_row(panel_trainer, ["keyboard_x"], "Miracle Draw", "(Hell's Table relic redraw)")
+            panel_wardrobe = make_panel(left_col_s, "🎩 WARDROBE & RECORDS")
+            add_row(panel_wardrobe, ["keyboard_shift", "keyboard_w"], "Dealer Wardrobe", "(Costumes & customizer)")
+            add_row(panel_wardrobe, ["keyboard_shift", "keyboard_h"], "Hall of Fame", "(Trophy shelf & records)")
 
-        panel_help = make_panel(right_col_s, "🖱 ACCESSIBILITY & HELP")
-        add_row(panel_help, ["keyboard_question", "keyboard_f1"], "Toggle Help", "(Show / Hide this HUD)")
-        add_row(panel_help, ["keyboard_escape"], "Dismiss Screen", "(Close active menu)")
-        add_row(panel_help, ["mouse_left"], "Click Button / Chip", "(Direct mouse interaction)")
+            right_col_s = tkinter.Frame(grid_system, background=PANEL_BACKGROUND_COLOR)
+            right_col_s.grid(row=0, column=1, sticky="nsew", padx=(8 * s, 0))
+
+            panel_trainer = make_panel(right_col_s, "🧮 TRAINER & SUPERNATURAL")
+            add_row(panel_trainer, ["keyboard_k", "keyboard_shift", "keyboard_c"], "Card Counter HUD", "(K or Shift+C)")
+            add_row(panel_trainer, ["keyboard_t"], "Strategy Tripometer", "(Hand review & grades)")
+            add_row(panel_trainer, ["keyboard_shift", "keyboard_t"], "Casino Venue Tour", "(Shift+T - Post-Exorcist)")
+            add_row(panel_trainer, ["keyboard_shift", "keyboard_m"], "Cycle Play Mode", "(Casual / Betting / Training)")
+            add_row(panel_trainer, ["keyboard_x"], "Miracle Draw", "(Hell's Table relic redraw)")
+
+            panel_help = make_panel(right_col_s, "🖱 ACCESSIBILITY & HELP")
+            add_row(panel_help, ["keyboard_question", "keyboard_f1"], "Toggle Help", "(Show / Hide this HUD)")
+            add_row(panel_help, ["keyboard_escape"], "Dismiss Screen", "(Close active menu)")
+            add_row(panel_help, ["mouse_left"], "Click Button / Chip", "(Direct mouse interaction)")
 
         self._tab_frames = [self.tab_gameplay, self.tab_system]
         self._switch_tab(0)
+
+    def on_input_mode_changed(self, mode: str, glyph_style: str) -> None:
+        if mode != getattr(self, "active_input_mode", None) or glyph_style != getattr(self, "active_glyph_style", None):
+            cur = self.current_tab
+            for child in list(self.winfo_children()):
+                child.destroy()
+            self._build_ui()
+            self._switch_tab(cur)
 
     def _switch_tab(self, tab_idx: int) -> None:
         self.current_tab = max(0, min(1, tab_idx))

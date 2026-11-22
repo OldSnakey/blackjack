@@ -279,16 +279,19 @@ class TestSaveManager(unittest.TestCase):
         self.assertTrue(reloaded.data.strict_integer_cards)
         self.assertEqual(reloaded.data.window_profile_override, "hd_720p")
 
-        # fhd_1080p windowed override persists cleanly
-        reloaded.set_display_preferences(window_profile_override="fhd_1080p")
+        # fhd_1080p windowed override and input_prompt_mode persist cleanly
+        reloaded.set_display_preferences(window_profile_override="fhd_1080p", input_prompt_mode="gamepad")
         reloaded2 = SaveManager(save_path=self.save_file)
         self.assertEqual(reloaded2.data.window_profile_override, "fhd_1080p")
+        self.assertEqual(reloaded2.data.input_prompt_mode, "gamepad")
 
-        # Invalid window override falls back safely to 'auto'
+        # Invalid window override & input_prompt_mode fall back safely to 'auto'
         raw = reloaded2.data.to_dict()
         raw["window_profile_override"] = "invalid_9999p"
+        raw["input_prompt_mode"] = "atari_paddle"
         sanitized = SaveData.from_dict(raw)
         self.assertEqual(sanitized.window_profile_override, "auto")
+        self.assertEqual(sanitized.input_prompt_mode, "auto")
 
 
 if __name__ == "__main__":

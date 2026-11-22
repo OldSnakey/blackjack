@@ -448,6 +448,46 @@ class TestSettingsDialog(unittest.TestCase):
         finally:
             self.app._close_settings_dialog()
 
+    def test_input_prompts_picker_updates_mode_shortcuts_and_mahogany_rail_badges(self):
+        """Input Prompts picker switches between Auto/KB&Mouse/Gamepad, updates MahoganyRail badges, and switches ShortcutsDialog prompts."""
+        self.app._open_settings_dialog()
+        dialog = self.app._settings_dialog
+        self.assertIsNotNone(dialog)
+        try:
+            self.assertTrue(hasattr(dialog, "input_prompts_btn"))
+            self.assertTrue(hasattr(dialog, "input_prompts_current_lbl"))
+            dialog.input_prompts_btn.invoke()
+            ip_picker = getattr(dialog, "_input_prompts_picker", None)
+            self.assertIsNotNone(ip_picker)
+            self.assertEqual([o["key"] for o in ip_picker.options], ["auto", "kb_mouse", "gamepad"])
+
+            # Select Gamepad mode -> persists, switches InputManager, adds inline badge to MahoganyRail buttons
+            ip_picker.select_option("gamepad")
+            self.assertEqual(self.app.save_manager.data.input_prompt_mode, "gamepad")
+            self.assertEqual(self.app.input_manager.active_mode, "gamepad")
+            self.assertIn("Gamepad", dialog.input_prompts_current_lbl.cget("text"))
+            self.assertIn("[A]", self.app.hit_button.text)
+            self.assertIn("[B]", self.app.stand_button.text)
+
+            # Open ShortcutsDialog -> renders Gamepad controls layout
+            self.app._close_settings_dialog()
+            self.app._show_shortcuts_overlay()
+            sc_dlg = self.app._shortcuts_dialog
+            self.assertIsNotNone(sc_dlg)
+            self.assertEqual(sc_dlg.active_input_mode, "gamepad")
+            self.app._close_shortcuts_overlay()
+
+            # Switch back to KB & Mouse -> removes inline gamepad badges
+            self.app._open_settings_dialog()
+            dialog = self.app._settings_dialog
+            dialog.input_prompts_btn.invoke()
+            dialog._input_prompts_picker.select_option("kb_mouse")
+            self.assertEqual(self.app.input_manager.active_mode, "kb_mouse")
+            self.assertEqual(self.app.hit_button.text, "Hit")
+            self.assertEqual(self.app.stand_button.text, "Stand")
+        finally:
+            self.app._close_settings_dialog()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -34,6 +34,7 @@ class GameEventType(Enum):
     SIDE_BET_RESOLVED = "side_bet_resolved"
     HAND_RESOLVED = "hand_resolved"
     DISPLAY_PROFILE_CHANGED = "display_profile_changed"
+    INPUT_MODE_CHANGED = "input_mode_changed"
 
 
 EventType = GameEventType

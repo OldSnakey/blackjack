@@ -29,6 +29,7 @@ hiddenimports = [
     "tkinter",
     "config",
     "display_profile",
+    "input_manager",
     "rules",
     "audio_assets",
     "ui_canvases",
