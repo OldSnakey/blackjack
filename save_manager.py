@@ -17,6 +17,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from config import VALID_WINDOW_PROFILE_OVERRIDES
 from rules import HouseRules
 from tripometer import TripometerData
 
@@ -206,7 +207,7 @@ class SaveData:
     def to_dict(self) -> Dict[str, Any]:
         win_override = (
             self.window_profile_override
-            if self.window_profile_override in ("auto", "hd_720p", "deck_800p", "qhd_1440p")
+            if self.window_profile_override in VALID_WINDOW_PROFILE_OVERRIDES
             else "auto"
         )
         return {
@@ -323,7 +324,7 @@ class SaveData:
             window_profile_override=(
                 str(data.get("window_profile_override", "auto"))
                 if str(data.get("window_profile_override", "auto"))
-                in ("auto", "hd_720p", "deck_800p", "qhd_1440p")
+                in VALID_WINDOW_PROFILE_OVERRIDES
                 else "auto"
             ),
         )
@@ -819,7 +820,7 @@ class SaveManager:
         if window_profile_override is not None:
             val = str(window_profile_override)
             self.data.window_profile_override = (
-                val if val in ("auto", "hd_720p", "deck_800p", "qhd_1440p") else "auto"
+                val if val in VALID_WINDOW_PROFILE_OVERRIDES else "auto"
             )
         if save_now:
             return self.save()

@@ -162,11 +162,20 @@ class TestSettingsDialog(unittest.TestCase):
         self.assertTrue(self.app.save_manager.data.strict_integer_cards)
         self.assertIn("1x Crisp", dialog.card_scale_btn.cget("text"))
 
-        # Cycle window_profile_override via window_size_btn
+        # Window Mode button label clearly reads "Window Mode:" and opens in-window picker modal
         self.assertEqual(self.app.save_manager.data.window_profile_override, "auto")
+        self.assertIn("Window Mode:", dialog.window_size_btn.cget("text"))
         dialog.window_size_btn.invoke()
+        picker = getattr(dialog, "_window_mode_picker", None)
+        self.assertIsNotNone(picker, "Clicking Window Mode button must open in-window picker modal")
+        self.assertIsInstance(picker, tkinter.Frame)
+        self.assertNotIsInstance(picker, tkinter.Toplevel)
+
+        # Select 1280x720 (hd_720p) inside picker
+        picker.select_option("hd_720p")
         self.assertEqual(self.app.save_manager.data.window_profile_override, "hd_720p")
         self.assertEqual(self.app.display_profile.name, "hd_720p")
+        self.assertIn("720p", dialog.window_size_btn.cget("text"))
 
         # Diagnostics label includes profile name and resolution
         diag_txt = dialog.diagnostics_lbl.cget("text")
@@ -174,6 +183,52 @@ class TestSettingsDialog(unittest.TestCase):
         self.assertIn("1280x720", diag_txt)
 
         self.app._close_settings_dialog()
+
+    def test_window_mode_picker_exits_fullscreen_and_disables_oversized_options(self):
+        """Picking a windowed mode while in fullscreen exits fullscreen; oversized tiers are disabled in picker."""
+        from unittest import mock
+        from display_profile import DisplayEnvironmentProbe
+
+        probe_1080 = DisplayEnvironmentProbe(
+            monitor_wh=(1920, 1080),
+            usable_workarea_wh=(1920, 1030),
+            is_steam_deck=False,
+            is_gamescope=False,
+        )
+        with mock.patch("blackjack.probe_display_environment", return_value=probe_1080), mock.patch(
+            "ui_dialogs.probe_display_environment", return_value=probe_1080
+        ):
+            self.app._open_settings_dialog()
+            dialog = self.app._settings_dialog
+            self.assertIsNotNone(dialog)
+
+            # Simulate currently in fullscreen
+            self.app._is_fullscreen = True
+            dialog._refresh_display_controls()
+            self.assertIn("Fullscreen", dialog.window_size_btn.cget("text"))
+
+            # Open picker and verify 1080p & 1440p windowed options are disabled on 1920x1030 work area
+            dialog.window_size_btn.invoke()
+            picker = dialog._window_mode_picker
+            self.assertIsNotNone(picker)
+            self.assertFalse(picker.is_option_enabled("fhd_1080p"))
+            self.assertFalse(picker.is_option_enabled("qhd_1440p"))
+            self.assertTrue(picker.is_option_enabled("hd_720p"))
+            self.assertTrue(picker.is_option_enabled("auto"))
+
+            # Picking hd_720p exits fullscreen and applies hd_720p
+            picker.select_option("hd_720p")
+            self.assertFalse(self.app._is_fullscreen)
+            self.assertEqual(self.app.save_manager.data.window_profile_override, "hd_720p")
+            self.assertEqual(self.app.display_profile.name, "hd_720p")
+
+            # Picking auto restores auto override
+            dialog.window_size_btn.invoke()
+            dialog._window_mode_picker.select_option("auto")
+            self.assertEqual(self.app.save_manager.data.window_profile_override, "auto")
+            self.assertEqual(self.app.display_profile.name, "deck_800p")
+
+            self.app._close_settings_dialog()
 
     def test_settings_dialog_displays_card_counting_streak(self):
         """Settings dialog displays card counting drill streak in career records."""

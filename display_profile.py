@@ -477,10 +477,13 @@ def resolve_display_profile(
 
     # Windowed Mode (bordered OS window must leave >= ~40px titlebar/frame clearance inside work-area)
     can_fit_1440 = (work_w >= 2560) and (work_h >= 1480)
+    can_fit_1080 = (work_w >= 1920) and (work_h >= 1100)
     can_fit_800 = work_h >= 840
 
     if override == "qhd_1440p" and can_fit_1440:
         return make_profile_preset("qhd_1440p", fullscreen=False, strict_integer_cards=strict_integer_cards)
+    if override == "fhd_1080p" and can_fit_1080:
+        return make_profile_preset("fhd_1080p", fullscreen=False, strict_integer_cards=strict_integer_cards)
     if override == "hd_720p":
         return make_profile_preset("hd_720p", fullscreen=False, strict_integer_cards=strict_integer_cards)
     if override == "deck_800p" and can_fit_800:
@@ -490,3 +493,69 @@ def resolve_display_profile(
     if can_fit_800:
         return make_profile_preset("deck_800p", fullscreen=False, strict_integer_cards=strict_integer_cards)
     return make_profile_preset("hd_720p", fullscreen=False, strict_integer_cards=strict_integer_cards)
+
+
+def get_window_mode_options(probe: DisplayEnvironmentProbe) -> list[dict[str, Any]]:
+    """
+    Returns the canonical Window Mode choices for Settings -> Window Mode Picker,
+    annotated with availability flags and human-readable disabled reasons based
+    on the active monitor's usable work area.
+    """
+    mon_w, mon_h = probe.monitor_wh
+    work_w, work_h = probe.usable_workarea_wh
+    can_fit_1440 = (work_w >= 2560) and (work_h >= 1480)
+    can_fit_1080 = (work_w >= 1920) and (work_h >= 1100)
+    can_fit_800 = work_h >= 840
+    auto_wh = (1280, 800) if can_fit_800 else (1280, 720)
+    auto_tier = "1280x800" if can_fit_800 else "1280x720"
+
+    return [
+        {
+            "key": "auto",
+            "label": "Auto (Recommended)",
+            "subtitle": f"Best fit for this display ({auto_tier} • 1x Crisp)",
+            "enabled": True,
+            "disabled_reason": "",
+            "resolved_wh": auto_wh,
+        },
+        {
+            "key": "hd_720p",
+            "label": "1280x720  (HD 720p)",
+            "subtitle": "Compact 16:9 Window • 1x Crisp",
+            "enabled": True,
+            "disabled_reason": "",
+            "resolved_wh": (1280, 720),
+        },
+        {
+            "key": "deck_800p",
+            "label": "1280x800  (16:10 / Steam Deck)",
+            "subtitle": "Standard Widescreen Window • 1x Crisp",
+            "enabled": can_fit_800,
+            "disabled_reason": "" if can_fit_800 else f"Exceeds work area ({work_w}x{work_h})",
+            "resolved_wh": (1280, 800),
+        },
+        {
+            "key": "fhd_1080p",
+            "label": "1920x1080  (Full-HD 1080p)",
+            "subtitle": "Large Window • 1x Stage / 1.5x Cards / 2x Menus",
+            "enabled": can_fit_1080,
+            "disabled_reason": "" if can_fit_1080 else f"Exceeds work area ({work_w}x{work_h})",
+            "resolved_wh": (1920, 1080),
+        },
+        {
+            "key": "qhd_1440p",
+            "label": "2560x1440  (QHD 1440p)",
+            "subtitle": "Ultra-Large Window • 2x Crunchy Pixel Scale",
+            "enabled": can_fit_1440,
+            "disabled_reason": "" if can_fit_1440 else f"Exceeds work area ({work_w}x{work_h})",
+            "resolved_wh": (2560, 1440),
+        },
+        {
+            "key": "fullscreen",
+            "label": f"Fullscreen  (Native {mon_w}x{mon_h})",
+            "subtitle": "Borderless Fullscreen • Shortcut [F11]",
+            "enabled": True,
+            "disabled_reason": "",
+            "resolved_wh": (mon_w, mon_h),
+        },
+    ]

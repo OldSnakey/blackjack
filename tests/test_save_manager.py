@@ -279,8 +279,13 @@ class TestSaveManager(unittest.TestCase):
         self.assertTrue(reloaded.data.strict_integer_cards)
         self.assertEqual(reloaded.data.window_profile_override, "hd_720p")
 
+        # fhd_1080p windowed override persists cleanly
+        reloaded.set_display_preferences(window_profile_override="fhd_1080p")
+        reloaded2 = SaveManager(save_path=self.save_file)
+        self.assertEqual(reloaded2.data.window_profile_override, "fhd_1080p")
+
         # Invalid window override falls back safely to 'auto'
-        raw = reloaded.data.to_dict()
+        raw = reloaded2.data.to_dict()
         raw["window_profile_override"] = "invalid_9999p"
         sanitized = SaveData.from_dict(raw)
         self.assertEqual(sanitized.window_profile_override, "auto")

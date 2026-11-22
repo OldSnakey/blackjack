@@ -8727,6 +8727,31 @@ class BlackjackApp:
                 if isinstance(entry, dict) and isinstance(entry.get("deck"), list):
                     entry["deck"][:] = [find_updated_card(c) for c in entry["deck"]]
 
+    def set_window_mode_choice(self, choice: str) -> DisplayProfile:
+        """
+        Applies an explicit Window Mode selection from Settings -> Window Mode Picker:
+        - 'fullscreen': enters native fullscreen (if not already fullscreen).
+        - Any windowed override ('auto', 'hd_720p', 'deck_800p', 'fhd_1080p', 'qhd_1440p'):
+          persists the override, exits fullscreen if active, resolves the target windowed
+          DisplayProfile, and applies it with immediate geometry commit and centering.
+        """
+        val = str(choice or "auto")
+        if val == "fullscreen":
+            if not self._is_fullscreen:
+                self.toggle_fullscreen()
+            return self.display_profile
+
+        self.save_manager.set_display_preferences(window_profile_override=val)
+        if self._is_fullscreen:
+            try:
+                self.root.attributes("-fullscreen", False)
+                self.root.update_idletasks()
+            except Exception:
+                pass
+            self._is_fullscreen = False
+
+        return self.refresh_display_profile_from_preferences()
+
     def refresh_display_profile_from_preferences(self) -> DisplayProfile:
         """Resolves and applies the target `DisplayProfile` after preference changes in `SettingsDialog`."""
         strict_cards = bool(getattr(self.save_manager.data, "strict_integer_cards", False))
@@ -8786,7 +8811,15 @@ class BlackjackApp:
             try:
                 self.root.resizable(True, True)
                 self.root.minsize(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)
-                self.root.geometry(f"{new_profile.window_w}x{new_profile.window_h}")
+                probe = getattr(self, "_env_probe", None)
+                if probe is None:
+                    probe = probe_display_environment(self.root)
+                    self._env_probe = probe
+                work_w, work_h = probe.usable_workarea_wh
+                pos_x = max(0, (work_w - new_profile.window_w) // 2)
+                pos_y = max(0, (work_h - new_profile.window_h) // 2)
+                self.root.geometry(f"{new_profile.window_w}x{new_profile.window_h}+{pos_x}+{pos_y}")
+                self.root.update_idletasks()
                 self.root.minsize(new_profile.window_w, new_profile.window_h)
                 self.root.resizable(False, False)
             except Exception:

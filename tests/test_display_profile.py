@@ -184,6 +184,74 @@ class TestDisplayProfileEngine(unittest.TestCase):
         self.assertEqual(prof_clamped.name, "deck_800p")
         self.assertEqual((prof_clamped.window_w, prof_clamped.window_h), (1280, 800))
 
+        # Requesting fhd_1080p window on a 1440p or 4K desktop yields windowed 1920x1080
+        probe_1440 = DisplayEnvironmentProbe(
+            monitor_wh=(2560, 1440),
+            usable_workarea_wh=(2560, 1400),
+            is_steam_deck=False,
+            is_gamescope=False,
+        )
+        prof_win_1080 = resolve_display_profile(
+            probe_1440, fullscreen=False, window_profile_override="fhd_1080p"
+        )
+        self.assertEqual(prof_win_1080.name, "fhd_1080p")
+        self.assertEqual((prof_win_1080.window_w, prof_win_1080.window_h), (1920, 1080))
+        self.assertFalse(prof_win_1080.is_fullscreen)
+
+        # Requesting fhd_1080p window on a 1080p monitor (usable height 1030 < 1100) clamps to deck_800p
+        prof_1080_clamped = resolve_display_profile(
+            probe_1080, fullscreen=False, window_profile_override="fhd_1080p"
+        )
+        self.assertEqual(prof_1080_clamped.name, "deck_800p")
+        self.assertEqual((prof_1080_clamped.window_w, prof_1080_clamped.window_h), (1280, 800))
+
+    def test_get_window_mode_options_availability_and_disabled_reasons(self):
+        """get_window_mode_options returns canonical tiers with accurate monitor work-area gating."""
+        from display_profile import DisplayEnvironmentProbe, get_window_mode_options
+
+        # 1080p monitor (workarea 1920x1030): auto, 720p, 800p, fullscreen enabled; 1080p & 1440p disabled
+        probe_1080 = DisplayEnvironmentProbe(
+            monitor_wh=(1920, 1080),
+            usable_workarea_wh=(1920, 1030),
+            is_steam_deck=False,
+            is_gamescope=False,
+        )
+        opts_1080 = {o["key"]: o for o in get_window_mode_options(probe_1080)}
+        self.assertEqual(
+            list(opts_1080.keys()),
+            ["auto", "hd_720p", "deck_800p", "fhd_1080p", "qhd_1440p", "fullscreen"],
+        )
+        self.assertTrue(opts_1080["auto"]["enabled"])
+        self.assertTrue(opts_1080["hd_720p"]["enabled"])
+        self.assertTrue(opts_1080["deck_800p"]["enabled"])
+        self.assertFalse(opts_1080["fhd_1080p"]["enabled"])
+        self.assertTrue(opts_1080["fhd_1080p"]["disabled_reason"])
+        self.assertFalse(opts_1080["qhd_1440p"]["enabled"])
+        self.assertTrue(opts_1080["qhd_1440p"]["disabled_reason"])
+        self.assertTrue(opts_1080["fullscreen"]["enabled"])
+
+        # 1440p monitor (workarea 2560x1400): 1080p enabled, 1440p windowed disabled
+        probe_1440 = DisplayEnvironmentProbe(
+            monitor_wh=(2560, 1440),
+            usable_workarea_wh=(2560, 1400),
+            is_steam_deck=False,
+            is_gamescope=False,
+        )
+        opts_1440 = {o["key"]: o for o in get_window_mode_options(probe_1440)}
+        self.assertTrue(opts_1440["fhd_1080p"]["enabled"])
+        self.assertFalse(opts_1440["qhd_1440p"]["enabled"])
+
+        # 4K monitor (workarea 3840x2100): all 6 canonical tiers enabled
+        probe_4k = DisplayEnvironmentProbe(
+            monitor_wh=(3840, 2160),
+            usable_workarea_wh=(3840, 2100),
+            is_steam_deck=False,
+            is_gamescope=False,
+        )
+        opts_4k = {o["key"]: o for o in get_window_mode_options(probe_4k)}
+        for k, o in opts_4k.items():
+            self.assertTrue(o["enabled"], f"Expected {k} enabled on 4K probe")
+
     def test_font_verification_sets_loaded_only_when_root_present_and_records_missing(self):
         """pixel_ui font verification does not prematurely lock _ALL_FONTS_LOADED before root verification."""
         import pixel_ui

@@ -21,6 +21,7 @@ from typing import Any, Callable, List, Optional
 import config
 from audio_assets import KeyboardIconLoader
 from config import ASSETS_EXTRA_DIR, PANEL_BACKGROUND_COLOR
+from display_profile import get_window_mode_options, probe_display_environment
 from haunted_manager import BLESSING_REGISTRY, Blessing
 from rules import (
     ALLOWED_DECK_COUNTS,
@@ -215,10 +216,21 @@ class InWindowScreenHost(tkinter.Frame):
             pass
         return (int(fallback_w), int(fallback_h))
 
+    def _has_fullscreen_menu_underneath(self) -> bool:
+        stack = getattr(self._host_root, "_active_inwindow_screens", None) or []
+        return any(
+            scr is not self and getattr(scr, "_overlay_wh", None) is None and scr.winfo_exists()
+            for scr in stack
+        )
+
     def _clamp_overlay_y(self, oy: int, ov_h: int, vh: int) -> int:
         """Keeps gameplay overlays strictly below HorizonRail and above MahoganyRail."""
-        if self._overlay_wh is None or isinstance(self.master, InWindowScreenHost):
-            return max(12, oy)
+        if (
+            self._overlay_wh is None
+            or isinstance(self.master, InWindowScreenHost)
+            or self._has_fullscreen_menu_underneath()
+        ):
+            return max(12, min(max(12, vh - ov_h - 12), oy))
         s = self.art_scale
         min_oy = 240 * s
         max_oy = max(min_oy, vh - 60 * s - ov_h)
@@ -255,7 +267,11 @@ class InWindowScreenHost(tkinter.Frame):
         cur_h = max(int(self.cget("height") or 0), int(self.winfo_height()))
         req_children_w = max((c.winfo_reqwidth() for c in self.winfo_children()), default=0) + pad_w
         req_children_h = max((c.winfo_reqheight() for c in self.winfo_children()), default=0) + pad_h
-        max_felt_h = vh - (300 * s if not isinstance(self.master, InWindowScreenHost) else 48 * s)
+        max_felt_h = (
+            vh - 48 * s
+            if (isinstance(self.master, InWindowScreenHost) or self._has_fullscreen_menu_underneath())
+            else vh - 300 * s
+        )
         new_w = min(vw - 48 * s, max(cur_w, req_children_w))
         new_h = min(max(220, max_felt_h), max(cur_h, req_children_h))
         ox = max(12, (vw - new_w) // 2)
@@ -700,6 +716,279 @@ def configure_modal_window(
         return (w, h)
     except Exception:
         return (int(target_w), int(target_h))
+
+
+# ============================================================================
+# 0B. WindowModePickerModal (In-Window Tier-2 Floating Resolution Picker)
+# ============================================================================
+
+class WindowModePickerModal(InWindowScreenHost):
+    """
+    In-window floating overlay modal for selecting Window Mode & Resolution
+    (Auto, 1280x720, 1280x800, 1920x1080, 2560x1440, or Native Fullscreen).
+    Displays active monitor / usable work-area telemetry, marks the active mode
+    in gold, and disables resolutions that exceed the monitor's usable work area
+    with an explicit reason rather than silently clamping.
+    """
+
+    def __init__(
+        self,
+        parent: tkinter.Misc,
+        app: Any,
+        on_select: Callable[[str], None],
+        on_cancel: Optional[Callable[[], None]] = None,
+    ) -> None:
+        self.app = app
+        self._on_select_cb = on_select
+        self._on_cancel_cb = on_cancel
+        self._row_frames: dict[str, tkinter.Frame] = {}
+        self._option_by_key: dict[str, dict[str, Any]] = {}
+
+        super().__init__(
+            parent,
+            app=app,
+            background="#0b1f14",
+            overlay_wh=(680, 500),
+            overlay_rely=0.50,
+            highlightbackground="#ffd700",
+            highlightthickness=2,
+        )
+        self.title("Window Mode & Resolution")
+
+        probe = probe_display_environment(self._host_root)
+        self._probe = probe
+        self.options: list[dict[str, Any]] = get_window_mode_options(probe)
+        self._option_by_key = {opt["key"]: opt for opt in self.options}
+
+        is_fs = bool(getattr(app, "_is_fullscreen", False))
+        save_data = getattr(getattr(app, "save_manager", None), "data", None)
+        override = str(getattr(save_data, "window_profile_override", "auto") or "auto")
+        self.active_key = "fullscreen" if is_fs else override
+        if self.active_key not in self._option_by_key:
+            self.active_key = "auto"
+
+        self._focused_idx = next(
+            (i for i, opt in enumerate(self.options) if opt["key"] == self.active_key),
+            0,
+        )
+
+        self._build_ui()
+        self.fit_overlay_to_requested(pad_w=16, pad_h=16)
+
+    def _build_ui(self) -> None:
+        s = self.menu_scale
+        compact = self.is_compact_2x
+        bg = "#0b1f14"
+
+        title_font = ("Tiny5 Duo", -32 if compact else (-24 * s), "bold")
+        sub_font = ("Tiny5", -24 if compact else (-16 * s), "normal")
+        row_lbl_font = ("Tiny5", -24 if compact else (-16 * s), "bold")
+        row_sub_font = ("Tiny5", -16 if compact else (-16 * s), "normal")
+        badge_font = ("Tiny5", -16 if compact else (-16 * s), "bold")
+        btn_font = ("Tiny5", -24 if compact else (-16 * s), "bold")
+
+        body = tkinter.Frame(self, background=bg, padx=16 * s, pady=12 if compact else (12 * s))
+        body.pack(fill="both", expand=True)
+
+        tkinter.Label(
+            body,
+            text="🖥 WINDOW MODE & RESOLUTION",
+            font=title_font,
+            fg="#ffd700",
+            background=bg,
+        ).pack(anchor="w", pady=(0, 2 * s))
+
+        mon_w, mon_h = self._probe.monitor_wh
+        work_w, work_h = self._probe.usable_workarea_wh
+        tkinter.Label(
+            body,
+            text=f"Detected Monitor: {mon_w}x{mon_h}  •  Usable Work Area: {work_w}x{work_h}",
+            font=sub_font,
+            fg="#80cbc4",
+            background=bg,
+        ).pack(anchor="w", pady=(0, 8 if compact else (10 * s)))
+
+        list_frame = tkinter.Frame(body, background=bg)
+        list_frame.pack(fill="both", expand=True)
+
+        self._row_frames.clear()
+        for idx, opt in enumerate(self.options):
+            key = opt["key"]
+            enabled = bool(opt["enabled"])
+            is_active = key == self.active_key
+
+            row_bg = "#143d29" if is_active else ("#0f2d1e" if enabled else "#111c17")
+            border_col = "#ffd700" if is_active else ("#2e7d32" if enabled else "#263238")
+
+            row = tkinter.Frame(
+                list_frame,
+                background=row_bg,
+                highlightbackground=border_col,
+                highlightthickness=2 if is_active else 1,
+                padx=10 * s,
+                pady=5 if compact else (6 * s),
+                cursor="hand2" if enabled else "arrow",
+            )
+            row.pack(fill="x", pady=3 if compact else (4 * s))
+            row.columnconfigure(1, weight=1)
+            self._row_frames[key] = row
+
+            marker = "◉" if is_active else ("○" if enabled else "✕")
+            marker_fg = "#ffd700" if is_active else ("#a5d6a7" if enabled else "#546e7a")
+            num_lbl = tkinter.Label(
+                row,
+                text=f"[{idx + 1}] {marker}",
+                font=row_lbl_font,
+                fg=marker_fg,
+                background=row_bg,
+                width=6,
+                anchor="w",
+            )
+            num_lbl.grid(row=0, column=0, rowspan=2, sticky="w", padx=(0, 6 * s))
+
+            title_lbl = tkinter.Label(
+                row,
+                text=opt["label"],
+                font=row_lbl_font,
+                fg="#ffd700" if is_active else ("#ffffff" if enabled else "#78909c"),
+                background=row_bg,
+                anchor="w",
+            )
+            title_lbl.grid(row=0, column=1, sticky="w")
+
+            sub_text = opt["subtitle"] if enabled else opt["disabled_reason"]
+            sub_fg = "#b2dfdb" if enabled else "#ef9a9a"
+            sub_lbl = tkinter.Label(
+                row,
+                text=sub_text,
+                font=row_sub_font,
+                fg=sub_fg,
+                background=row_bg,
+                anchor="w",
+            )
+            sub_lbl.grid(row=1, column=1, sticky="w")
+
+            if is_active:
+                badge_text, badge_fg, badge_bg = "✓ ACTIVE", "#121016", "#ffd700"
+            elif enabled:
+                badge_text, badge_fg, badge_bg = "SELECT", "#e0f2f1", "#1b5e20"
+            else:
+                badge_text, badge_fg, badge_bg = "TOO LARGE", "#ffcdd2", "#372125"
+
+            badge_lbl = tkinter.Label(
+                row,
+                text=badge_text,
+                font=badge_font,
+                fg=badge_fg,
+                background=badge_bg,
+                padx=8 * s,
+                pady=2 * s,
+            )
+            badge_lbl.grid(row=0, column=2, rowspan=2, sticky="e", padx=(8 * s, 0))
+
+            if enabled:
+                for w in (row, num_lbl, title_lbl, sub_lbl, badge_lbl):
+                    w.bind("<Button-1>", lambda _e, k=key: self.select_option(k))
+
+        footer = tkinter.Frame(body, background=bg)
+        footer.pack(fill="x", pady=(8 if compact else (10 * s), 0))
+
+        self._hint_lbl = tkinter.Label(
+            footer,
+            text="[↑/↓] Navigate  •  [Enter] Apply  •  [1-6] Quick Pick  •  [Esc] Cancel",
+            font=row_sub_font,
+            fg="#80cbc4",
+            background=bg,
+        )
+        self._hint_lbl.pack(side="left")
+
+        self.cancel_btn = tkinter.Button(
+            footer,
+            text="✖ Cancel",
+            font=btn_font,
+            background="#37474f",
+            fg="#ffffff",
+            activebackground="#455a64",
+            activeforeground="#ffffff",
+            relief="raised",
+            borderwidth=2,
+            cursor="hand2",
+            padx=14 * s,
+            pady=4 if compact else (5 * s),
+            command=self._on_cancel,
+        )
+        self.cancel_btn.pack(side="right")
+        self._refresh_focus_highlight()
+
+    def _refresh_focus_highlight(self) -> None:
+        for idx, opt in enumerate(self.options):
+            key = opt["key"]
+            row = self._row_frames.get(key)
+            if row is None or not row.winfo_exists():
+                continue
+            enabled = bool(opt["enabled"])
+            is_active = key == self.active_key
+            is_focused = idx == self._focused_idx
+            if is_focused and enabled:
+                row.configure(highlightbackground="#ffd700", highlightthickness=2)
+            elif is_active:
+                row.configure(highlightbackground="#ffd700", highlightthickness=2)
+            else:
+                row.configure(highlightbackground="#2e7d32" if enabled else "#263238", highlightthickness=1)
+
+    def is_option_enabled(self, key: str) -> bool:
+        opt = self._option_by_key.get(str(key))
+        return bool(opt and opt.get("enabled", False))
+
+    def select_option(self, key: str) -> bool:
+        opt = self._option_by_key.get(str(key))
+        if not opt or not opt.get("enabled", False):
+            return False
+        cb = self._on_select_cb
+        self.destroy()
+        if callable(cb):
+            cb(str(key))
+        return True
+
+    def _on_cancel(self) -> None:
+        cb = self._on_cancel_cb
+        self.destroy()
+        if callable(cb):
+            cb()
+
+    def handle_modal_key(self, event: Any) -> Optional[str]:
+        ks = getattr(event, "keysym", "")
+        ch = str(getattr(event, "char", "") or "")
+        if ks == "Escape":
+            self._on_cancel()
+            return "break"
+        if ks in ("Up", "Left"):
+            for step in range(1, len(self.options) + 1):
+                cand = (self._focused_idx - step) % len(self.options)
+                if self.options[cand]["enabled"]:
+                    self._focused_idx = cand
+                    break
+            self._refresh_focus_highlight()
+            return "break"
+        if ks in ("Down", "Right", "Tab"):
+            for step in range(1, len(self.options) + 1):
+                cand = (self._focused_idx + step) % len(self.options)
+                if self.options[cand]["enabled"]:
+                    self._focused_idx = cand
+                    break
+            self._refresh_focus_highlight()
+            return "break"
+        if ks in ("Return", "KP_Enter", "space"):
+            opt = self.options[self._focused_idx]
+            if opt["enabled"]:
+                self.select_option(opt["key"])
+            return "break"
+        if ch in ("1", "2", "3", "4", "5", "6"):
+            idx = int(ch) - 1
+            if 0 <= idx < len(self.options) and self.options[idx]["enabled"]:
+                self.select_option(self.options[idx]["key"])
+            return "break"
+        return "break"
 
 
 # ============================================================================
@@ -1724,6 +2013,9 @@ class SettingsDialog(InWindowScreenHost):
             self._refresh_display_controls()
 
     def handle_modal_key(self, event: Any) -> Optional[str]:
+        picker = getattr(self, "_window_mode_picker", None)
+        if picker is not None and picker.winfo_exists():
+            return picker.handle_modal_key(event)
         confirm_key = getattr(self, "_active_confirm_key", None)
         if callable(confirm_key):
             return confirm_key(event)
@@ -1945,7 +2237,7 @@ class SettingsDialog(InWindowScreenHost):
 
         self.window_size_btn = tkinter.Button(
             disp_row2,
-            text="🖥 Window: Auto",
+            text="🖥 Window Mode: Auto",
             font=btn_font,
             background="#004d40",
             fg="white",
@@ -1954,7 +2246,7 @@ class SettingsDialog(InWindowScreenHost):
             relief="ridge",
             borderwidth=1,
             cursor="hand2",
-            command=self._on_cycle_window_size,
+            command=self._on_open_window_mode_picker,
             padx=8 * s,
             pady=btn_pady,
         )
@@ -2737,20 +3029,20 @@ class SettingsDialog(InWindowScreenHost):
                 text="🃏 Cards: 1x Crisp" if strict_cards else "🃏 Cards: Auto"
             )
 
+        is_fs = bool(getattr(self.app, "_is_fullscreen", False))
         win_override = getattr(save_data, "window_profile_override", "auto") or "auto"
         win_labels = {
             "auto": "Auto",
             None: "Auto",
             "hd_720p": "720p",
             "deck_800p": "800p",
+            "fhd_1080p": "1080p",
             "qhd_1440p": "1440p",
         }
+        mode_lbl = "Fullscreen" if is_fs else win_labels.get(win_override, "Auto")
         if hasattr(self, "window_size_btn"):
-            self.window_size_btn.configure(
-                text=f"🖥 Window: {win_labels.get(win_override, 'Auto')}"
-            )
+            self.window_size_btn.configure(text=f"🖥 Window Mode: {mode_lbl}")
 
-        is_fs = bool(getattr(self.app, "_is_fullscreen", False))
         if hasattr(self, "fullscreen_btn"):
             self.fullscreen_btn.configure(
                 text="⛶ Exit Fullscreen [F11]" if is_fs else "⛶ Fullscreen [F11]"
@@ -2780,21 +3072,43 @@ class SettingsDialog(InWindowScreenHost):
             "Card scaling set to 1x Crisp integer mode." if strict_now else "Card scaling set to Auto."
         )
 
-    def _on_cycle_window_size(self) -> None:
-        order = ["auto", "hd_720p", "deck_800p", "qhd_1440p"]
-        cur = getattr(self.app.save_manager.data, "window_profile_override", "auto") or "auto"
-        try:
-            nxt = order[(order.index(cur) + 1) % len(order)]
-        except ValueError:
-            nxt = "auto"
-        if hasattr(self.app, "save_manager") and self.app.save_manager is not None:
-            self.app.save_manager.set_display_preferences(window_profile_override=nxt)
-        if hasattr(self.app, "refresh_display_profile_from_preferences"):
-            self.app.refresh_display_profile_from_preferences()
+    def _on_open_window_mode_picker(self) -> None:
+        existing = getattr(self, "_window_mode_picker", None)
+        if existing is not None and existing.winfo_exists():
+            existing.lift()
+            return
+        self._window_mode_picker = WindowModePickerModal(
+            self,
+            self.app,
+            on_select=self._on_window_mode_selected,
+            on_cancel=self._on_window_mode_picker_closed,
+        )
+
+    def _on_window_mode_picker_closed(self) -> None:
+        self._window_mode_picker = None
+
+    def _on_window_mode_selected(self, choice: str) -> None:
+        self._window_mode_picker = None
+        if hasattr(self.app, "set_window_mode_choice"):
+            self.app.set_window_mode_choice(choice)
+        elif hasattr(self.app, "save_manager") and self.app.save_manager is not None:
+            self.app.save_manager.set_display_preferences(window_profile_override=choice)
+            if hasattr(self.app, "refresh_display_profile_from_preferences"):
+                self.app.refresh_display_profile_from_preferences()
         self._refresh_display_controls()
         prof = getattr(self.app, "display_profile", None)
         if prof is not None:
-            self.status_msg_var.set(f"Window profile set to {prof.name} ({prof.window_wh[0]}x{prof.window_wh[1]}).")
+            if choice == "fullscreen":
+                self.status_msg_var.set(
+                    f"Window Mode set to Fullscreen ({prof.window_wh[0]}x{prof.window_wh[1]})."
+                )
+            else:
+                self.status_msg_var.set(
+                    f"Window Mode set to {prof.name} ({prof.window_wh[0]}x{prof.window_wh[1]})."
+                )
+
+    def _on_cycle_window_size(self) -> None:
+        self._on_open_window_mode_picker()
 
     def _on_toggle_fullscreen_from_settings(self) -> None:
         if hasattr(self.app, "toggle_fullscreen"):
@@ -2802,6 +3116,14 @@ class SettingsDialog(InWindowScreenHost):
         self._refresh_display_controls()
 
     def _on_close(self) -> str:
+        picker = getattr(self, "_window_mode_picker", None)
+        if picker is not None:
+            self._window_mode_picker = None
+            try:
+                if picker.winfo_exists():
+                    picker.destroy()
+            except Exception:
+                pass
         if hasattr(self.app, "_close_settings_dialog"):
             self.app._close_settings_dialog()
         else:
