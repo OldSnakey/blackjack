@@ -502,6 +502,168 @@ def _build_malphas_flash_pil(art_scale: int) -> Any:
     return scaled
 
 
+def _build_crimson_abyss_glow_pil(w: int, h: int) -> Any:
+    """
+    Builds a stepped 16-bit concentric crimson abyss underglow at chunky pixel scale
+    and upscales via NEAREST to (w, h).
+    """
+    lw = max(48, int(w) // 8)
+    lh = max(28, int(h) // 8)
+    img = Image.new("RGBA", (lw, lh), (6, 4, 8, 255))
+    d = ImageDraw.Draw(img)
+    cx = lw // 2
+    cy = int(lh * 0.56)
+    rings = [
+        (0.54, 0.50, (24, 5, 11, 255)),
+        (0.42, 0.40, (44, 7, 15, 255)),
+        (0.30, 0.30, (70, 10, 20, 255)),
+        (0.20, 0.21, (104, 14, 26, 255)),
+        (0.11, 0.12, (138, 20, 32, 255)),
+    ]
+    for rx_f, ry_f, col in rings:
+        rx = max(4, int(lw * rx_f))
+        ry = max(4, int(lh * ry_f))
+        d.ellipse([cx - rx, cy - ry, cx + rx, cy + ry], fill=col)
+    resampling = getattr(Image, "Resampling", Image)
+    return img.resize((max(16, int(w)), max(16, int(h))), resampling.NEAREST)
+
+
+def _build_demon_claw_hand_pil(side: str = "left") -> Any:
+    """
+    Loads the bespoke 16-bit pixel-art foreshortened crimson demon hand from
+    assets/haunted/demon_claw_left.png (mirrored horizontally for side='right'),
+    falling back to a minimal procedural sprite only if the asset is missing.
+    """
+    asset_path = HAUNTED_ASSETS_DIR / "demon_claw_left.png"
+    img = None
+    if asset_path.exists():
+        try:
+            with Image.open(asset_path) as raw:
+                img = raw.convert("RGBA")
+        except Exception:
+            img = None
+
+    if img is None:
+        img = Image.new("RGBA", (88, 88), (0, 0, 0, 0))
+        d = ImageDraw.Draw(img)
+        d.ellipse([20, 30, 64, 70], fill=(206, 30, 30, 255), outline=(18, 16, 22, 255))
+        d.polygon([(36, 12), (44, 34), (28, 34)], fill=(18, 14, 24, 255))
+
+    if side == "right":
+        transpose_enum = getattr(Image, "Transpose", Image)
+        return img.transpose(transpose_enum.FLIP_LEFT_RIGHT)
+    return img
+
+
+def _build_malphas_laugh_frames_pil(dealer_actor: Any = None, target_h: int = 448) -> tuple[Any, Any]:
+    """
+    Composites two crisp 16-bit integer-scaled close-up frames of Malphas laughing:
+      - frame_open: wide roaring laugh (mouth_a/gasp + fanged grin + flared golden-crimson eyes, heaved up)
+      - frame_mid:  heaving laugh cadence (mouth_o/smirk + glowing golden eyes, shifted down)
+    Respects Malphas's active costume suffix when dealer_actor is provided; falls back cleanly to bust.png.
+    """
+    char_dir = HAUNTED_ASSETS_DIR / "characters" / "malphas"
+
+    # Resolve optional costume suffix (e.g., 'malphas_hellfire' -> '_hellfire')
+    costume_suffix = ""
+    if dealer_actor is not None:
+        cid = str(getattr(dealer_actor, "current_costume_id", "") or "")
+        if cid.startswith("malphas_") and len(cid) > len("malphas_"):
+            costume_suffix = "_" + cid[len("malphas_"):]
+
+    def _load_layer(base_name: str) -> Optional[Any]:
+        candidates = []
+        if costume_suffix:
+            candidates.append(char_dir / f"{base_name}{costume_suffix}.png")
+        candidates.append(char_dir / f"{base_name}.png")
+        for p in candidates:
+            if p.exists():
+                try:
+                    with Image.open(p) as raw:
+                        im = raw.convert("RGBA")
+                        if im.size != (112, 112):
+                            resampling = getattr(Image, "Resampling", Image)
+                            im = im.resize((112, 112), resampling.NEAREST)
+                        return im
+                except Exception:
+                    continue
+        return None
+
+    def _compose_112(mouth_names: tuple[str, ...], wide_laugh: bool) -> Any:
+        canvas = Image.new("RGBA", (112, 112), (0, 0, 0, 0))
+        torso = _load_layer("torso")
+        neck = _load_layer("neck")
+        head = _load_layer("head")
+        eyes = _load_layer("eyes_open")
+        mouth = None
+        for mname in mouth_names:
+            mouth = _load_layer(mname)
+            if mouth is not None:
+                break
+
+        if head is not None and torso is not None:
+            for lyr in (torso, neck):
+                if lyr is not None:
+                    canvas.alpha_composite(lyr)
+            dy = -1 if wide_laugh else 1
+            for lyr in (head, eyes, mouth):
+                if lyr is not None:
+                    shifted = Image.new("RGBA", (112, 112), (0, 0, 0, 0))
+                    shifted.paste(lyr, (0, dy), lyr)
+                    canvas.alpha_composite(shifted)
+        else:
+            bust = _load_layer("bust")
+            if bust is not None:
+                canvas.alpha_composite(bust)
+            else:
+                d_fb = ImageDraw.Draw(canvas)
+                d_fb.ellipse([36, 22, 76, 66], fill=(196, 28, 28, 255), outline=(18, 16, 22, 255))
+
+        # Enhance laughing expression & glowing eyes for dramatic close-up contrast against black
+        d = ImageDraw.Draw(canvas)
+        ey = 37 + (-1 if wide_laugh else 1)
+        if wide_laugh:
+            # Crimson eye-flare rim + bright yellow core
+            d.rectangle([44, ey - 1, 51, ey + 2], fill=(210, 26, 36, 210))
+            d.rectangle([60, ey - 1, 67, ey + 2], fill=(210, 26, 36, 210))
+            d.rectangle([46, ey, 49, ey + 1], fill=(255, 238, 60, 255))
+            d.rectangle([62, ey, 65, ey + 1], fill=(255, 238, 60, 255))
+            # Open roaring fanged laugh mouth highlight
+            my = 52
+            d.rectangle([49, my, 62, my + 5], fill=(22, 6, 12, 255))
+            d.rectangle([50, my, 61, my + 1], fill=(246, 236, 224, 255))
+            d.point((51, my + 2), fill=(246, 236, 224, 255))
+            d.point((60, my + 2), fill=(246, 236, 224, 255))
+            d.rectangle([52, my + 4, 59, my + 5], fill=(176, 22, 34, 255))
+        else:
+            d.rectangle([46, ey, 49, ey + 1], fill=(255, 206, 36, 255))
+            d.rectangle([62, ey, 65, ey + 1], fill=(255, 206, 36, 255))
+            my = 54
+            d.rectangle([50, my, 61, my + 3], fill=(28, 8, 14, 255))
+            d.rectangle([51, my, 60, my], fill=(240, 228, 216, 255))
+
+        return canvas
+
+    base_open = _compose_112(("mouth_a", "mouth_gasp", "mouth_talk"), wide_laugh=True)
+    base_mid = _compose_112(("mouth_o", "mouth_smirk", "mouth_e"), wide_laugh=False)
+
+    # Crop slightly tighter on bust/face (y=0..96) and apply stepped abyss fade at bottom edge
+    crop_open = base_open.crop((0, 0, 112, 96))
+    crop_mid = base_mid.crop((0, 0, 112, 96))
+    for frame_im in (crop_open, crop_mid):
+        fpm = frame_im.load()
+        for y in range(84, 96):
+            fade = max(0.0, 1.0 - ((y - 83) / 13.0))
+            step_alpha = int(round(fade * 4.0) / 4.0 * 255)
+            for x in range(112):
+                r, g, b, a = fpm[x, y]
+                if a > 0:
+                    fpm[x, y] = (r, g, b, min(a, step_alpha))
+
+    mult = max(2, min(8, int(round(max(192, int(target_h)) / 96.0))))
+    return _nearest_scale(crop_open, mult), _nearest_scale(crop_mid, mult)
+
+
 # ============================================================================
 # Full-Viewport Pit Boss Blackout Veil (InWindowScreenHost Subclass)
 # ============================================================================
@@ -524,6 +686,8 @@ class _BlackoutVeilOverlay(InWindowScreenHost):
         self._on_skip = on_skip
         self._skipped = False
         self._eyes_photo: Optional[Any] = None
+        self._cinematic_photos: dict[str, Any] = {}
+        self._cinematic_state: dict[str, Any] = {}
         self._skip_hint_text = skip_hint
         self._hint_px = max(12, int(hint_px))
 
@@ -612,13 +776,20 @@ class _BlackoutVeilOverlay(InWindowScreenHost):
             if not self.winfo_exists() or not self.canvas.winfo_exists():
                 return
             self.canvas.delete("blackout_skip_hint")
+            if not self._skip_hint_text:
+                return
             w, h = self._resolve_canvas_size(size)
+            try:
+                from pixel_ui import get_role_font
+                hint_font = get_role_font("body", size_override=self._hint_px)
+            except Exception:
+                hint_font = ("Tiny5", -self._hint_px, "normal")
             self.canvas.create_text(
                 w // 2,
                 h - max(22, int(self._hint_px * 1.6)),
                 text=self._skip_hint_text,
-                fill="#685862",
-                font=("Tiny5", -self._hint_px, "normal"),
+                fill="#786670",
+                font=hint_font,
                 anchor="center",
                 state="disabled",
                 tags="blackout_skip_hint",
@@ -631,6 +802,227 @@ class _BlackoutVeilOverlay(InWindowScreenHost):
         self._draw_skip_hint(size=ev_size)
         if self._eyes_photo is not None:
             self.show_crimson_eyes(self._eyes_photo, size=ev_size)
+        if "glow" in self._cinematic_state:
+            self.set_abyss_glow(self._cinematic_state["glow"], size=ev_size)
+        if "boss" in self._cinematic_state:
+            photo, ox, oy, yf = self._cinematic_state["boss"]
+            self.set_center_sprite(photo, offset_x=ox, offset_y=oy, y_frac=yf, size=ev_size)
+        if "claws" in self._cinematic_state:
+            lp, rp, sf, yf = self._cinematic_state["claws"]
+            self.set_claw_sprites(lp, rp, spread_frac=sf, y_frac=yf, size=ev_size)
+        if "banner" in self._cinematic_state:
+            txt, fpx, yf, col = self._cinematic_state["banner"]
+            self.set_banner_text(txt, font_px=fpx, y_frac=yf, color=col, size=ev_size)
+
+    def _raise_cinematic_zorder(self) -> None:
+        for tag in (
+            "cinematic_glow",
+            "blackout_eyes",
+            "cinematic_boss",
+            "cinematic_claws",
+            "cinematic_banner",
+            "blackout_skip_hint",
+        ):
+            try:
+                self.canvas.tag_raise(tag)
+            except Exception:
+                pass
+
+    def set_abyss_glow(self, photo: Optional[Any], size: Optional[tuple[int, int]] = None) -> None:
+        if photo is None:
+            self._cinematic_state.pop("glow", None)
+            self._cinematic_photos.pop("glow", None)
+            try:
+                self.canvas.delete("cinematic_glow")
+            except Exception:
+                pass
+            return
+        self._cinematic_state["glow"] = photo
+        self._cinematic_photos["glow"] = photo
+        try:
+            if not self.winfo_exists() or not self.canvas.winfo_exists():
+                return
+            self.canvas.delete("cinematic_glow")
+            w, h = self._resolve_canvas_size(size)
+            self.canvas.create_image(
+                w // 2,
+                h // 2,
+                image=photo,
+                anchor="center",
+                state="disabled",
+                tags="cinematic_glow",
+            )
+            self._raise_cinematic_zorder()
+        except Exception:
+            pass
+
+    def set_center_sprite(
+        self,
+        photo: Optional[Any],
+        offset_x: int = 0,
+        offset_y: int = 0,
+        y_frac: float = 0.48,
+        size: Optional[tuple[int, int]] = None,
+    ) -> None:
+        if photo is None:
+            self._cinematic_state.pop("boss", None)
+            self._cinematic_photos.pop("boss", None)
+            try:
+                self.canvas.delete("cinematic_boss")
+            except Exception:
+                pass
+            return
+        self._cinematic_state["boss"] = (photo, offset_x, offset_y, y_frac)
+        self._cinematic_photos["boss"] = photo
+        try:
+            if not self.winfo_exists() or not self.canvas.winfo_exists():
+                return
+            self.canvas.delete("cinematic_boss")
+            w, h = self._resolve_canvas_size(size)
+            self.canvas.create_image(
+                (w // 2) + int(offset_x),
+                int(h * y_frac) + int(offset_y),
+                image=photo,
+                anchor="center",
+                state="disabled",
+                tags="cinematic_boss",
+            )
+            self._raise_cinematic_zorder()
+        except Exception:
+            pass
+
+    def set_claw_sprites(
+        self,
+        left_photo: Optional[Any],
+        right_photo: Optional[Any],
+        spread_frac: float = 0.28,
+        y_frac: float = 0.66,
+        size: Optional[tuple[int, int]] = None,
+    ) -> None:
+        if left_photo is None or right_photo is None:
+            self._cinematic_state.pop("claws", None)
+            self._cinematic_photos.pop("claw_l", None)
+            self._cinematic_photos.pop("claw_r", None)
+            try:
+                self.canvas.delete("cinematic_claws")
+            except Exception:
+                pass
+            return
+        self._cinematic_state["claws"] = (left_photo, right_photo, spread_frac, y_frac)
+        self._cinematic_photos["claw_l"] = left_photo
+        self._cinematic_photos["claw_r"] = right_photo
+        try:
+            if not self.winfo_exists() or not self.canvas.winfo_exists():
+                return
+            self.canvas.delete("cinematic_claws")
+            w, h = self._resolve_canvas_size(size)
+            dx = int(w * float(spread_frac))
+            cy = int(h * float(y_frac))
+            self.canvas.create_image(
+                (w // 2) - dx,
+                cy,
+                image=left_photo,
+                anchor="center",
+                state="disabled",
+                tags="cinematic_claws",
+            )
+            self.canvas.create_image(
+                (w // 2) + dx,
+                cy,
+                image=right_photo,
+                anchor="center",
+                state="disabled",
+                tags="cinematic_claws",
+            )
+            self._raise_cinematic_zorder()
+        except Exception:
+            pass
+
+    def set_banner_text(
+        self,
+        text: str,
+        font_px: int = 48,
+        y_frac: float = 0.82,
+        color: str = "#ff2a3c",
+        size: Optional[tuple[int, int]] = None,
+    ) -> None:
+        if not text:
+            self._cinematic_state.pop("banner", None)
+            try:
+                self.canvas.delete("cinematic_banner")
+            except Exception:
+                pass
+            return
+        self._cinematic_state["banner"] = (text, font_px, y_frac, color)
+        try:
+            if not self.winfo_exists() or not self.canvas.winfo_exists():
+                return
+            self.canvas.delete("cinematic_banner")
+            w, h = self._resolve_canvas_size(size)
+            cx = w // 2
+            cy = int(h * float(y_frac))
+            shadow_off = max(3, int(font_px) // 12)
+            try:
+                from pixel_ui import get_role_font
+                font_spec = get_role_font("title", size_override=int(font_px))
+            except Exception:
+                font_spec = ("BoldPixels", -int(font_px), "normal")
+            self.canvas.create_text(
+                cx + shadow_off,
+                cy + shadow_off,
+                text=text,
+                fill="#120408",
+                font=font_spec,
+                anchor="center",
+                state="disabled",
+                tags="cinematic_banner",
+            )
+            self.canvas.create_text(
+                cx,
+                cy,
+                text=text,
+                fill=color,
+                font=font_spec,
+                anchor="center",
+                state="disabled",
+                tags="cinematic_banner",
+            )
+            self._raise_cinematic_zorder()
+        except Exception:
+            pass
+
+    def enter_backdrop_mode(self) -> None:
+        """Converts the overlay into a passive pitch-black #060408 backdrop behind StoryDialogueDialog."""
+        self.clear_cinematic_layers()
+        self._skip_hint_text = ""
+        try:
+            self.canvas.delete("blackout_skip_hint")
+        except Exception:
+            pass
+        self.set_veil_color("#060408")
+        self._skipped = True
+        if getattr(self, "_has_grab", False):
+            try:
+                tkinter.Widget.grab_release(self)
+            except Exception:
+                pass
+            self._has_grab = False
+        for widget in (self, self.canvas):
+            for seq in ("<Button-1>", "<Return>", "<KP_Enter>", "<space>", "<Escape>", "<Key>"):
+                try:
+                    widget.unbind(seq)
+                except Exception:
+                    pass
+
+    def clear_cinematic_layers(self) -> None:
+        self._eyes_photo = None
+        self._cinematic_state.clear()
+        self._cinematic_photos.clear()
+        for tag in ("cinematic_glow", "blackout_eyes", "cinematic_boss", "cinematic_claws", "cinematic_banner"):
+            try:
+                self.canvas.delete(tag)
+            except Exception:
+                pass
 
     def show_crimson_eyes(self, photo: Optional[Any], size: Optional[tuple[int, int]] = None) -> None:
         self._eyes_photo = photo
@@ -1780,6 +2172,274 @@ class HauntedAtmosphereController:
             if self._blackout_overlay is not None:
                 self._blackout_overlay.show_crimson_eyes(eyes)
             self._schedule("blackout_step", 350, _finish)
+
+    # ------------------------------------------------------------------------
+    # "Your Soul Is Claimed" Defeat Cinematic
+    # ------------------------------------------------------------------------
+
+    def play_soul_claimed_cinematic(
+        self,
+        on_complete: Callable[[], None],
+        headless_bypass: bool = False,
+        hold_black_backdrop: bool = False,
+    ) -> None:
+        """
+        Plays the skippable ~2.4s Hell's Table defeat cinematic when the Soul Meter hits 0%:
+          - Full mode: cut to black -> glowing eyes -> looming animated close-up of Malphas
+            laughing -> 16-bit demon claws surging toward the viewer + 'YOUR SOUL IS CLAIMED'
+            -> snap to black -> on_complete().
+          - Reduced Flashes mode: calm static dark-crimson close-up + resting claws + banner.
+          - When hold_black_backdrop=True, keeps the pitch-black #060408 veil mounted behind
+            the follow-up StoryDialogueDialog until dismiss_blackout_backdrop() is called.
+          - Headless bypass: invokes on_complete() synchronously with 0 timers.
+        """
+        if self._in_blackout:
+            return
+
+        # Clean up any previously held backdrop before starting a new cinematic
+        self._close_blackout_overlay()
+
+        canvas = getattr(self.app, "card_table_frame", None)
+        if canvas is not None and hasattr(canvas, "cancel_animations"):
+            try:
+                canvas.cancel_animations()
+            except Exception:
+                pass
+
+        if headless_bypass:
+            on_complete()
+            return
+
+        self._in_blackout = True
+        self._blackout_token += 1
+        token = self._blackout_token
+        state: dict[str, Any] = {
+            "finished": False,
+            "laugh_tick": 0,
+            "zoom_step": 0,
+            "claw_step": 0,
+            "boss_frames_by_step": [],
+            "claw_pairs_by_step": [],
+            "glow_photo": None,
+        }
+
+        def _finish() -> None:
+            if state["finished"] or token != self._blackout_token:
+                return
+            state["finished"] = True
+            self._cancel_timer("blackout_step")
+            self._cancel_timer("blackout_laugh")
+            self._cancel_timer("blackout_claws")
+            if hold_black_backdrop and self._blackout_overlay is not None:
+                self._blackout_overlay.enter_backdrop_mode()
+            else:
+                self._close_blackout_overlay()
+            self._in_blackout = False
+            self._blackout_skip_cb = None
+            on_complete()
+
+        self._blackout_skip_cb = _finish
+        self._clear_transient_effects()
+
+        im = getattr(self.app, "input_manager", None)
+        is_gp = bool(im is not None and getattr(im, "active_mode", "kb_mouse") == "gamepad")
+        skip_hint = "[A] / [B] Skip" if is_gp else "Click / Space / Esc to Skip"
+        profile = getattr(self.app, "display_profile", None)
+        hint_px = int(profile.table_px(16)) if profile is not None and hasattr(profile, "table_px") else 16
+
+        try:
+            self._blackout_overlay = _BlackoutVeilOverlay(
+                self.root,
+                on_skip=_finish,
+                skip_hint=skip_hint,
+                hint_px=hint_px,
+            )
+        except Exception:
+            self._in_blackout = False
+            self._blackout_skip_cb = None
+            on_complete()
+            return
+
+        ov = self._blackout_overlay
+        vw, vh = ov._resolve_canvas_size()
+        # Snap BoldPixels title size to exact 16px native grid (64 / 96 / 128)
+        if vh >= 1360:
+            banner_px = 128
+        elif vh >= 700:
+            banner_px = 96
+        else:
+            banner_px = 64
+
+        # Pre-build crisp integer-scaled frames on demand (fast Pillow NEAREST ops)
+        dealer_actor = getattr(self.app, "dealer_actor", None)
+        if PIL_AVAILABLE and Image is not None and ImageTk is not None:
+            try:
+                glow_pil = _build_crimson_abyss_glow_pil(vw, vh)
+                state["glow_photo"] = ImageTk.PhotoImage(glow_pil, master=self.root)
+            except Exception:
+                state["glow_photo"] = None
+
+            try:
+                # 4 zoom tiers for looming close-up (fills ~42% -> ~72% of viewport height)
+                fracs = (0.44, 0.54, 0.64, 0.72) if self.scares_mode == "full" else (0.64,)
+                for frac in fracs:
+                    f_open, f_mid = _build_malphas_laugh_frames_pil(
+                        dealer_actor=dealer_actor,
+                        target_h=max(240, int(vh * frac)),
+                    )
+                    state["boss_frames_by_step"].append((
+                        ImageTk.PhotoImage(f_open, master=self.root),
+                        ImageTk.PhotoImage(f_mid, master=self.root),
+                    ))
+            except Exception:
+                state["boss_frames_by_step"] = []
+
+            try:
+                claw_l_1x = _build_demon_claw_hand_pil("left")
+                claw_r_1x = _build_demon_claw_hand_pil("right")
+                base_mult = max(2, int(round(vh / 360.0)))
+                claw_mults = (
+                    (max(1, base_mult - 1), base_mult, base_mult + 1, base_mult + 2)
+                    if self.scares_mode == "full"
+                    else (base_mult,)
+                )
+                for cm in claw_mults:
+                    lp = ImageTk.PhotoImage(_nearest_scale(claw_l_1x, cm), master=self.root)
+                    rp = ImageTk.PhotoImage(_nearest_scale(claw_r_1x, cm), master=self.root)
+                    state["claw_pairs_by_step"].append((lp, rp))
+            except Exception:
+                state["claw_pairs_by_step"] = []
+
+        # Reduced Flashes Mode: calm static dark-crimson close-up + resting claws + banner
+        if self.scares_mode != "full":
+            ov.set_veil_color("#12060a")
+            if state["glow_photo"] is not None:
+                ov.set_abyss_glow(state["glow_photo"])
+            if state["boss_frames_by_step"]:
+                ov.set_center_sprite(state["boss_frames_by_step"][0][1], y_frac=0.45)
+            if state["claw_pairs_by_step"]:
+                lp, rp = state["claw_pairs_by_step"][0]
+                ov.set_claw_sprites(lp, rp, spread_frac=0.33, y_frac=0.68)
+            ov.set_banner_text("YOUR SOUL IS CLAIMED", font_px=banner_px, y_frac=0.84)
+            if self.sound_manager is not None:
+                try:
+                    self.sound_manager.play_haunted_sound("demon_laugh")
+                except Exception:
+                    pass
+            self._schedule("blackout_step", 1200, _finish)
+            return
+
+        # Full Mode:
+        # t = 0ms: Cut to black + candle snuff
+        ov.set_veil_color("#060408")
+        if self.sound_manager is not None:
+            try:
+                self.sound_manager.play_haunted_sound("candle_snuff")
+            except Exception:
+                pass
+
+        def _step_eyes(expected_token: int) -> None:
+            if state["finished"] or expected_token != self._blackout_token or self._blackout_overlay is None:
+                return
+            if self.sound_manager is not None:
+                try:
+                    self.sound_manager.play_haunted_sound("hell_bell")
+                except Exception:
+                    pass
+            eyes = self._get_scaled_sprite("blackout_eyes", self._get_blackout_eyes_scale())
+            self._blackout_overlay.show_crimson_eyes(eyes)
+            self._schedule("blackout_step", 280, lambda: _step_boss_laugh_start(expected_token))
+
+        def _tick_laugh(expected_token: int) -> None:
+            if state["finished"] or expected_token != self._blackout_token or self._blackout_overlay is None:
+                return
+            frames = state["boss_frames_by_step"]
+            if not frames:
+                return
+            z_idx = min(state["zoom_step"], len(frames) - 1)
+            f_open, f_mid = frames[z_idx]
+            tick = state["laugh_tick"]
+            state["laugh_tick"] = tick + 1
+            if state["zoom_step"] < len(frames) - 1 and tick % 2 == 1:
+                state["zoom_step"] += 1
+            is_open = (tick % 2 == 0)
+            ox = (-3 if (tick % 4) < 2 else 3) if z_idx >= 1 else 0
+            oy = -4 if is_open else 4
+            self._blackout_overlay.set_center_sprite(
+                f_open if is_open else f_mid,
+                offset_x=ox,
+                offset_y=oy,
+                y_frac=0.46,
+            )
+            self._schedule("blackout_laugh", 115, lambda: _tick_laugh(expected_token))
+
+        def _step_boss_laugh_start(expected_token: int) -> None:
+            if state["finished"] or expected_token != self._blackout_token or self._blackout_overlay is None:
+                return
+            self._blackout_overlay.show_crimson_eyes(None)
+            if state["glow_photo"] is not None:
+                self._blackout_overlay.set_abyss_glow(state["glow_photo"])
+            if self.sound_manager is not None:
+                try:
+                    self.sound_manager.play_haunted_sound("demon_laugh")
+                except Exception:
+                    pass
+            _tick_laugh(expected_token)
+            self._schedule("blackout_step", 850, lambda: _step_claws_lunge(expected_token))
+
+        def _tick_claws(expected_token: int) -> None:
+            if state["finished"] or expected_token != self._blackout_token or self._blackout_overlay is None:
+                return
+            pairs = state["claw_pairs_by_step"]
+            if not pairs:
+                return
+            idx = min(state["claw_step"], len(pairs) - 1)
+            spreads = (0.42, 0.34, 0.26, 0.19)
+            y_fracs = (0.76, 0.70, 0.64, 0.58)
+            lp, rp = pairs[idx]
+            self._blackout_overlay.set_claw_sprites(
+                lp,
+                rp,
+                spread_frac=spreads[min(idx, len(spreads) - 1)],
+                y_frac=y_fracs[min(idx, len(y_fracs) - 1)],
+            )
+            if idx == 1:
+                self._blackout_overlay.set_banner_text("YOUR SOUL IS CLAIMED", font_px=banner_px, y_frac=0.84)
+            if idx + 1 < len(pairs):
+                state["claw_step"] = idx + 1
+                self._schedule("blackout_claws", 160, lambda: _tick_claws(expected_token))
+
+        def _step_claws_lunge(expected_token: int) -> None:
+            if state["finished"] or expected_token != self._blackout_token or self._blackout_overlay is None:
+                return
+            if self.sound_manager is not None:
+                try:
+                    self.sound_manager.play_haunted_sound("demon_reveal")
+                except Exception:
+                    pass
+            _tick_claws(expected_token)
+            self._schedule("blackout_step", 800, lambda: _step_snap_black(expected_token))
+
+        def _step_snap_black(expected_token: int) -> None:
+            if state["finished"] or expected_token != self._blackout_token or self._blackout_overlay is None:
+                return
+            self._cancel_timer("blackout_laugh")
+            self._cancel_timer("blackout_claws")
+            self._blackout_overlay.clear_cinematic_layers()
+            self._blackout_overlay.set_veil_color("#060408")
+            if self.sound_manager is not None:
+                try:
+                    self.sound_manager.play_haunted_sound("stone_scrape")
+                except Exception:
+                    pass
+            self._schedule("blackout_step", 260, _finish)
+
+        self._schedule("blackout_step", 220, lambda: _step_eyes(token))
+
+    def dismiss_blackout_backdrop(self) -> None:
+        """Removes any passive pitch-black backdrop held behind a follow-up defeat dialog."""
+        if not self._in_blackout and self._blackout_overlay is not None:
+            self._close_blackout_overlay()
 
     def _skip_blackout(self) -> None:
         cb = self._blackout_skip_cb

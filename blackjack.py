@@ -5151,6 +5151,18 @@ class BlackjackApp:
             self.new_game()
             return
 
+        if hasattr(self, "haunted_atmosphere") and self.haunted_atmosphere is not None:
+            self.haunted_atmosphere.play_soul_claimed_cinematic(
+                on_complete=self._present_defeat_dialog,
+                headless_bypass=False,
+                hold_black_backdrop=True,
+            )
+            return
+
+        self._present_defeat_dialog()
+
+    def _present_defeat_dialog(self):
+        """Mounts the Soul Forfeit StoryDialogueDialog over the pitch-black backdrop."""
         text = (
             "Your soul is claimed! Dragged down into the suffocating abyss...\n\n"
             "Yet the House of Damnation is ever insatiable. Will you stake your next life "
@@ -5158,6 +5170,8 @@ class BlackjackApp:
         )
 
         def on_retry():
+            if hasattr(self, "haunted_atmosphere") and self.haunted_atmosphere is not None:
+                self.haunted_atmosphere.dismiss_blackout_backdrop()
             self.haunted.second_chance()
             self.soul_meter_canvas.set_meter(self.haunted.soul_meter, animated=False)
             if hasattr(self, "haunted_atmosphere") and self.haunted_atmosphere is not None:
@@ -8581,7 +8595,7 @@ class BlackjackApp:
             elif self.haunted.phase == Phase.DEFEAT:
                 if hasattr(self, "soul_meter_canvas"):
                     self.soul_meter_canvas.set_meter(0.0, animated=True)
-                if hasattr(self, "sound_manager"):
+                if hasattr(self, "sound_manager") and getattr(self, "haunted_atmosphere", None) is None:
                     self.sound_manager.play_haunted_sound("demon_laugh")
                 self._haunted_round_timer_id = self.root.after(600, self._show_defeat_dialog)
 

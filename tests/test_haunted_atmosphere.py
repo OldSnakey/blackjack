@@ -380,6 +380,112 @@ class TestHauntedAtmosphereGUI(unittest.TestCase):
             photo = self.ctrl._get_card_glitch_photo(kind, 74, 107)
             self.assertIsNotNone(photo)
 
+    def test_soul_claimed_cinematic_sprite_builders(self):
+        """Procedural demon claw hands and Malphas close-up laugh frames build crisp transparent 16-bit RGBA sprites."""
+        from haunted_atmosphere import (
+            HAUNTED_ASSETS_DIR,
+            _build_crimson_abyss_glow_pil,
+            _build_demon_claw_hand_pil,
+            _build_malphas_laugh_frames_pil,
+        )
+
+        left_claw = _build_demon_claw_hand_pil("left")
+        right_claw = _build_demon_claw_hand_pil("right")
+        self.assertTrue((HAUNTED_ASSETS_DIR / "demon_claw_left.png").exists())
+        self.assertEqual(left_claw.mode, "RGBA")
+        self.assertEqual(left_claw.size, right_claw.size)
+        w, h = left_claw.size
+        # Corners transparent
+        self.assertEqual(left_claw.getpixel((0, 0))[3], 0)
+        self.assertEqual(left_claw.getpixel((w - 1, 0))[3], 0)
+        # Exact horizontal mirror symmetry
+        self.assertEqual(left_claw.getpixel((w // 3, h // 2)), right_claw.getpixel((w - 1 - (w // 3), h // 2)))
+        # Contains crimson skin pixels and obsidian claw pixels
+        px = list(left_claw.getdata())
+        crimson_px = sum(1 for r, g, b, a in px if a > 200 and r > 150 and g < 80 and b < 80)
+        obsidian_px = sum(1 for r, g, b, a in px if a > 200 and r < 40 and g < 40 and b < 50)
+        self.assertGreater(crimson_px, 120)
+        self.assertGreater(obsidian_px, 80)
+
+        # Malphas laugh frames: 2 distinct RGBA frames with transparent top corners
+        frame_open, frame_mid = _build_malphas_laugh_frames_pil(dealer_actor=getattr(self.app, "dealer_actor", None), target_h=336)
+        self.assertEqual(frame_open.mode, "RGBA")
+        self.assertEqual(frame_open.size, frame_mid.size)
+        self.assertEqual(frame_open.getpixel((0, 0))[3], 0)
+        self.assertNotEqual(frame_open.tobytes(), frame_mid.tobytes())
+
+        glow = _build_crimson_abyss_glow_pil(320, 200)
+        self.assertEqual(glow.size, (320, 200))
+
+    def test_soul_claimed_cinematic_full_skip_reduced_and_cancel(self):
+        """play_soul_claimed_cinematic supports headless bypass, Full mode + instant skip, Reduced mode, and cancel_all."""
+        # 1. Headless bypass executes on_complete synchronously with 0 timers
+        done = []
+        self.ctrl.play_soul_claimed_cinematic(lambda: done.append("headless"), headless_bypass=True)
+        self.assertEqual(done, ["headless"])
+        self.assertFalse(self.ctrl._in_blackout)
+        self.assertEqual(len(self.ctrl._timers), 0)
+
+        # 2. Full mode mounts overlay, exposes skip hint, and instant skip fires on_complete once
+        done.clear()
+        self.ctrl.apply_comfort_settings("full", True)
+        self.ctrl.play_soul_claimed_cinematic(lambda: done.append("full"), headless_bypass=False)
+        self.assertTrue(self.ctrl._in_blackout)
+        overlay = self.ctrl._blackout_overlay
+        self.assertIsNotNone(overlay)
+        self.assertTrue(overlay.canvas.find_withtag("blackout_skip_hint"))
+        self.assertEqual(overlay.handle_modal_key(), "break")
+        # Duplicate skip is idempotent
+        self.assertEqual(overlay.handle_modal_key(), "break")
+        self.assertEqual(done, ["full"])
+        self.assertFalse(self.ctrl._in_blackout)
+        self.assertIsNone(self.ctrl._blackout_overlay)
+        self.assertEqual(len(self.ctrl._timers), 0)
+
+        # 3. Reduced Flashes mode renders static boss + banner immediately and skips cleanly
+        done.clear()
+        self.ctrl.apply_comfort_settings("reduced", True)
+        self.ctrl.play_soul_claimed_cinematic(lambda: done.append("reduced"), headless_bypass=False)
+        self.assertTrue(self.ctrl._in_blackout)
+        overlay = self.ctrl._blackout_overlay
+        self.assertIsNotNone(overlay)
+        self.assertTrue(overlay.canvas.find_withtag("cinematic_boss"))
+        self.assertTrue(overlay.canvas.find_withtag("cinematic_banner"))
+        self.assertNotIn("blackout_laugh", self.ctrl._timers)
+        self.assertEqual(overlay.handle_modal_key(), "break")
+        self.assertEqual(done, ["reduced"])
+        self.assertEqual(len(self.ctrl._timers), 0)
+
+        # 4. hold_black_backdrop=True keeps pure #060408 curtain until dismiss_blackout_backdrop()
+        done.clear()
+        self.ctrl.apply_comfort_settings("full", True)
+        self.ctrl.play_soul_claimed_cinematic(
+            lambda: done.append("held"),
+            headless_bypass=False,
+            hold_black_backdrop=True,
+        )
+        overlay = self.ctrl._blackout_overlay
+        self.assertIsNotNone(overlay)
+        self.assertEqual(overlay.handle_modal_key(), "break")
+        self.assertEqual(done, ["held"])
+        self.assertFalse(self.ctrl._in_blackout)
+        self.assertIsNotNone(self.ctrl._blackout_overlay)
+        self.assertEqual(len(overlay.canvas.find_withtag("blackout_skip_hint")), 0)
+        self.assertEqual(len(overlay.canvas.find_withtag("cinematic_boss")), 0)
+        self.ctrl.dismiss_blackout_backdrop()
+        self.assertIsNone(self.ctrl._blackout_overlay)
+
+        # 5. cancel_all aborts mid-cinematic without firing on_complete
+        done.clear()
+        self.ctrl.apply_comfort_settings("full", True)
+        self.ctrl.play_soul_claimed_cinematic(lambda: done.append("aborted"), headless_bypass=False)
+        self.assertTrue(self.ctrl._in_blackout)
+        self.ctrl.cancel_all()
+        self.assertFalse(self.ctrl._in_blackout)
+        self.assertIsNone(self.ctrl._blackout_overlay)
+        self.assertEqual(len(self.ctrl._timers), 0)
+        self.assertEqual(done, [])
+
 
 if __name__ == "__main__":
     unittest.main()
