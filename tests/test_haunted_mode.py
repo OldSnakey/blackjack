@@ -914,9 +914,9 @@ class TestHauntedGui(unittest.TestCase):
         self.app.new_game()
         self.root.update_idletasks()
 
-        # During Hell's Table, face cards are swapped to darkened *_haunted_0 sprites and Eye halo is drawn
-        self.assertEqual(self.app.dealer_hand[1].image, self.app.haunted_assets["king_haunted_0"])
-        self.assertEqual(self.app.player_hands[0][1].image, self.app.haunted_assets["jack_haunted_0"])
+        # During Hell's Table, face cards retain crisp normal white sprites (no dimmed *_haunted_0 swap) while Eye halo is drawn
+        self.assertEqual(self.app.dealer_hand[1].image, c_ks.image)
+        self.assertEqual(self.app.player_hands[0][1].image, c_js.image)
         self.assertGreater(len(self.app.card_table_frame.find_withtag("dealer_card_decor")), 0)
 
         # Revealing the hole card clears the Eye of Providence peek border

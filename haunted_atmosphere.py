@@ -360,6 +360,60 @@ def _build_bleeding_heart_pil() -> Any:
     return img
 
 
+def _build_court_glitch_pil(kind: str) -> Any:
+    """
+    Synthesizes a 36x52 transparent 16-bit horror overlay for J/Q/K court cards:
+    double-headed crimson eye-glints, dark void ink tears, and rank-specific
+    corruption streaks with 100% transparent background so the real card's crisp
+    #FFFFFF stock and true suit remain intact beneath.
+    """
+    img = Image.new("RGBA", (36, 52), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    void_ink = (14, 8, 18, 225)
+    dark_red = (118, 12, 24, 235)
+    crimson = (196, 22, 36, 248)
+    core = (255, 62, 72, 255)
+
+    # Double-headed court portrait glowing crimson eye-glints (upper & mirrored lower)
+    for ey in (12, 38):
+        # Subtle void socket smear behind eyes
+        d.rectangle([10, ey - 1, 15, ey + 2], fill=void_ink)
+        d.rectangle([20, ey - 1, 25, ey + 2], fill=void_ink)
+        # Crimson glow + pinpoint pupil core
+        d.rectangle([11, ey, 14, ey + 1], fill=crimson)
+        d.point((12, ey), fill=core)
+        d.rectangle([21, ey, 24, ey + 1], fill=crimson)
+        d.point((22, ey), fill=core)
+
+    # Horizontal pixel-slice tear streaks across the portrait center
+    d.rectangle([4, 24, 24, 25], fill=void_ink)
+    d.rectangle([12, 27, 32, 28], fill=void_ink)
+    d.rectangle([7, 25, 19, 25], fill=dark_red)
+    d.rectangle([18, 27, 29, 27], fill=dark_red)
+
+    if kind == "king":
+        # Jagged crimson crown-fracture streaks at top & mirrored bottom
+        d.line([(6, 5), (13, 8), (18, 4), (23, 8), (29, 5)], fill=crimson, width=1)
+        d.line([(6, 46), (13, 43), (18, 47), (23, 43), (29, 46)], fill=crimson, width=1)
+        d.rectangle([17, 16, 18, 22], fill=dark_red)
+        d.rectangle([17, 30, 18, 35], fill=dark_red)
+    elif kind == "queen":
+        # Weeping dark-crimson ink tears dripping from upper & lower eyes
+        for x in (12, 22):
+            d.rectangle([x, 14, x + 1, 21], fill=dark_red)
+            d.point((x, 22), fill=crimson)
+            d.rectangle([x, 31, x + 1, 37], fill=dark_red)
+            d.point((x, 30), fill=crimson)
+    else:
+        # Jack: diagonal ink-slash tears across upper/lower portrait quadrants
+        d.line([(6, 17), (16, 22)], fill=void_ink, width=2)
+        d.line([(8, 17), (15, 21)], fill=crimson, width=1)
+        d.line([(20, 30), (30, 35)], fill=void_ink, width=2)
+        d.line([(21, 31), (28, 35)], fill=crimson, width=1)
+
+    return img
+
+
 def _build_blackout_eyes_pil() -> Any:
     """Synthesizes dramatic 144x44 glowing crimson demon eyes framed by a faint horned-brow shadow."""
     img = Image.new("RGBA", (144, 44), (0, 0, 0, 0))
@@ -879,22 +933,24 @@ class HauntedAtmosphereController:
 
         pil_out = None
         if kind in ("jack", "queen", "king"):
-            master_path = HAUNTED_ASSETS_DIR / f"{kind}_haunted_1.png"
-            if master_path.exists():
-                try:
-                    with Image.open(master_path) as raw_im:
-                        src_rgba = raw_im.convert("RGBA")
-                    scaled = AssetScaler.scale_pil_image(
-                        src_rgba,
-                        int(card_w),
-                        int(card_h),
-                        element_type="cards",
-                        is_haunted_card=True,
-                    )
-                    if scaled is not None:
-                        pil_out = scaled.crop((x0, y0, x1, y1))
-                except Exception:
-                    pil_out = None
+            try:
+                glitch_1x = _build_court_glitch_pil(kind)
+                # Integer scaling prevents fractional NEAREST mixels on 1080p 1.5x cards
+                int_scale = 2 if self._get_card_scale() >= 1.8 else 1
+                glitch_scaled = _nearest_scale(glitch_1x, int_scale)
+                tw = min(crop_w, glitch_scaled.width)
+                th = min(crop_h, glitch_scaled.height)
+                if (tw, th) != glitch_scaled.size:
+                    glitch_scaled = glitch_scaled.crop((0, 0, tw, th))
+                canvas_img = Image.new("RGBA", (crop_w, crop_h), (0, 0, 0, 0))
+                canvas_img.paste(
+                    glitch_scaled,
+                    ((crop_w - tw) // 2, (crop_h - th) // 2),
+                    glitch_scaled,
+                )
+                pil_out = canvas_img
+            except Exception:
+                pil_out = None
         elif kind == "bleeding_heart":
             try:
                 heart_1x = _build_bleeding_heart_pil()

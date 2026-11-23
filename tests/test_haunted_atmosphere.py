@@ -361,6 +361,25 @@ class TestHauntedAtmosphereGUI(unittest.TestCase):
         self.assertNotIn(("spike_0", 99), self.ctrl._scale_sprite_cache)
         self.assertNotIn(("king", 1, 1), self.ctrl._card_overlay_cache)
 
+    def test_court_card_glitch_overlay_is_transparent_procedural(self):
+        """Court-card glitches use transparent procedural ink/eye overlays (no gray *_haunted_1 background box)."""
+        from haunted_atmosphere import _build_court_glitch_pil
+
+        for kind in ("jack", "queen", "king"):
+            im = _build_court_glitch_pil(kind)
+            w, h = im.size
+            # Corners must be fully transparent so crisp white card stock shines through
+            for corner in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)):
+                self.assertEqual(im.getpixel(corner)[3], 0, f"{kind} corner {corner} not transparent")
+            pixels = list(im.getdata())
+            transparent_ratio = sum(1 for p in pixels if p[3] == 0) / float(len(pixels))
+            self.assertGreater(transparent_ratio, 0.65, f"{kind} overlay should be mostly transparent")
+            crimson_pixels = sum(1 for r, g, b, a in pixels if a > 200 and r > 150 and g < 80 and b < 80)
+            self.assertGreater(crimson_pixels, 8, f"{kind} overlay should contain crimson glitch accents")
+
+            photo = self.ctrl._get_card_glitch_photo(kind, 74, 107)
+            self.assertIsNotNone(photo)
+
 
 if __name__ == "__main__":
     unittest.main()

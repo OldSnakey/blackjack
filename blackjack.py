@@ -7046,14 +7046,6 @@ class BlackjackApp:
 
         self._update_shoe_display()
 
-        # In Hell's Table, transform face cards to animated demonic editions
-        if getattr(self, "haunted", None) and self.haunted.phase == Phase.HELL_TABLE:
-            rank = getattr(card, "rank", "")
-            if rank in ("jack", "queen", "king"):
-                haunted_img = self.haunted_assets.get(f"{rank}_haunted_0")
-                if haunted_img:
-                    card = Card(card.value, haunted_img, rank=rank, suit=card.suit)
-
         return card
 
     def _deal_card_to_player(self, hand_index=None):
@@ -8884,17 +8876,12 @@ class BlackjackApp:
             self.card_13 = Card(13, self.haunted_assets["card_13"], rank="thirteen", suit="skulls")
 
         card_lookup = {(c.rank, c.suit): c for c in self.all_cards}
-        is_hell = bool(getattr(self, "haunted", None) and self.haunted.phase == Phase.HELL_TABLE)
 
         def find_updated_card(old_card: Card) -> Card:
             rank = getattr(old_card, "rank", "")
             suit = getattr(old_card, "suit", "")
             if rank == "thirteen" and self.card_13:
                 return self.card_13
-            if is_hell and rank in ("jack", "queen", "king"):
-                h_img = self.haunted_assets.get(f"{rank}_haunted_0")
-                if h_img:
-                    return Card(old_card.value, h_img, rank=rank, suit=suit)
             return card_lookup.get((rank, suit), old_card)
 
         def update_hand_in_place(hand_obj: Any) -> None:
