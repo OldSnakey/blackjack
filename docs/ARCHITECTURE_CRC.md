@@ -68,6 +68,7 @@ graph TD
         chip_c[ui_canvases.py: ChipVisualizer]
         altar_c[ui_canvases.py: HauntedAltarCanvas]
         soul_c[ui_canvases.py: SoulMeterCanvas]
+        haunted_atmo[haunted_atmosphere.py: HauntedAtmosphereController]
         hud[ui_canvases.py: TableAnnouncementHUD]
         count_hud[card_counting_hud.py: CardCountingHud, FloatingCountBadge]
         bootcamp_ui[counting_bootcamp.py: CountingBootcampFrame, BootcampControlDock]

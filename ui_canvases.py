@@ -2351,16 +2351,30 @@ class DealerStageCanvas(tkinter.Canvas):
             p1[0], p1[1], p3[0], p3[1],
             fill=border_col, width=max(1, int(s)), tags="speech_tail"
         )
-        if self.find_withtag("dialogue_win"):
-            if self.itemcget("dialogue_win", "state") == "hidden":
-                self.itemconfigure("speech_tail", state="hidden")
-            else:
-                self.lift("dialogue_win")
+        self._sync_stage_zorder()
 
     def clear_speech_tail(self):
         """Removes the active speech callout tail from the canvas."""
         self._active_speech_tail = None
         self.delete("speech_tail")
+
+    def _sync_stage_zorder(self):
+        """Maintains canonical Horizon Stage layering: backdrop -> particles -> dealer_sprite -> stage_overlay -> dialogue -> hanger_btn."""
+        if self.find_withtag("backdrop"):
+            self.tag_lower("backdrop")
+        if self.find_withtag("dealer_sprite"):
+            self.lift("dealer_sprite")
+        if self.find_withtag("stage_overlay"):
+            self.lift("stage_overlay")
+        if self.find_withtag("speech_tail"):
+            self.lift("speech_tail")
+        if self.find_withtag("dialogue_win"):
+            if self.itemcget("dialogue_win", "state") == "hidden":
+                self.itemconfigure("speech_tail", state="hidden")
+            else:
+                self.lift("dialogue_win")
+        if self.find_withtag("hanger_btn"):
+            self.lift("hanger_btn")
 
     def set_dealer_image(self, photo: Optional[Any]):
         """Sets and updates the dealer sprite rendered directly on the stage canvas."""
@@ -2371,23 +2385,12 @@ class DealerStageCanvas(tkinter.Canvas):
             if photo:
                 self.itemconfigure("dealer_sprite", image=photo)
                 self.coords("dealer_sprite", w // 2, h)
-                self.lift("dealer_sprite")
-                if self.find_withtag("speech_tail"):
-                    self.lift("speech_tail")
-                if self.find_withtag("dialogue_win"):
-                    self.lift("dialogue_win")
-                if self.find_withtag("hanger_btn"):
-                    self.lift("hanger_btn")
+                self._sync_stage_zorder()
             else:
                 self.delete("dealer_sprite")
         elif photo:
             self.create_image(w // 2, h, image=photo, anchor="s", tags="dealer_sprite")
-            if self.find_withtag("speech_tail"):
-                self.lift("speech_tail")
-            if self.find_withtag("dialogue_win"):
-                self.lift("dialogue_win")
-            if self.find_withtag("hanger_btn"):
-                self.lift("hanger_btn")
+            self._sync_stage_zorder()
 
     def _load_backdrop_assets(self):
         backdrops_dir = HAUNTED_ASSETS_DIR / "backdrops"
@@ -2489,8 +2492,7 @@ class DealerStageCanvas(tkinter.Canvas):
         if self._active_speech_tail:
             self.draw_speech_tail(self._active_speech_tail[0], self._active_speech_tail[1])
 
-        if self.find_withtag("hanger_btn"):
-            self.lift("hanger_btn")
+        self._sync_stage_zorder()
 
         # Legacy header_row support
         if self.find_withtag("header_row"):
@@ -2616,17 +2618,7 @@ class DealerStageCanvas(tkinter.Canvas):
                 fill=p["color"], outline="", tags="stage_particle"
             )
 
-        if self.find_withtag("dealer_sprite"):
-            self.lift("dealer_sprite")
-        if self.find_withtag("speech_tail"):
-            self.lift("speech_tail")
-        if self.find_withtag("dialogue_win"):
-            if self.itemcget("dialogue_win", "state") == "hidden":
-                self.itemconfigure("speech_tail", state="hidden")
-            else:
-                self.lift("dialogue_win")
-        if self.find_withtag("hanger_btn"):
-            self.lift("hanger_btn")
+        self._sync_stage_zorder()
 
     def clear_particles(self):
         """Removes all active stage particles from memory and canvas."""
@@ -2880,6 +2872,8 @@ class TableFeltCanvas(tkinter.Canvas):
         self.pit_max_width = new_pit_max
         if changed:
             self._felt_cache.clear()
+            if hasattr(self, "_rule_band_patch_cache"):
+                self._rule_band_patch_cache.clear()
             self._redraw_felt()
             if getattr(self, "_shoe_visible", False):
                 self.draw_shoe_tray(self._shoe_remaining, self._shoe_total, getattr(self, "_shoe_cut_notice", False))
@@ -2891,6 +2885,8 @@ class TableFeltCanvas(tkinter.Canvas):
         if self.scale_factor != scale_factor:
             self.scale_factor = scale_factor
             self.pit_max_width = 2560 if scale_factor >= 1.8 else 1920
+            if hasattr(self, "_rule_band_patch_cache"):
+                self._rule_band_patch_cache.clear()
             self._redraw_felt()
             if getattr(self, "_shoe_visible", False):
                 self.draw_shoe_tray(self._shoe_remaining, self._shoe_total, getattr(self, "_shoe_cut_notice", False))
@@ -2966,12 +2962,135 @@ class TableFeltCanvas(tkinter.Canvas):
         cls._SHARED_FONT_CACHE[key] = font_obj
         return font_obj
 
+    def _compute_rule_band_metrics(self, w: int, h: int) -> dict[str, Any]:
+        """Computes shared center-pit rule band geometry for both felt engraving and flicker patches."""
+        art_scale = 2 if self.scale_factor >= 1.8 else 1
+        lanes = resolve_center_pit_lanes(w, h, self._display_profile, self.table_seats)
+        pit_left, cx, pit_right = lanes["pit_left"], lanes["pit_cx"], lanes["pit_right"]
+        mid_y = lanes["mid_gap_y"] if h >= 320 else int(h * 0.42)
+        pit_w = max(240, pit_right - pit_left)
+
+        tbl_fs = float(
+            getattr(
+                getattr(self, "_display_profile", None),
+                "table_font_scale",
+                getattr(self, "_table_font_scale", float(art_scale)),
+            )
+        )
+        is_fhd = (art_scale == 1 and tbl_fs >= 1.35)
+        rx = min(int(pit_w * 0.30), int((430 if is_fhd else 370) * art_scale))
+        ry = min(max(int(36 * art_scale), int(h * 0.16)), int((112 if is_fhd else 96) * art_scale))
+
+        compact_v = h < int(450 * art_scale)
+        large_px = 32 if is_fhd else (24 * art_scale)
+        small_px = 24 if is_fhd else (16 * art_scale)
+        ins_px = 24 if is_fhd else (16 * art_scale)
+        step_1 = 28 if is_fhd else int((18 if compact_v else 21) * art_scale)
+        step_2 = 54 if is_fhd else int((35 if compact_v else 40) * art_scale)
+        text_top_y = mid_y - (26 if is_fhd else int((19 if compact_v else 23) * art_scale))
+        return {
+            "art_scale": art_scale,
+            "is_fhd": is_fhd,
+            "cx": cx,
+            "mid_y": mid_y,
+            "pit_w": pit_w,
+            "rx": rx,
+            "ry": ry,
+            "compact_v": compact_v,
+            "large_px": large_px,
+            "small_px": small_px,
+            "ins_px": ins_px,
+            "step_1": step_1,
+            "step_2": step_2,
+            "text_top_y": text_top_y,
+        }
+
+    def get_unmarked_rule_band_patch(self) -> Optional[tuple[Any, int, int]]:
+        """
+        Returns a band-local vignetted, art_scale-matched un-engraved baize PhotoImage
+        covering the middle soft-17 rule text line, along with its (cx, cy) center anchor.
+        Never mutates _felt_img or _felt_cache.
+        """
+        if not PIL_AVAILABLE or Image is None or ImageTk is None:
+            return None
+        w = max(20, self.canvas_width)
+        h = max(20, self.canvas_height)
+        m = self._compute_rule_band_metrics(w, h)
+        art_scale = m["art_scale"]
+        is_fhd = m["is_fhd"]
+        key = (self.current_theme, w, h, art_scale, is_fhd)
+
+        cache = getattr(self, "_rule_band_patch_cache", None)
+        if cache is None:
+            cache = OrderedDict()
+            self._rule_band_patch_cache = cache
+        if key in cache:
+            cache.move_to_end(key)
+            return cache[key]
+
+        cx = int(m["cx"])
+        cy = int(m["text_top_y"] + m["step_1"])
+        small_px = int(m["small_px"])
+        patch_h = max(12, min(small_px, int(m["step_1"]) - 2))
+        patch_w = max(120, min(int(m["rx"] * 1.45), int(m["pit_w"] * 0.56)))
+
+        x0 = max(0, cx - patch_w // 2)
+        y0 = max(0, cy - patch_h // 2)
+        x1 = min(w, x0 + patch_w)
+        y1 = min(h, y0 + patch_h)
+        pw = max(4, x1 - x0)
+        ph = max(4, y1 - y0)
+
+        lw = max(1, (w + art_scale - 1) // art_scale)
+        lh = max(1, (h + art_scale - 1) // art_scale)
+        lx0 = x0 // art_scale
+        ly0 = y0 // art_scale
+        lpw = max(1, (pw + art_scale - 1) // art_scale)
+        lph = max(1, (ph + art_scale - 1) // art_scale)
+
+        tile = self._get_baize_tile(self.current_theme, 1)
+        tw, th = tile.size
+        band_img = Image.new("RGB", (lpw, lph))
+        phase_x = -(lx0 % tw)
+        phase_y = -(ly0 % th)
+        ty = phase_y
+        while ty < lph:
+            tx = phase_x
+            while tx < lpw:
+                band_img.paste(tile, (tx, ty))
+                tx += tw
+            ty += th
+
+        resampling_ns = getattr(Image, "Resampling", Image)
+        vig_small = self._get_vignette_base()
+        vw, vh = vig_small.size
+        vx0 = max(0.0, (lx0 / float(max(1, lw))) * vw)
+        vy0 = max(0.0, (ly0 / float(max(1, lh))) * vh)
+        vx1 = min(float(vw), ((lx0 + lpw) / float(max(1, lw))) * vw)
+        vy1 = min(float(vh), ((ly0 + lph) / float(max(1, lh))) * vh)
+        vig_crop = vig_small.crop((int(vx0), int(vy0), max(int(vx0) + 1, int(round(vx1))), max(int(vy0) + 1, int(round(vy1)))))
+        vig_band = vig_crop.resize((lpw, lph), resampling_ns.BILINEAR)
+        band_img.paste((0, 0, 0), (0, 0, lpw, lph), vig_band)
+
+        if (lpw, lph) != (pw, ph):
+            final_img = band_img.resize((pw, ph), resampling_ns.NEAREST)
+        else:
+            final_img = band_img
+
+        photo = ImageTk.PhotoImage(final_img, master=self)
+        result = (photo, x0 + pw // 2, y0 + ph // 2)
+        cache[key] = result
+        while len(cache) > 2:
+            cache.popitem(last=False)
+        return result
+
     def _generate_felt_image(self, w: int, h: int) -> Optional[Any]:
         if not PIL_AVAILABLE or Image is None or ImageDraw is None:
             return None
 
         cfg = self.THEME_COLORS.get(self.current_theme, self.THEME_COLORS["casino"])
-        art_scale = 2 if self.scale_factor >= 1.8 else 1
+        m = self._compute_rule_band_metrics(w, h)
+        art_scale = m["art_scale"]
         lw = max(1, (w + art_scale - 1) // art_scale)
         lh = max(1, (h + art_scale - 1) // art_scale)
         tile = self._get_baize_tile(self.current_theme, 1)
@@ -3006,30 +3125,17 @@ class TableFeltCanvas(tkinter.Canvas):
             felt_img = base_img
 
         # 3. Center-Pit dealer arc (2x supersampled ribbon) + crisp pixel-font house rules
-        lanes = resolve_center_pit_lanes(w, h, self._display_profile, self.table_seats)
-        pit_left, cx, pit_right = lanes["pit_left"], lanes["pit_cx"], lanes["pit_right"]
-        mid_y = lanes["mid_gap_y"] if h >= 320 else int(h * 0.42)
-        pit_w = max(240, pit_right - pit_left)
-
+        cx = m["cx"]
         gold = cfg["gold"]
-        tbl_fs = float(
-            getattr(
-                getattr(self, "_display_profile", None),
-                "table_font_scale",
-                getattr(self, "_table_font_scale", float(art_scale)),
-            )
-        )
-        is_fhd = (art_scale == 1 and tbl_fs >= 1.35)
-        rx = min(int(pit_w * 0.30), int((430 if is_fhd else 370) * art_scale))
-        ry = min(max(int(36 * art_scale), int(h * 0.16)), int((112 if is_fhd else 96) * art_scale))
-
-        compact_v = h < int(450 * art_scale)
-        large_px = 32 if is_fhd else (24 * art_scale)
-        small_px = 24 if is_fhd else (16 * art_scale)
-        ins_px = 24 if is_fhd else (16 * art_scale)
-        step_1 = 28 if is_fhd else int((18 if compact_v else 21) * art_scale)
-        step_2 = 54 if is_fhd else int((35 if compact_v else 40) * art_scale)
-        text_top_y = mid_y - (26 if is_fhd else int((19 if compact_v else 23) * art_scale))
+        is_fhd = m["is_fhd"]
+        rx = m["rx"]
+        ry = m["ry"]
+        large_px = m["large_px"]
+        small_px = m["small_px"]
+        ins_px = m["ins_px"]
+        step_1 = m["step_1"]
+        step_2 = m["step_2"]
+        text_top_y = m["text_top_y"]
 
         if rx > 30 and ry > 16:
             box_w = rx * 2 + int(16 * art_scale)
@@ -3372,8 +3478,10 @@ class TableFeltCanvas(tkinter.Canvas):
         return self.create_image(x, y, image=image, anchor="nw", tags=tags)
 
     def move_card_sprite(self, item_id: int, target_x: int, target_y: int):
-        """Reposition a card sprite on the felt canvas."""
+        """Reposition a card sprite on the felt canvas and clear stale card-glitch overlays if present."""
         self.coords(item_id, target_x, target_y)
+        if self.find_withtag("haunted_glitch_overlay"):
+            self.delete("haunted_glitch_overlay")
 
     def animate_card_slide(
         self,
@@ -3490,6 +3598,7 @@ class TableFeltCanvas(tkinter.Canvas):
         for item_id in items:
             self.cancel_card_animation(item_id, snap_to_target=False)
         self.delete(tag)
+        self.delete("haunted_glitch_overlay")
 
     # ------------------------------------------------------------------------
     # Layer 4: Multi-Seat Betting Spots & Geometric Hit Dispatching

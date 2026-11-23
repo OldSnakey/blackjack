@@ -488,6 +488,72 @@ class TestSettingsDialog(unittest.TestCase):
         finally:
             self.app._close_settings_dialog()
 
+    def test_haunted_atmosphere_comfort_toggles_persist_and_fit_all_resolutions(self):
+        """Settings Tab 0 haunted comfort toggles persist live, reset on clear_save, and fit 720p/800p/1080p with zero scroll."""
+        from unittest import mock
+
+        for w, h in ((1280, 720), (1280, 800), (1920, 1080)):
+            self.root.geometry(f"{w}x{h}")
+            self.root.update_idletasks()
+            self.app._open_settings_dialog()
+            dialog = self.app._settings_dialog
+            self.assertIsNotNone(dialog)
+            try:
+                dialog.update_idletasks()
+                dialog.update()
+                self.assertTrue(hasattr(dialog, "haunted_comfort_lbl"))
+                self.assertTrue(hasattr(dialog, "haunted_scares_btn"))
+                self.assertTrue(hasattr(dialog, "haunted_bugs_btn"))
+                self.assertIn("Flashes:", dialog.haunted_scares_btn.cget("text"))
+                self.assertIn("Crawlers:", dialog.haunted_bugs_btn.cget("text"))
+                self.assertFalse(
+                    bool(dialog.v_scrollbar.winfo_manager()),
+                    f"Tab 0 should have zero vertical scrollbar at {w}x{h}",
+                )
+                self.assertGreaterEqual(
+                    dialog.haunted_scares_btn.winfo_width(),
+                    100,
+                    f"haunted_scares_btn too narrow at {w}x{h}",
+                )
+                self.assertGreaterEqual(
+                    dialog.haunted_bugs_btn.winfo_width(),
+                    100,
+                    f"haunted_bugs_btn too narrow at {w}x{h}",
+                )
+            finally:
+                self.app._close_settings_dialog()
+
+        # Live toggle & clear_save reset
+        self.root.geometry("1280x800")
+        self.root.update_idletasks()
+        self.app._open_settings_dialog()
+        dialog = self.app._settings_dialog
+        try:
+            self.assertEqual(self.app.save_manager.data.haunted_scares_mode, "full")
+            self.assertTrue(self.app.save_manager.data.haunted_crawling_bugs)
+
+            dialog.haunted_scares_btn.invoke()
+            self.assertEqual(self.app.save_manager.data.haunted_scares_mode, "reduced")
+            self.assertEqual(self.app.haunted_atmosphere.scares_mode, "reduced")
+            self.assertIn("Reduced", dialog.haunted_scares_btn.cget("text"))
+
+            dialog.haunted_bugs_btn.invoke()
+            self.assertFalse(self.app.save_manager.data.haunted_crawling_bugs)
+            self.assertFalse(self.app.haunted_atmosphere.show_bugs)
+            self.assertIn("Hide", dialog.haunted_bugs_btn.cget("text"))
+
+            # Reset Data restores defaults live
+            with mock.patch("ui_dialogs.InWindowConfirmModal.ask_yes_no", return_value=True):
+                dialog._on_click_clear_save()
+            self.assertEqual(self.app.save_manager.data.haunted_scares_mode, "full")
+            self.assertTrue(self.app.save_manager.data.haunted_crawling_bugs)
+            self.assertEqual(self.app.haunted_atmosphere.scares_mode, "full")
+            self.assertTrue(self.app.haunted_atmosphere.show_bugs)
+            self.assertIn("Full", dialog.haunted_scares_btn.cget("text"))
+            self.assertIn("Show", dialog.haunted_bugs_btn.cget("text"))
+        finally:
+            self.app._close_settings_dialog()
+
 
 if __name__ == "__main__":
     unittest.main()

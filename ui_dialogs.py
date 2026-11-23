@@ -2734,7 +2734,51 @@ class SettingsDialog(InWindowScreenHost):
             pady=3 if compact else 4 * s,
         )
         self.input_prompts_current_lbl.grid(row=0, column=1, sticky="ew", padx=(4 * s, 3 * s))
+
+        # Haunted / Cursed Mode orthogonal comfort toggles (zero-scroll compact 2-col row)
+        self.haunted_comfort_lbl = tkinter.Label(
+            quick_hub,
+            text="Haunted / Cursed Comfort:",
+            font=sub_readout_font,
+            fg="#ef9a9a",
+            background="#092114",
+            anchor="w",
+        )
+        self.haunted_comfort_lbl.pack(fill="x", padx=3 * s, pady=(4 if compact else (6 * s), 1))
+
+        haunted_row = tkinter.Frame(quick_hub, background="#092114")
+        haunted_row.pack(fill="x", pady=(1, 0))
+        haunted_row.columnconfigure(0, weight=1, uniform="q_haunt")
+        haunted_row.columnconfigure(1, weight=1, uniform="q_haunt")
+
+        self.haunted_scares_btn = tkinter.Button(
+            haunted_row,
+            text="",
+            font=btn_font,
+            relief="ridge",
+            borderwidth=1,
+            cursor="hand2",
+            command=self._on_toggle_haunted_scares,
+            padx=6 * s,
+            pady=max(2, btn_pady - 1) if compact else btn_pady,
+        )
+        self.haunted_scares_btn.grid(row=0, column=0, sticky="ew", padx=(3 * s, 3 * s))
+
+        self.haunted_bugs_btn = tkinter.Button(
+            haunted_row,
+            text="",
+            font=btn_font,
+            relief="ridge",
+            borderwidth=1,
+            cursor="hand2",
+            command=self._on_toggle_haunted_bugs,
+            padx=6 * s,
+            pady=max(2, btn_pady - 1) if compact else btn_pady,
+        )
+        self.haunted_bugs_btn.grid(row=0, column=1, sticky="ew", padx=(3 * s, 3 * s))
+
         self._refresh_mode_and_seats_labels()
+        self._refresh_haunted_comfort_controls()
 
         lbl_status = tkinter.Label(
             save_frame,
@@ -3222,7 +3266,52 @@ class SettingsDialog(InWindowScreenHost):
         self._draft_rules = HouseRules()
         self._refresh_stats_display()
         self._refresh_house_rules_controls()
+        self._refresh_haunted_comfort_controls()
         self.status_msg_var.set("✓ Save file reset to initial blank slate.")
+
+    def _refresh_haunted_comfort_controls(self) -> None:
+        sm = getattr(self.app, "save_manager", None)
+        scares = getattr(getattr(sm, "data", None), "haunted_scares_mode", "full") if sm is not None else "full"
+        bugs = bool(getattr(getattr(sm, "data", None), "haunted_crawling_bugs", True)) if sm is not None else True
+        if hasattr(self, "haunted_scares_btn") and self.haunted_scares_btn.winfo_exists():
+            is_full = (scares == "full")
+            self.haunted_scares_btn.configure(
+                text="Flashes: Full" if is_full else "Flashes: Reduced",
+                background="#4a1420" if is_full else "#263238",
+                activebackground="#6a1b2b" if is_full else "#37474f",
+                fg="#ffccbc" if is_full else "#cfd8dc",
+                activeforeground="#ffffff",
+            )
+        if hasattr(self, "haunted_bugs_btn") and self.haunted_bugs_btn.winfo_exists():
+            self.haunted_bugs_btn.configure(
+                text="Crawlers: Show" if bugs else "Crawlers: Hide",
+                background="#3e2723" if bugs else "#263238",
+                activebackground="#5d4037" if bugs else "#37474f",
+                fg="#ffe0b2" if bugs else "#cfd8dc",
+                activeforeground="#ffffff",
+            )
+
+    def _on_toggle_haunted_scares(self) -> None:
+        sm = getattr(self.app, "save_manager", None)
+        cur = getattr(getattr(sm, "data", None), "haunted_scares_mode", "full") if sm is not None else "full"
+        nxt = "reduced" if cur == "full" else "full"
+        if hasattr(self.app, "set_haunted_atmosphere_preferences"):
+            self.app.set_haunted_atmosphere_preferences(scares_mode=nxt)
+        self._refresh_haunted_comfort_controls()
+        self.status_msg_var.set(
+            "✓ Haunted Scares set to Full." if nxt == "full" else "✓ Haunted Scares set to Reduced Flashes."
+        )
+
+    def _on_toggle_haunted_bugs(self) -> None:
+        sm = getattr(self.app, "save_manager", None)
+        cur = bool(getattr(getattr(sm, "data", None), "haunted_crawling_bugs", True)) if sm is not None else True
+        nxt = not cur
+        if hasattr(self.app, "set_haunted_atmosphere_preferences"):
+            self.app.set_haunted_atmosphere_preferences(show_bugs=nxt)
+        self._refresh_haunted_comfort_controls()
+        self.status_msg_var.set(
+            "✓ Crawling Bugs enabled." if nxt else "✓ Crawling Bugs hidden."
+        )
 
     def _refresh_mode_and_seats_labels(self) -> None:
         mode_name = str(getattr(self.app, "play_mode", "betting") or "betting").capitalize()

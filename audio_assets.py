@@ -269,6 +269,7 @@ class SoundManager:
             "chips_stack": [],
             "chips_handle": [],
         }
+        self._haunted_sound_cache: dict[str, Any] = {}
 
         self.voice_engine = AnimaleseVoiceEngine(enabled=self.enabled, volume=self.volume)
 
@@ -326,6 +327,11 @@ class SoundManager:
                     sound.set_volume(self.volume)
                 except Exception:
                     pass
+        for sound in self._haunted_sound_cache.values():
+            try:
+                sound.set_volume(self.volume)
+            except Exception:
+                pass
         if hasattr(self, "voice_engine") and self.voice_engine:
             self.voice_engine.set_volume(self.volume)
 
@@ -440,16 +446,24 @@ class SoundManager:
         self.play("chip_lay")
 
     def play_haunted_sound(self, sound_name: str):
-        """Plays a one-shot haunted audio effect from audio/haunted/ with extension safety."""
+        """Plays a one-shot haunted audio effect from audio/haunted/ using an in-memory cache."""
         if not self.enabled or not self.is_available:
             return
         clean_name = sound_name[:-4] if sound_name.endswith((".ogg", ".wav")) else sound_name
-        sound_path = HAUNTED_AUDIO_DIR / f"{clean_name}.ogg"
-        if not sound_path.exists():
-            sound_path = HAUNTED_AUDIO_DIR / f"{clean_name}.wav"
-        if sound_path.exists() and pygame_mixer is not None:
+        sound = self._haunted_sound_cache.get(clean_name)
+        if sound is None and pygame_mixer is not None:
+            sound_path = HAUNTED_AUDIO_DIR / f"{clean_name}.ogg"
+            if not sound_path.exists():
+                sound_path = HAUNTED_AUDIO_DIR / f"{clean_name}.wav"
+            if sound_path.exists():
+                try:
+                    sound = pygame_mixer.Sound(str(sound_path))
+                    sound.set_volume(self.volume)
+                    self._haunted_sound_cache[clean_name] = sound
+                except Exception:
+                    sound = None
+        if sound is not None:
             try:
-                sound = pygame_mixer.Sound(str(sound_path))
                 sound.set_volume(self.volume)
                 sound.play()
             except Exception:

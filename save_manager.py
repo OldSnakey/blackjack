@@ -17,7 +17,11 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from config import VALID_INPUT_PROMPT_MODES, VALID_WINDOW_PROFILE_OVERRIDES
+from config import (
+    VALID_HAUNTED_SCARES_MODES,
+    VALID_INPUT_PROMPT_MODES,
+    VALID_WINDOW_PROFILE_OVERRIDES,
+)
 from rules import HouseRules
 from tripometer import TripometerData
 
@@ -204,6 +208,8 @@ class SaveData:
     strict_integer_cards: bool = False
     window_profile_override: str = "auto"
     input_prompt_mode: str = "auto"
+    haunted_scares_mode: str = "full"
+    haunted_crawling_bugs: bool = True
 
     def to_dict(self) -> Dict[str, Any]:
         win_override = (
@@ -215,6 +221,11 @@ class SaveData:
             self.input_prompt_mode
             if self.input_prompt_mode in VALID_INPUT_PROMPT_MODES
             else "auto"
+        )
+        scares_mode = (
+            self.haunted_scares_mode
+            if self.haunted_scares_mode in VALID_HAUNTED_SCARES_MODES
+            else "full"
         )
         return {
             "version": self.version,
@@ -233,6 +244,8 @@ class SaveData:
             "strict_integer_cards": bool(self.strict_integer_cards),
             "window_profile_override": win_override,
             "input_prompt_mode": prompt_mode,
+            "haunted_scares_mode": scares_mode,
+            "haunted_crawling_bugs": bool(self.haunted_crawling_bugs),
         }
 
     @classmethod
@@ -340,6 +353,13 @@ class SaveData:
                 in VALID_INPUT_PROMPT_MODES
                 else "auto"
             ),
+            haunted_scares_mode=(
+                str(data.get("haunted_scares_mode", "full"))
+                if str(data.get("haunted_scares_mode", "full"))
+                in VALID_HAUNTED_SCARES_MODES
+                else "full"
+            ),
+            haunted_crawling_bugs=bool(data.get("haunted_crawling_bugs", True)),
         )
 
 
@@ -402,6 +422,28 @@ class SaveManager:
         """Marks initial onboarding splash screen as completed."""
         self.data.onboarding_completed = True
         if save_now:
+            return self.save()
+        return True
+
+    def set_haunted_preferences(
+        self,
+        scares_mode: Optional[str] = None,
+        show_bugs: Optional[bool] = None,
+        save_now: bool = True,
+    ) -> bool:
+        """Persists Haunted Atmosphere comfort toggles (scares_mode and crawling bugs)."""
+        changed = False
+        if scares_mode is not None:
+            norm = str(scares_mode) if str(scares_mode) in VALID_HAUNTED_SCARES_MODES else "full"
+            if self.data.haunted_scares_mode != norm:
+                self.data.haunted_scares_mode = norm
+                changed = True
+        if show_bugs is not None:
+            norm_bugs = bool(show_bugs)
+            if self.data.haunted_crawling_bugs != norm_bugs:
+                self.data.haunted_crawling_bugs = norm_bugs
+                changed = True
+        if changed and save_now:
             return self.save()
         return True
 

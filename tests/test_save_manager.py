@@ -293,6 +293,32 @@ class TestSaveManager(unittest.TestCase):
         self.assertEqual(sanitized.window_profile_override, "auto")
         self.assertEqual(sanitized.input_prompt_mode, "auto")
 
+    def test_haunted_preferences_persistence_and_sanitization(self):
+        """haunted_scares_mode and haunted_crawling_bugs default safely, persist, and sanitize."""
+        self.assertEqual(self.manager.data.haunted_scares_mode, "full")
+        self.assertTrue(self.manager.data.haunted_crawling_bugs)
+
+        self.manager.set_haunted_preferences(scares_mode="reduced", show_bugs=False)
+        self.assertEqual(self.manager.data.haunted_scares_mode, "reduced")
+        self.assertFalse(self.manager.data.haunted_crawling_bugs)
+
+        reloaded = SaveManager(save_path=self.save_file)
+        self.assertEqual(reloaded.data.haunted_scares_mode, "reduced")
+        self.assertFalse(reloaded.data.haunted_crawling_bugs)
+
+        # Legacy saves without haunted keys default safely to ('full', True)
+        raw = reloaded.data.to_dict()
+        raw.pop("haunted_scares_mode", None)
+        raw.pop("haunted_crawling_bugs", None)
+        legacy = SaveData.from_dict(raw)
+        self.assertEqual(legacy.haunted_scares_mode, "full")
+        self.assertTrue(legacy.haunted_crawling_bugs)
+
+        # Invalid haunted_scares_mode falls back safely to 'full'
+        raw["haunted_scares_mode"] = "extreme_strobe"
+        sanitized = SaveData.from_dict(raw)
+        self.assertEqual(sanitized.haunted_scares_mode, "full")
+
 
 if __name__ == "__main__":
     unittest.main()

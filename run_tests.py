@@ -103,6 +103,7 @@ TIERS: Dict[str, List[str]] = {
         "tests.test_universal_puppet_faceplates",
     ],
     "haunted": [
+        "tests.test_haunted_atmosphere",
         "tests.test_haunted_mode",
         "tests.test_typewriter_and_audio_accents",
     ],

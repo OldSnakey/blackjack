@@ -35,6 +35,7 @@ hiddenimports = [
     "ui_canvases",
     "ui_dialogs",
     "haunted_manager",
+    "haunted_atmosphere",
     "save_manager",
     "dealer_actor",
     "dealer_wardrobe_dialog",

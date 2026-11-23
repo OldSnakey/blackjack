@@ -117,6 +117,7 @@ from audio_assets import (
 )
 
 # Re-exported 2.5D Canvas components & HUD overlays
+from haunted_atmosphere import HauntedAtmosphereController
 from ui_canvases import (
     CanvasCardSpriteProxy,
     ChipVisualizer,
@@ -843,6 +844,15 @@ class BlackjackApp:
         # Build interface layout
         self._build_ui()
 
+        # Initialize decoupled Haunted Atmosphere presentation controller
+        self.haunted_atmosphere = HauntedAtmosphereController(
+            root=self.root,
+            app=self,
+            sound_manager=self.sound_manager,
+            scares_mode=getattr(self.save_manager.data, "haunted_scares_mode", "full"),
+            show_bugs=bool(getattr(self.save_manager.data, "haunted_crawling_bugs", True)),
+        )
+
         # Render dealer on stage canvas
         self._update_dealer_avatar()
 
@@ -992,6 +1002,75 @@ class BlackjackApp:
             w = getattr(self, right_attr, None)
             if w is not None and bool(w.grid_info()):
                 w.grid_configure(padx=(int(6 * art_s), wing_pad_r), pady=(top_pad, int(6 * art_s)))
+
+    def get_unobstructed_felt_bounds(self) -> tuple[int, int, int, int]:
+        """Returns (left, top, right, bottom) of unobstructed felt inside pit bounds minus mapped wings."""
+        prof = self.display_profile
+        art_s = prof.art_scale
+        canvas = getattr(self, "card_table_frame", None)
+        cw = canvas.winfo_width() if canvas is not None else prof.window_w
+        ch = canvas.winfo_height() if canvas is not None else 460
+        expected_ch = max(320, prof.window_h - prof.stage_h - prof.rail_h - prof.divider_h)
+        if cw < prof.window_w - 40 or self.root.state() == "withdrawn":
+            cw = prof.window_w
+        if ch <= 20 or self.root.state() == "withdrawn":
+            ch = expected_ch
+        pit_left, _pit_cx, pit_right = resolve_pit_bounds(cw, prof.pit_max_width)
+        left_w = 0
+        if hasattr(self, "left_felt_wing") and bool(self.left_felt_wing.grid_info()):
+            lw = self.left_felt_wing.winfo_width()
+            if lw <= 1:
+                lw = self.left_felt_wing.winfo_reqwidth()
+            left_w = max(0, int(lw))
+        right_w = 0
+        for right_attr in ("accessories_frame", "chip_visualizer", "soul_meter_canvas"):
+            w = getattr(self, right_attr, None)
+            if w is not None and bool(w.grid_info()):
+                rw = w.winfo_width()
+                if rw <= 1:
+                    rw = w.winfo_reqwidth()
+                right_w = max(right_w, int(rw))
+        pad = int(12 * art_s)
+        left = min(cw // 2 - 40, pit_left + left_w + pad)
+        right = max(cw // 2 + 40, pit_right - right_w - pad)
+        return (left, pad, right, max(pad + 120, ch - pad))
+
+    def get_visible_card_sprites(self) -> list[tuple[int, Card]]:
+        """Returns currently rendered (canvas_item_id, Card) pairs, excluding any hidden dealer hole card."""
+        visible: list[tuple[int, Card]] = []
+        for h_obj in getattr(self, "player_hands", []):
+            sids = getattr(h_obj, "sprite_ids", None)
+            if sids:
+                for cid, card in zip(sids, h_obj):
+                    if cid is not None and card is not None:
+                        visible.append((cid, card))
+        d_hand = getattr(self, "dealer_hand", None)
+        d_sids = getattr(d_hand, "sprite_ids", None) if d_hand is not None else None
+        hole_id = getattr(getattr(self, "dealer_hole_widget", None), "item_id", None)
+        if d_sids:
+            for idx, (cid, card) in enumerate(zip(d_sids, d_hand)):
+                if cid is None or card is None:
+                    continue
+                if getattr(self, "is_hole_card_hidden", False) and (idx == 0 or cid == hole_id):
+                    continue
+                visible.append((cid, card))
+        return visible
+
+    def set_haunted_atmosphere_preferences(
+        self,
+        scares_mode: Optional[str] = None,
+        show_bugs: Optional[bool] = None,
+    ) -> None:
+        """Persists Haunted Atmosphere comfort toggles and applies them live."""
+        if hasattr(self, "save_manager") and self.save_manager is not None:
+            self.save_manager.set_haunted_preferences(scares_mode=scares_mode, show_bugs=show_bugs)
+            eff_scares = self.save_manager.data.haunted_scares_mode
+            eff_bugs = self.save_manager.data.haunted_crawling_bugs
+        else:
+            eff_scares = scares_mode if scares_mode is not None else "full"
+            eff_bugs = True if show_bugs is None else bool(show_bugs)
+        if hasattr(self, "haunted_atmosphere") and self.haunted_atmosphere is not None:
+            self.haunted_atmosphere.apply_comfort_settings(eff_scares, eff_bugs)
 
     def _position_score_plaques(self, event=None) -> None:
         """Positions Dealer and Player score plaques relative to `pit_cx` inside `card_table_frame`."""
@@ -2325,6 +2404,8 @@ class BlackjackApp:
         if getattr(self, "tour_active", False):
             if not self.exit_venue_tour():
                 return
+        if hasattr(self, "haunted_atmosphere") and self.haunted_atmosphere is not None:
+            self.haunted_atmosphere.cancel_all()
 
         # Refund any uncommitted staged bets only during RoundPhase.BETTING
         if getattr(self, "round_phase", None) == RoundPhase.BETTING and self.chips_mode_var.get():
@@ -2413,6 +2494,8 @@ class BlackjackApp:
         if getattr(self, "tour_active", False):
             if not self.exit_venue_tour():
                 return
+        if hasattr(self, "haunted_atmosphere") and self.haunted_atmosphere is not None:
+            self.haunted_atmosphere.cancel_all()
         self._unmount_bootcamp_views()
         if mode not in ("casual", "betting", "training"):
             return
@@ -2732,6 +2815,8 @@ class BlackjackApp:
             self.cursed_stakes_button.grid_remove()
         self._sync_tour_button()
         self._sync_tour_map_rail_button()
+        if hasattr(self, "haunted_atmosphere") and self.haunted_atmosphere is not None:
+            self.haunted_atmosphere.apply_comfort_settings("full", True)
         if getattr(self, "bootcamp_frame", None) is not None:
             try:
                 self.bootcamp_frame.cancel_all_timers()
@@ -2954,6 +3039,9 @@ class BlackjackApp:
         if getattr(self, "haunted", None) is not None and self.haunted.phase == Phase.HELL_TABLE:
             self.result_var.set("Banish the Pit Fiend or exit Cursed Stakes before entering the Casino Tour!")
             return False
+
+        if hasattr(self, "haunted_atmosphere") and self.haunted_atmosphere is not None:
+            self.haunted_atmosphere.cancel_all()
 
         if getattr(self, "tour_active", False):
             if getattr(self, "tour_in_salon", False):
@@ -4810,45 +4898,78 @@ class BlackjackApp:
         except Exception:
             pass
 
-    def _trigger_hell_table(self, manual: bool = False):
-        """Transitions into Hell's Table mode with bell audio, dialogs, and draft."""
+    def _trigger_hell_table(self, manual: bool = False, on_after_reveal: Optional[Callable[[], None]] = None):
+        """Transitions into Hell's Table mode via skippable Pit Boss blackout, bell audio, dialogs, and draft."""
         if getattr(self, "table_seats", 1) == 3:
             return
+
+        # Cancel any in-flight deal or dealer timers so they cannot race the blackout veil
+        if hasattr(self, "_cancel_deal_timers"):
+            self._cancel_deal_timers()
+        if getattr(self, "_dealer_timer_id", None) is not None:
+            try:
+                self.root.after_cancel(self._dealer_timer_id)
+            except Exception:
+                pass
+            self._dealer_timer_id = None
+        self._dealing = False
+
         if manual:
             self.haunted.unlocked_cursed_stakes = True
         self.haunted.start_hell_table(manual=manual)
         self.cursed_stakes_var.set(bool(manual or self.haunted.unlocked_cursed_stakes))
         self._sync_cursed_stakes_button()
-        self.sound_manager.play_haunted_sound("hell_bell")
-        self._apply_phase_theme(Phase.HELL_TABLE)
-        self._update_candles_display()
-        self._update_gravestones_display()
-
-        if hasattr(self, "chip_visualizer"):
-            self.chip_visualizer.grid_remove()
-        self.soul_meter_canvas.grid()
-        self.soul_meter_canvas.set_meter(self.haunted.soul_meter, animated=False)
-
-        self.dealer_view_var.set(True)
-        self._update_dealer_avatar()
-        self.set_dealer_speech("Your soul is on the line now, mortal! The pit claims all.", stream=True)
-        self.sound_manager.play_haunted_sound("demon_reveal")
 
         is_headless = getattr(self, "suppress_mode_dialog", False)
         try:
             is_withdrawn = (self.root.state() == "withdrawn") or (not self.root.winfo_ismapped())
         except Exception:
             is_withdrawn = True
+        bypass = bool(is_headless or is_withdrawn)
 
-        if is_headless or is_withdrawn:
-            self._open_angelic_draft()
-            return
+        def _on_swap_theme():
+            if bypass:
+                self.sound_manager.play_haunted_sound("hell_bell")
+            self._apply_phase_theme(Phase.HELL_TABLE)
+            self._update_candles_display()
+            self._update_gravestones_display()
 
-        def on_fiend_closed():
-            self.sound_manager.play_haunted_sound("angel_chime")
-            self._show_angel_dialog(on_close=self._open_angelic_draft)
+            if hasattr(self, "chip_visualizer"):
+                self.chip_visualizer.grid_remove()
+            self.soul_meter_canvas.grid()
+            self.soul_meter_canvas.set_meter(self.haunted.soul_meter, animated=False)
 
-        self._show_pit_fiend_dialog(on_close=on_fiend_closed)
+            self.dealer_view_var.set(True)
+            self._update_dealer_avatar()
+            if hasattr(self, "haunted_atmosphere") and self.haunted_atmosphere is not None:
+                self.haunted_atmosphere.sync_phase_and_soul(self.haunted.phase, self.haunted.soul_meter)
+
+        def _on_complete():
+            self.set_dealer_speech("Your soul is on the line now, mortal! The pit claims all.", stream=True)
+            if bypass:
+                self.sound_manager.play_haunted_sound("demon_reveal")
+            if on_after_reveal is None and getattr(self, "round_phase", None) == RoundPhase.ROUND_OVER:
+                if hasattr(self, "new_game_button"):
+                    self.new_game_button.configure(state="normal")
+            if bypass:
+                self._open_angelic_draft(on_done=on_after_reveal)
+                return
+
+            def on_fiend_closed():
+                self.sound_manager.play_haunted_sound("angel_chime")
+                self._show_angel_dialog(on_close=lambda: self._open_angelic_draft(on_done=on_after_reveal))
+
+            self._show_pit_fiend_dialog(on_close=on_fiend_closed)
+
+        if hasattr(self, "haunted_atmosphere") and self.haunted_atmosphere is not None:
+            self.haunted_atmosphere.play_pit_boss_blackout(
+                on_swap_theme=_on_swap_theme,
+                on_complete=_on_complete,
+                headless_bypass=bypass,
+            )
+        else:
+            _on_swap_theme()
+            _on_complete()
 
     def _show_pit_fiend_dialog(self, on_close=None):
         """Displays atmospheric Pit Fiend narrative challenge."""
@@ -4896,10 +5017,18 @@ class BlackjackApp:
             is_celestial=True,
         )
 
-    def _open_angelic_draft(self):
+    def _open_angelic_draft(self, on_done: Optional[Callable[[], None]] = None):
         """Opens Balatro-style Roguelike draft modal for celestial blessings."""
+        done_called = {"flag": False}
+
+        def _invoke_done():
+            if not done_called["flag"] and callable(on_done):
+                done_called["flag"] = True
+                on_done()
+
         choices = self.haunted.get_draft_choices(count=3)
         if not choices:
+            _invoke_done()
             return
 
         is_headless = getattr(self, "suppress_mode_dialog", False)
@@ -4911,6 +5040,7 @@ class BlackjackApp:
         if is_headless or is_withdrawn:
             self.haunted.equip_blessing(choices[0])
             self._update_blessings_tray()
+            _invoke_done()
             return
 
         relic_map = {b.value: self.haunted_assets.get(f"relic_{b.value}") for b in choices}
@@ -4920,10 +5050,16 @@ class BlackjackApp:
             self.sound_manager.play_haunted_sound("angel_chime")
             self._update_blessings_tray()
             self.result_var.set(f"✦ Relic Equipped: {BLESSING_REGISTRY[b].title}!")
+            _invoke_done()
 
         self._active_draft_dialog = AngelicDraftDialog(
             self.root, choices=choices, relic_icons=relic_map, on_select=on_drafted
         )
+        if callable(on_done) and self._active_draft_dialog is not None:
+            try:
+                self._active_draft_dialog.bind("<Destroy>", lambda _e: _invoke_done(), add="+")
+            except Exception:
+                pass
 
     def _show_victory_dialog(self):
         """Displays triumphant banishment dialogue and awards spoils."""
@@ -5010,6 +5146,8 @@ class BlackjackApp:
 
         if is_headless or is_withdrawn:
             self.haunted.second_chance()
+            if hasattr(self, "haunted_atmosphere") and self.haunted_atmosphere is not None:
+                self.haunted_atmosphere.sync_phase_and_soul(self.haunted.phase, self.haunted.soul_meter)
             self.new_game()
             return
 
@@ -5022,6 +5160,8 @@ class BlackjackApp:
         def on_retry():
             self.haunted.second_chance()
             self.soul_meter_canvas.set_meter(self.haunted.soul_meter, animated=False)
+            if hasattr(self, "haunted_atmosphere") and self.haunted_atmosphere is not None:
+                self.haunted_atmosphere.sync_phase_and_soul(self.haunted.phase, self.haunted.soul_meter)
             self.new_game()
 
         port_img = None
@@ -5171,6 +5311,8 @@ class BlackjackApp:
             self.chip_visualizer.grid()
         self._apply_phase_theme(Phase.NORMAL)
         self._cleanup_haunted_table_overlays()
+        if hasattr(self, "haunted_atmosphere") and self.haunted_atmosphere is not None:
+            self.haunted_atmosphere.cancel_all()
         if hasattr(self, "card_table_frame") and isinstance(self.card_table_frame, TableFeltCanvas):
             try:
                 self.card_table_frame.sync_children_felt()
@@ -5188,8 +5330,13 @@ class BlackjackApp:
         if self.haunted.phase != Phase.NORMAL:
             self._exit_haunted_mode()
             return
-        self._trigger_hell_table(manual=True)
-        self.new_game()
+        if getattr(self, "_haunted_round_timer_id", None) is not None:
+            try:
+                self.root.after_cancel(self._haunted_round_timer_id)
+            except Exception:
+                pass
+            self._haunted_round_timer_id = None
+        self._trigger_hell_table(manual=True, on_after_reveal=self.new_game)
 
     # ------------------------------------------------------------------------
     # Game Flow & Actions
@@ -5390,6 +5537,8 @@ class BlackjackApp:
         if getattr(self, "table_seats", 1) == 3 or getattr(self, "tour_active", False):
             if hasattr(self, "haunted"):
                 self.haunted.phase = Phase.NORMAL
+            if hasattr(self, "haunted_atmosphere") and self.haunted_atmosphere is not None:
+                self.haunted_atmosphere.cancel_all()
             phase = Phase.NORMAL
             self._apply_phase_theme(Phase.NORMAL)
             self._update_dealer_avatar()
@@ -5421,6 +5570,8 @@ class BlackjackApp:
             self._update_gravestones_display()
             self._update_blessings_tray()
             self._sync_cursed_stakes_button()
+            if hasattr(self, "haunted_atmosphere") and self.haunted_atmosphere is not None:
+                self.haunted_atmosphere.sync_phase_and_soul(phase, self.haunted.soul_meter)
 
         if self.haunted.phase == Phase.HELL_TABLE:
             if hasattr(self, "chip_visualizer"):
@@ -6083,6 +6234,8 @@ class BlackjackApp:
             self.current_bet_var.set(0)
 
         self.table_seats = new_count
+        if new_count > 1 and hasattr(self, "haunted_atmosphere") and self.haunted_atmosphere is not None:
+            self.haunted_atmosphere.cancel_all()
         if hasattr(self, "card_table_frame") and hasattr(self.card_table_frame, "set_table_seats"):
             self.card_table_frame.set_table_seats(self.table_seats)
         self.card_table_frame.set_house_rules_display(
@@ -6864,6 +7017,8 @@ class BlackjackApp:
             else:
                 # Normal player turn: action buttons evaluated dynamically
                 self._update_action_buttons()
+                if hasattr(self, "haunted_atmosphere") and self.haunted_atmosphere is not None:
+                    self.haunted_atmosphere.notify_player_turn_started()
 
     def _draw_card(self):
         """Pops the next card from the shoe, marking cut card if penetration threshold reached."""
@@ -7476,6 +7631,8 @@ class BlackjackApp:
             self._conclude_round()
         else:
             self._update_action_buttons()
+            if hasattr(self, "haunted_atmosphere") and self.haunted_atmosphere is not None:
+                self.haunted_atmosphere.notify_player_turn_started()
 
     def _observe_card_face_up(self, card):
         """Observes a face-up card for Hi-Lo card counting and updates HUD & floating badge."""
@@ -7653,6 +7810,9 @@ class BlackjackApp:
             self.event_bus.emit(GameEventType.HAND_SPLIT, {"hands": 2})
 
         # 2. Deal second card to both Hand 1 and Hand 2
+        if hasattr(self, "haunted_atmosphere") and self.haunted_atmosphere is not None:
+            self.haunted_atmosphere.notify_player_activity()
+            self.haunted_atmosphere.notify_table_disruption()
         self._deal_card_to_player(hand_index=0)
         self._deal_card_to_player(hand_index=1)
         self._update_dealer_speech_for_tactical_action("SPLIT_PAIR")
@@ -7671,6 +7831,9 @@ class BlackjackApp:
         """
         if not self.fsm.trigger("double"):
             return
+        if hasattr(self, "haunted_atmosphere") and self.haunted_atmosphere is not None:
+            self.haunted_atmosphere.notify_player_turn_ended()
+            self.haunted_atmosphere.notify_table_disruption()
 
         # --------------------------------------------------------------------
         # 3-Seat Mode Double Down
@@ -7806,6 +7969,9 @@ class BlackjackApp:
         """
         if not self.fsm.trigger("surrender"):
             return
+        if hasattr(self, "haunted_atmosphere") and self.haunted_atmosphere is not None:
+            self.haunted_atmosphere.notify_player_turn_ended()
+            self.haunted_atmosphere.notify_table_disruption()
 
         # --------------------------------------------------------------------
         # 3-Seat Mode Surrender
@@ -7902,6 +8068,9 @@ class BlackjackApp:
         """
         if not self.fsm.trigger("hit"):
             return
+        if hasattr(self, "haunted_atmosphere") and self.haunted_atmosphere is not None:
+            self.haunted_atmosphere.notify_player_activity()
+            self.haunted_atmosphere.notify_table_disruption()
         self._record_gui_decision("HIT")
         self.double_button.configure(state="disabled")
         self.split_button.configure(state="disabled")
@@ -7982,6 +8151,9 @@ class BlackjackApp:
         if not auto:
             if not self.fsm.trigger("stand"):
                 return
+            if hasattr(self, "haunted_atmosphere") and self.haunted_atmosphere is not None:
+                self.haunted_atmosphere.notify_player_turn_ended()
+                self.haunted_atmosphere.notify_table_disruption()
             self._record_gui_decision("STAND", auto=False)
         self.double_button.configure(state="disabled")
         self.split_button.configure(state="disabled")
@@ -8378,6 +8550,7 @@ class BlackjackApp:
                 primary_outcome, is_double=is_double, is_split=is_split
             )
             self._update_dealer_speech_for_outcome(primary_outcome)
+            pending_hell_blackout = False
 
             if prev_phase in (Phase.OMEN, Phase.SNUFFING):
                 self._update_candles_display()
@@ -8386,7 +8559,10 @@ class BlackjackApp:
                     if hasattr(self, "sound_manager"):
                         self.sound_manager.play_haunted_sound("candle_snuff")
                         self.sound_manager.play_haunted_sound("stone_scrape")
+                    if hasattr(self, "haunted_atmosphere") and self.haunted_atmosphere is not None:
+                        self.haunted_atmosphere.notify_table_disruption()
                 if self.haunted.candles_remaining == 0:
+                    pending_hell_blackout = True
                     self._haunted_round_timer_id = self.root.after(800, self._trigger_hell_table)
 
             elif self.haunted.phase == Phase.HELL_TABLE:
@@ -8415,7 +8591,10 @@ class BlackjackApp:
                     self.soul_meter_canvas.set_meter(0.0, animated=True)
                 if hasattr(self, "sound_manager"):
                     self.sound_manager.play_haunted_sound("demon_laugh")
-                self.root.after(600, self._show_defeat_dialog)
+                self._haunted_round_timer_id = self.root.after(600, self._show_defeat_dialog)
+
+            if not pending_hell_blackout and hasattr(self, "haunted_atmosphere") and self.haunted_atmosphere is not None:
+                self.haunted_atmosphere.sync_phase_and_soul(self.haunted.phase, self.haunted.soul_meter)
 
         if haunted_msg:
             cur = self.result_var.get()
@@ -8463,10 +8642,11 @@ class BlackjackApp:
         if getattr(self, "tour_active", False) and getattr(self, "tour_in_salon", False):
             self._handle_tour_round_settled()
 
-        # Disable Hit/Stand/Double/Split/Surrender, enable New Game (unless a Tour Map transition is pending)
+        # Disable Hit/Stand/Double/Split/Surrender, enable New Game (unless a Tour Map or 5th-candle Hell transition is pending)
         self._set_action_buttons_state("disabled")
         has_tour_transition = getattr(self, "_tour_transition_timer_id", None) is not None
-        self.new_game_button.configure(state="disabled" if has_tour_transition else "normal")
+        has_hell_leadin = bool(locals().get("pending_hell_blackout", False))
+        self.new_game_button.configure(state="disabled" if (has_tour_transition or has_hell_leadin) else "normal")
         self._sync_tour_map_rail_button()
         self._refresh_strategy_hint()
 
@@ -9016,6 +9196,8 @@ class BlackjackApp:
             self.haunted_altar.cancel_animations()
         if hasattr(self, "card_counting_hud") and self.card_counting_hud:
             self.card_counting_hud.cancel_floating_badges()
+        if hasattr(self, "haunted_atmosphere") and self.haunted_atmosphere is not None:
+            self.haunted_atmosphere.cancel_all()
 
         self.display_profile = new_profile
         self._is_fullscreen = bool(new_profile.is_fullscreen)
@@ -9092,6 +9274,9 @@ class BlackjackApp:
                     scr.lift()
             except Exception:
                 pass
+
+        if hasattr(self, "haunted_atmosphere") and self.haunted_atmosphere is not None:
+            self.haunted_atmosphere.on_display_profile_changed(new_profile)
 
         if hasattr(self, "event_bus") and self.event_bus:
             self.event_bus.emit(
@@ -9340,6 +9525,8 @@ class BlackjackApp:
                 setattr(self, attr, None)
         if hasattr(self, "card_counting_hud") and self.card_counting_hud:
             self.card_counting_hud.cancel_floating_badges()
+        if hasattr(self, "haunted_atmosphere") and self.haunted_atmosphere is not None:
+            self.haunted_atmosphere.cancel_all()
 
     def _on_root_destroyed(self, event):
         """Emergency callback invoked when root is destroyed directly without _on_close."""
